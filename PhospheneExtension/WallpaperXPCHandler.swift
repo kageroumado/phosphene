@@ -195,11 +195,14 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     return
                 }
 
-                // Adaptive playback at loop boundaries. Read `currentVideoID` inside
-                // the closure so the selector follows the active choice rather than
-                // freezing the one that was active at acquire() time.
+                // Adaptive playback at loop boundaries. Capture the per-context
+                // videoID from this acquire — each rendering scope keeps its own
+                // selection. Reading the global `currentVideoID` would cause every
+                // renderer to converge on whichever choice was set most recently
+                // (multi-monitor bug: after one loop, all monitors play the same video).
+                let perContextVideoID = choiceConfiguration
                 videoRenderer.variantSelector = {
-                    guard let videoID = WallpaperState.shared.currentVideoID else {
+                    guard let videoID = perContextVideoID else {
                         return videoURL
                     }
                     let power = PowerMonitor.shared.currentState
