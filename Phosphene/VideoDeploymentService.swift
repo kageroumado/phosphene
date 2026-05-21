@@ -72,7 +72,7 @@ enum VideoDeploymentService {
             let data = try JSONEncoder().encode(metadata)
             try data.write(to: dir.appendingPathComponent("metadata.json"))
 
-            generateThumbnail(for: destURL, in: dir)
+            await generateThumbnail(for: destURL, in: dir)
 
             Log.video.info("Deployed video '\(url.lastPathComponent)' as \(id) to \(dir.path)")
             notifyExtensionLibraryChanged()
@@ -283,19 +283,33 @@ enum VideoDeploymentService {
     static let libraryChangedNotification = Notification.Name("glass.kagerou.phosphene.libraryChanged")
 
     /// Generate a thumbnail.jpg from the first frame of a video.
-    private static func generateThumbnail(for videoURL: URL, in directory: URL) {
+    /// Uses async/await so the caller can coordinate thumbnail availability.
+    @MainActor
+    private static func generateThumbnail(for videoURL: URL, in directory: URL) async {
         let asset = AVURLAsset(url: videoURL)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 640, height: 360)
 
-        let time = CMTime(seconds: 0, preferredTimescale: 600)
-        generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cgImage, _, _, _ in
-            guard let cgImage else { return }
-            let rep = NSBitmapImageRep(cgImage: cgImage)
-            guard let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else { return }
-            let thumbnailURL = directory.appendingPathComponent("thumbnail.jpg")
-            try? jpegData.write(to: thumbnailURL)
+        let cgImage: CGImage
+        do {
+            cgImage = try await generator.image(at: .zero).image
+        } catch {
+            Log.video.error("Thumbnail generation failed: \(error.localizedDescription)")
+            return
+        }
+
+        let rep = NSBitmapImageRep(cgImage: cgImage)
+        guard let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else {
+            Log.video.error("Thumbnail JPEG encoding failed")
+            return
+        }
+
+        let thumbnailURL = directory.appendingPathComponent("thumbnail.jpg")
+        do {
+            try jpegData.write(to: thumbnailURL, options: .atomic)
+        } catch {
+            Log.video.error("Thumbnail write failed: \(error.localizedDescription)")
         }
     }
 
