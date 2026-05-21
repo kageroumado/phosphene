@@ -80,6 +80,10 @@ final class VideoRenderer: @unchecked Sendable {
         stillFrameLayer.contentsGravity = .resizeAspectFill
         stillFrameLayer.contentsScale = rootLayer.contentsScale
         stillFrameLayer.opacity = 0
+        // Name the layer so stale copies can be removed on recreation
+        stillFrameLayer.name = "phosphene.stillFrame"
+        // Remove any stale still frame layer from a previous renderer
+        rootLayer.sublayers?.filter { $0.name == "phosphene.stillFrame" }.forEach { $0.removeFromSuperlayer() }
         rootLayer.addSublayer(stillFrameLayer)
 
         var tb: CMTimebase?
@@ -135,6 +139,9 @@ final class VideoRenderer: @unchecked Sendable {
             currentReader?.cancelReading()
             nextReader?.cancelReading()
         }
+        // Clean up layers from the layer tree
+        displayLayer.removeFromSuperlayer()
+        stillFrameLayer.removeFromSuperlayer()
     }
 
     func pause() {
