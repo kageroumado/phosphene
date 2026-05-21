@@ -28,7 +28,7 @@ It is built on top of Apple's private `WallpaperExtensionKit` framework — the 
 ## Building
 
 ```sh
-git clone https://github.com/<you>/phosphene
+git clone https://github.com/kageroumado/phosphene.git
 cd phosphene
 open Phosphene.xcodeproj
 ```
@@ -36,6 +36,27 @@ open Phosphene.xcodeproj
 In Xcode, select the **Phosphene** scheme and Run. The project uses synchronized filesystem groups, so adding/removing files in `Phosphene/` or `PhospheneExtension/` requires no pbxproj edits.
 
 You'll need to set a development team for code signing. The wallpaper extension is embedded into the app bundle and registered with the system when the app launches.
+
+For a headless compile check without local signing identities:
+
+```sh
+xcodebuild -project Phosphene.xcodeproj -scheme Phosphene -configuration Debug \
+  -destination 'generic/platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
+```
+
+On the default DerivedData path, the unsigned debug app is produced at:
+
+```text
+~/Library/Developer/Xcode/DerivedData/Phosphene-*/Build/Products/Debug/Phosphene.app
+```
+
+To install that local debug build into Applications:
+
+```sh
+rm -rf /Applications/Phosphene.app
+cp -R ~/Library/Developer/Xcode/DerivedData/Phosphene-*/Build/Products/Debug/Phosphene.app /Applications/
+```
 
 ### Using a video wallpaper
 
