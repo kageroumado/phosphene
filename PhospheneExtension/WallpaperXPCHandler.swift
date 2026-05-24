@@ -101,16 +101,15 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
 
         extensionLog("  destination: \(destSize) @\(scaleFactor)x, isPreview: \(isPreview), id: \(wallpaperIDString ?? "nil"), choice: \(choiceConfiguration ?? "nil"), files: \(choiceFiles)")
 
-        // If a specific video was selected via configuration, update state
-        if let videoID = choiceConfiguration {
-            let previousID = WallpaperState.shared.currentVideoID
-            if previousID != videoID {
-                extensionLog("  Choice changed: \(previousID ?? "nil") → \(videoID)")
-                WallpaperState.shared.currentVideoID = videoID
-                WallpaperState.shared.cachedVideoURL = nil
-                WallpaperState.shared.cachedThumbnailURL = nil
-                WallpaperPrefs.shared.updateCurrentVideo()
-            }
+        // Each acquire's `choiceConfiguration` is authoritative for *this* display's
+        // context. Do NOT mutate the process-wide `currentVideoID` here based on a
+        // diff — concurrent acquires for different displays would race and a renderer
+        // can end up initialized with the wrong monitor's video. The global tracks
+        // the last user-picked choice (via `selectedChoicesDidChange`); we only seed
+        // it on first launch when UserDefaults has no value yet, so the menu-bar UI
+        // has something sensible to show before the user picks anything.
+        if WallpaperState.shared.currentVideoID == nil, let videoID = choiceConfiguration {
+            WallpaperState.shared.currentVideoID = videoID
         }
 
         // 1. Create a remote CAContext for cross-process rendering
@@ -164,13 +163,14 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         rootLayer.contentsScale = scaleFactor
         rootLayer.contentsGravity = .resizeAspectFill
 
-        if let cachedImage = loadCachedSnapshotImage() {
+        if let cachedImage = loadCachedSnapshotImage(forChoice: choiceConfiguration) {
             rootLayer.contents = cachedImage
             extensionLog("  Set cached snapshot as initial layer content")
         }
 
-        // 4. Set up video rendering
-        let videoURL = findVideoURL()
+        // 4. Set up video rendering — resolve per this context's choice, not the
+        // process-wide singleton, otherwise concurrent acquires can race.
+        let videoURL = findVideoURL(forChoice: choiceConfiguration)
 
         if let videoURL {
             extensionLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent)")
@@ -195,11 +195,14 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     return
                 }
 
-                // Adaptive playback at loop boundaries. Read `currentVideoID` inside
-                // the closure so the selector follows the active choice rather than
-                // freezing the one that was active at acquire() time.
+                // Adaptive playback at loop boundaries. Capture the per-context
+                // videoID from this acquire — each rendering scope keeps its own
+                // selection. Reading the global `currentVideoID` would cause every
+                // renderer to converge on whichever choice was set most recently
+                // (multi-monitor bug: after one loop, all monitors play the same video).
+                let perContextVideoID = choiceConfiguration
                 videoRenderer.variantSelector = {
-                    guard let videoID = WallpaperState.shared.currentVideoID else {
+                    guard let videoID = perContextVideoID else {
                         return videoURL
                     }
                     let power = PowerMonitor.shared.currentState
@@ -241,13 +244,13 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 doReply("timeout")
             }
 
-            // Write BMP snapshot cache
+            // Write BMP snapshot cache — keyed on this context's choice, not the
+            // global, so each display gets its own correctly-keyed snapshot file.
             if !isPreview {
                 let displayW = Int(destSize.width * scaleFactor)
                 let displayH = Int(destSize.height * scaleFactor)
-                let currentVideoID = WallpaperState.shared.currentVideoID
                 Task {
-                    await writeBMPSnapshot(videoURL: videoURL, videoID: currentVideoID, displayPixelWidth: displayW, displayPixelHeight: displayH)
+                    await writeBMPSnapshot(videoURL: videoURL, videoID: choiceConfiguration, displayPixelWidth: displayW, displayPixelHeight: displayH)
                 }
             }
         } else {
@@ -433,24 +436,19 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
 
         extensionLog("  [Remove] Removing video: \(videoID)")
 
-        // Check if the removed video is currently active
-        let wasActive = WallpaperState.shared.currentVideoID == videoID
-
         // Remove from library (deletes files + metadata)
         VideoLibrary.shared.removeVideo(id: videoID)
 
-        if wasActive {
-            // Clear selection and stop renderers
-            WallpaperState.shared.currentVideoID = nil
-            WallpaperState.shared.cachedVideoURL = nil
-            WallpaperState.shared.cachedThumbnailURL = nil
-
-            WallpaperState.shared.forEachRenderer { renderer in
-                renderer.stop()
+        // Stop only the renderers whose context was actually using this video —
+        // other displays may be playing different videos and must keep running.
+        let stoppedDisplays = WallpaperState.shared.stopRenderers(forVideoID: videoID)
+        if !stoppedDisplays.isEmpty {
+            if WallpaperState.shared.currentVideoID == videoID {
+                WallpaperState.shared.currentVideoID = nil
+                WallpaperState.shared.cachedThumbnailURL = nil
             }
-
             WallpaperPrefs.shared.updateCurrentVideo()
-            extensionLog("  [Remove] Cleared active wallpaper state")
+            extensionLog("  [Remove] Stopped \(stoppedDisplays.count) renderer(s) for removed video")
         }
 
         // Invalidate Agent snapshots so Settings refreshes
@@ -498,20 +496,18 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
 
         extensionLog("=== CHOICE CHANGED === videoID: \(videoID)")
 
-        // Update selection state (clears cached URL so next acquire uses new video)
+        // Track the last user-picked video (for menu-bar UI / new-acquire fallback).
+        // The XPC API does NOT tell us which display this choice is for — only that
+        // the user picked it. We can't safely touch any renderer here; doing so used
+        // to flip the wrong display, because stopping all renderers forced macOS to
+        // re-acquire every display, and the racing acquires would pick up the wrong
+        // per-context choiceConfiguration. macOS issues `invalidate(oldID)` and
+        // `acquire(newID)` for the affected display on its own; let it.
         WallpaperState.shared.currentVideoID = videoID
-        WallpaperState.shared.cachedVideoURL = nil
         WallpaperState.shared.cachedThumbnailURL = nil
-
-        // Notify app of video change
         WallpaperPrefs.shared.updateCurrentVideo()
 
-        // Stop all current renderers — the next acquire() will start the new video
-        WallpaperState.shared.forEachRenderer { renderer in
-            renderer.stop()
-        }
-
-        // Invalidate Agent snapshots so it re-fetches with the new video
+        // Invalidate Agent snapshots so the picker re-fetches with the new video.
         if let proxy = agentProxy {
             proxy.invalidateSnapshots { error in
                 if let error {
