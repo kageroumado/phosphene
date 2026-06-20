@@ -6,44 +6,42 @@
 import AVFoundation
 import ImageIO
 
-/// Find the video URL for the currently selected wallpaper.
-/// Falls back to the first video in the library, then bundle resources.
-func findVideoURL() -> URL? {
-    if let cached = WallpaperState.shared.cachedVideoURL {
-        return cached
-    }
-
-    // Check if a specific video is selected
-    if let selectedID = WallpaperState.shared.currentVideoID,
-       let url = VideoLibrary.shared.videoURL(for: selectedID),
+/// Resolve a video URL for a specific choice. Each rendering context owns
+/// its own choice — never read the process-wide "current" selection here,
+/// or concurrent acquires for different displays will race and a renderer
+/// can end up initialized with the wrong monitor's video.
+///
+/// Falls back to the first video in the library, then bundle resources, so
+/// the picker fallback path still has something to display.
+func findVideoURL(forChoice videoID: String?) -> URL? {
+    if let videoID,
+       let url = VideoLibrary.shared.videoURL(for: videoID),
        FileManager.default.fileExists(atPath: url.path) {
-        WallpaperState.shared.cachedVideoURL = url
         return url
-    } else if WallpaperState.shared.currentVideoID != nil {
-        // Selected video is gone — clear stale ID
-        WallpaperState.shared.currentVideoID = nil
     }
 
-    // Fall back to first video in library
     if let first = VideoLibrary.shared.entries.first {
         let url = VideoLibrary.shared.videoURL(for: first)
         if FileManager.default.fileExists(atPath: url.path) {
-            WallpaperState.shared.cachedVideoURL = url
-            WallpaperState.shared.currentVideoID = first.id
             return url
         }
     }
 
-    // Last resort: bundle resource
     let videoExtensions = ["mp4", "mov", "m4v"]
     for ext in videoExtensions {
         if let url = Bundle.main.url(forResource: "wallpaper", withExtension: ext) {
-            WallpaperState.shared.cachedVideoURL = url
             return url
         }
     }
 
     return nil
+}
+
+/// Compatibility wrapper for callers without a per-context choice (snapshot
+/// requests that don't carry a wallpaperID, etc.). Uses the last user-picked
+/// video as a best-effort hint — do not use this on the rendering path.
+func findVideoURL() -> URL? {
+    findVideoURL(forChoice: WallpaperState.shared.currentVideoID)
 }
 
 /// Generate a JPEG thumbnail from the video's first frame.

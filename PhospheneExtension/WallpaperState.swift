@@ -25,7 +25,6 @@ final class WallpaperState: Sendable {
         var wallpaperIDToContext: [String: UInt32] = [:]
         var cachedThumbnailURL: URL?
         var cacheDirectoryURL: URL?
-        var cachedVideoURL: URL?
         var currentVideoID: String? = UserDefaults.standard.string(forKey: WallpaperState.selectedVideoKey)
         var presentationMode: String = "active"
         var activityState: String = "active"
@@ -55,7 +54,6 @@ final class WallpaperState: Sendable {
     /// Clear cached URLs so the next lookup re-evaluates against the current library.
     private func clearCaches() {
         lock.withLock { state in
-            state.cachedVideoURL = nil
             state.cachedThumbnailURL = nil
         }
     }
@@ -107,6 +105,25 @@ final class WallpaperState: Sendable {
         }
     }
 
+    /// Stop and remove every renderer whose context owns the given videoID.
+    /// Returns the displayIDs that were affected so callers can log/react.
+    /// Other contexts keep running — they belong to displays with a different choice.
+    @discardableResult
+    func stopRenderers(forVideoID videoID: String) -> [UInt32?] {
+        let affected = lock.withLock { state -> [(UInt32, ActiveWallpaper)] in
+            let matches = state.activeContexts.filter { $0.value.videoID == videoID }
+            for (contextId, _) in matches {
+                state.activeContexts.removeValue(forKey: contextId)
+            }
+            state.wallpaperIDToContext = state.wallpaperIDToContext.filter { state.activeContexts[$0.value] != nil }
+            return matches.map { ($0.key, $0.value) }
+        }
+        for (_, ctx) in affected {
+            ctx.renderer?.stop()
+        }
+        return affected.map { $0.1.displayID }
+    }
+
     /// All unique display IDs from active contexts.
     func uniqueDisplayIDs() -> Set<UInt32> {
         lock.withLock { state in
@@ -156,11 +173,6 @@ final class WallpaperState: Sendable {
     var cacheDirectoryURL: URL? {
         get { lock.withLock { $0.cacheDirectoryURL } }
         set { lock.withLock { $0.cacheDirectoryURL = newValue } }
-    }
-
-    var cachedVideoURL: URL? {
-        get { lock.withLock { $0.cachedVideoURL } }
-        set { lock.withLock { $0.cachedVideoURL = newValue } }
     }
 
     /// Currently selected video ID, persisted to UserDefaults.

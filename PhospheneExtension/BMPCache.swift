@@ -15,7 +15,11 @@ import ImageIO
 /// Load the most recent cached BMP from the Agent's cache directory as a CGImage.
 /// Used to set rootLayer.contents as immediate visual content during transitions,
 /// matching Apple's "Using existing snapshot as initial wallpaper contents" pattern.
-func loadCachedSnapshotImage() -> CGImage? {
+///
+/// - Parameter videoID: per-context choice identifier. Each display's acquire
+///   passes its own choice so the right cached frame is shown during transitions.
+///   Reading the process-wide "current" selection here would race across displays.
+func loadCachedSnapshotImage(forChoice videoID: String?) -> CGImage? {
     guard let cacheDir = WallpaperState.shared.cacheDirectoryURL else { return nil }
 
     let gained = cacheDir.startAccessingSecurityScopedResource()
@@ -25,12 +29,10 @@ func loadCachedSnapshotImage() -> CGImage? {
         return nil
     }
 
-    // Prefer BMP matching the current video ID
-    let currentVideoID = WallpaperState.shared.currentVideoID
     let bmpFiles = contents.filter { $0.pathExtension == "bmp" }
 
     let bmpURL: URL?
-    if let videoID = currentVideoID {
+    if let videoID {
         let hash = videoHash(for: videoID)
         bmpURL = bmpFiles.first { $0.lastPathComponent.hasPrefix(hash) } ?? bmpFiles.first
     } else {
