@@ -15,6 +15,13 @@ final class UpdateCheckService {
     /// The newer version (e.g. "1.1") when one is available, else `nil`.
     private(set) var availableVersion: String?
 
+    /// True while a manual check is in flight (drives the menu item's state).
+    private(set) var isChecking = false
+
+    /// Set true after a manual check that found no newer version, so the menu can
+    /// briefly confirm "You're up to date". Reset when a new check starts.
+    private(set) var checkedUpToDate = false
+
     /// Where the "update available" affordance sends the user.
     let releasesPageURL = URL(string: "https://github.com/kageroumado/phosphene/releases/latest")!
 
@@ -31,13 +38,21 @@ final class UpdateCheckService {
     func checkIfDue() async {
         if let last = UserDefaults.standard.object(forKey: lastCheckKey) as? Date,
            Date.now.timeIntervalSince(last) < minInterval {
+            Log.update.debug("update check: throttled (last check < 24h ago)")
             return
         }
         await check()
     }
 
-    /// Force a check now (e.g. a "Check for Updates" action), ignoring the interval.
-    func check() async {
+    /// Force a check now, ignoring the interval. `manual` drives UI feedback
+    /// (spinner / "up to date") so the auto check at launch stays silent.
+    func check(manual: Bool = false) async {
+        if manual {
+            isChecking = true
+            checkedUpToDate = false
+        }
+        defer { if manual { isChecking = false } }
+
         var request = URLRequest(url: latestAPI)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 10
@@ -51,10 +66,13 @@ final class UpdateCheckService {
             let latest = release.tagName.hasPrefix("v")
                 ? String(release.tagName.dropFirst())
                 : release.tagName
-            availableVersion = Self.isNewer(latest, than: currentVersion) ? latest : nil
+            let newer = Self.isNewer(latest, than: currentVersion)
+            availableVersion = newer ? latest : nil
+            if manual { checkedUpToDate = !newer }
+            Log.update.debug("update check: \(release.tagName) vs \(self.currentVersion) → \(newer ? "update available" : "up to date")")
         } catch {
             // Offline, rate-limited, or shape changed — stay quiet and retry later.
-            Log.general.debug("Update check skipped: \(error.localizedDescription)")
+            Log.update.error("update check failed: \(error.localizedDescription)")
         }
     }
 
