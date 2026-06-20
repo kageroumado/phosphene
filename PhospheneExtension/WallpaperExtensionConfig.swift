@@ -102,12 +102,31 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
         connection.invalidationHandler = { [weak handler] in
             handler?.agentProxy = nil
             let removed = WallpaperState.shared.removeAllContexts()
-            if !removed.isEmpty {
-                WallpaperPrefs.shared.setActive(false)
-                extensionLog("XPC invalidated — cleaned up \(removed.count) active context(s)")
-            } else {
+            guard !removed.isEmpty else {
+                // Benign teardown: no live contexts (settings-only connection, or
+                // we were already inactive). Nothing rendering, nothing to recover.
                 extensionLog("XPC invalidated")
+                return
             }
+            // Abnormal path: the host connection died while we still held live
+            // rendering contexts. Deep standby/hibernation tears the XPC connection
+            // down after hours asleep (it can also drop spontaneously during normal
+            // use). removeAllContexts() has freed the now-dead CAContexts, but the
+            // wallpaper is still the user's selection and WindowServer does NOT
+            // re-acquire on its own — it keeps compositing the dead surface, leaving
+            // the desktop grey/black until the wallpaper is reselected (issue #2,
+            // "grey/black wallpaper after resuming from hibernation").
+            //
+            // Normal teardown (switching wallpaper, a display being removed) arrives
+            // as invalidate(withId:), which clears each context first — so `removed`
+            // is empty there and we never reach this branch. Exiting only on a
+            // mid-render disconnect lets the framework relaunch the extension fresh;
+            // the agent then re-acquires every display. This is the recovery path
+            // verified empirically by killing the extension out from under a live
+            // WallpaperAgent (it relaunched and re-acquired immediately).
+            WallpaperPrefs.shared.setActive(false)
+            extensionLog("XPC invalidated mid-render — freed \(removed.count) context(s); exiting to force re-acquire")
+            exit(0)
         }
 
         connection.resume()
