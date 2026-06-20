@@ -11,6 +11,10 @@ struct MenuBarPopoverView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let newVersion = manager.updateCheck.availableVersion {
+                updateBanner(version: newVersion)
+                Divider()
+            }
             if prefsService.selections.count > 1 {
                 carouselSection
                 Divider()
@@ -191,6 +195,30 @@ struct MenuBarPopoverView: View {
 
     private var hasLibraryEntries: Bool {
         !VideoDeploymentService.listEntries().isEmpty
+    }
+
+    // MARK: - Update Banner
+
+    private func updateBanner(version: String) -> some View {
+        Button {
+            NSWorkspace.shared.open(manager.updateCheck.releasesPageURL)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tint)
+                Text("Update available — version \(version)")
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+                Image(systemName: "arrow.up.forward")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(PopoverMenuItemStyle())
+        .padding(4)
     }
 
     // MARK: - Actions
