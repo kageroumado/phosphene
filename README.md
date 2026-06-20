@@ -1,12 +1,12 @@
 # Phosphene
 
-A video wallpaper engine for macOS Tahoe.
+A video wallpaper engine for macOS Tahoe and later.
 
 Phosphene is a menu bar app + wallpaper extension that plays your own video files as the macOS desktop and lock-screen wallpaper. It plugs into the system's native wallpaper picker, so videos appear alongside Apple's built-in Aerials in **System Settings → Wallpaper**.
 
 It is built on top of Apple's private `WallpaperExtensionKit` framework — the same one Apple's own Aerials use — which means playback runs out-of-process, survives app quits, and integrates with the OS-level lock-screen / idle / sleep lifecycle.
 
-> ⚠️ **Private framework.** Phosphene loads `WallpaperExtensionKit` via `dlopen` and uses Mirror-based runtime introspection to talk to its XPC types. Apple could change this at any major OS release. The project tracks macOS 26 (Tahoe).
+> ⚠️ **Private framework.** Phosphene loads `WallpaperExtensionKit` via `dlopen` and uses Mirror-based runtime introspection to talk to its XPC types. Apple could change this at any major OS release. Validated on macOS 26 (Tahoe) and macOS 27 (beta).
 
 ## Features
 
@@ -21,7 +21,7 @@ It is built on top of Apple's private `WallpaperExtensionKit` framework — the 
 
 ## Requirements
 
-- **macOS Tahoe (26.0+).** Phosphene depends on the Wallpaper extension point introduced in macOS 14 but uses Tahoe-only SwiftUI and `glassEffect()` APIs.
+- **macOS Tahoe (26.0+).** Phosphene depends on the Wallpaper extension point introduced in macOS 14 but uses Tahoe-only SwiftUI and `glassEffect()` APIs. Tested on macOS 26 and macOS 27 (beta).
 - **Apple Silicon.** Targets `arm64-apple-macos26.0`.
 - **Xcode 17+** to build, with Swift 6 strict concurrency enabled.
 
@@ -79,12 +79,19 @@ cp -R ~/Library/Developer/Xcode/DerivedData/Phosphene-*/Build/Products/Debug/Pho
                   │                              │
                   └──────────────┬───────────────┘
                                  ▼
-                  Shared App Group container
-                  (~/Library/Group Containers/glass.kagerou.phosphene)
+                  Extension sandbox container
+                  (~/Library/Containers/glass.kagerou.phosphene.extension
+                       /Data/Documents)
                   • Video library + variants
                   • WallpaperPrefs.plist
                   • BMP snapshot cache
 ```
+
+> **Storage model.** The extension is sandboxed; the menu-bar app is not. The
+> app writes the shared library directly into the extension's sandbox container
+> (the path above) and signals changes via a Darwin notification. This is a
+> deliberate, documented contract rather than an App Group container — the app's
+> only job is to populate the directory the extension reads from.
 
 **App side** (`Phosphene/`) — SwiftUI menu-bar app. Manages the on-disk video library, transcodes optional lower-resolution variants via `VideoOptimizationService`, exposes preferences, and posts a Darwin notification when the library changes.
 
