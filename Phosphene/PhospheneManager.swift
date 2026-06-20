@@ -51,6 +51,7 @@ final class PhospheneManager {
 
     let prefsService = WallpaperPrefsService.shared
     let occlusionMonitor = OcclusionMonitor()
+    let updateCheck = UpdateCheckService()
 
     // MARK: - Private
 
@@ -84,6 +85,8 @@ final class PhospheneManager {
         if prefsService.pauseWhenOccluded {
             occlusionMonitor.startMonitoring()
         }
+
+        Task { await updateCheck.checkIfDue() }
     }
 
     // MARK: - Library Actions
