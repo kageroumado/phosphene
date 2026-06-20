@@ -23,6 +23,14 @@ func createRemoteContextXPC(contextId: UInt32) -> AnyObject? {
     } else {
         8
     }
+    // Bounds-check before the raw write: if the runtime layout shrank or the
+    // offset assumption is stale, writing past the instance would corrupt the
+    // heap. Fail closed instead.
+    guard ivarOffset >= 0,
+          ivarOffset + MemoryLayout<UInt32>.size <= class_getInstanceSize(realClass) else {
+        extensionLog("  ERROR: WallpaperRemoteContextXPC layout unexpected (offset \(ivarOffset), size \(class_getInstanceSize(realClass)))")
+        return nil
+    }
     ptr.advanced(by: ivarOffset).storeBytes(of: contextId, as: UInt32.self)
     extensionLog("  Created WallpaperRemoteContextXPC (contextId: \(contextId), offset: \(ivarOffset))")
     return obj
@@ -38,8 +46,17 @@ func createSnapshotXPC(surface: IOSurface) -> AnyObject? {
         return nil
     }
 
+    // Offset 8 is the assumed `rawValue` ivar location. Verify the instance is
+    // large enough to hold a pointer there before writing — a changed layout
+    // must not turn into heap corruption.
+    let snapshotOffset = 8
+    guard snapshotOffset + MemoryLayout<UnsafeRawPointer>.size <= class_getInstanceSize(snapshotXPCClass) else {
+        extensionLog("  [Snapshot] WallpaperSnapshotXPC layout unexpected (size \(class_getInstanceSize(snapshotXPCClass)))")
+        return nil
+    }
+
     let surfaceRef = Unmanaged.passRetained(surface).toOpaque()
     let instancePtr = Unmanaged.passUnretained(instance as AnyObject).toOpaque()
-    instancePtr.advanced(by: 8).storeBytes(of: surfaceRef, as: UnsafeRawPointer.self)
+    instancePtr.advanced(by: snapshotOffset).storeBytes(of: surfaceRef, as: UnsafeRawPointer.self)
     return instance as AnyObject
 }

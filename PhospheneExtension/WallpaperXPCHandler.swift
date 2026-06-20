@@ -117,10 +117,20 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         if let did = displayID {
             contextOptions["displayId"] = did
         }
-        let caContext = if contextOptions.isEmpty {
-            CAContext.remoteContext() as! CAContext
+        // `remoteContext` is private CA API returning `id`; guard the cast so a
+        // changed return type fails the acquire with an error instead of a
+        // force-cast crash that would take down the extension.
+        let caContextRaw: Any? = if contextOptions.isEmpty {
+            CAContext.remoteContext()
         } else {
-            CAContext.perform(NSSelectorFromString("remoteContextWithOptions:"), with: contextOptions)?.takeUnretainedValue() as! CAContext
+            CAContext.perform(NSSelectorFromString("remoteContextWithOptions:"), with: contextOptions)?.takeUnretainedValue()
+        }
+        guard let caContext = caContextRaw as? CAContext else {
+            extensionLog("  ERROR: remote CAContext creation returned \(String(describing: caContextRaw.map { type(of: $0) })) — failing acquire")
+            reply(nil, NSError(domain: "PhospheneExtension", code: 4, userInfo: [
+                NSLocalizedDescriptionKey: "Failed to create remote CAContext",
+            ]))
+            return
         }
         extensionLog("  Created remote CAContext (id: \(caContext.contextId), options: \(contextOptions))")
 

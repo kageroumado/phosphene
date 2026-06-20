@@ -112,9 +112,7 @@ enum VideoDeploymentService {
     @MainActor
     static func deployVariants(entryID: String, variants: [(url: URL, variant: VideoVariant)]) {
         let fileManager = FileManager.default
-        let entryDir = extensionDocsURL
-            .appendingPathComponent("videos")
-            .appendingPathComponent(entryID)
+        guard let entryDir = validatedEntryDir(entryID) else { return }
 
         let metadataURL = entryDir.appendingPathComponent("metadata.json")
         guard fileManager.fileExists(atPath: metadataURL.path) else {
@@ -125,6 +123,11 @@ enum VideoDeploymentService {
         var deployedVariants: [VideoVariant] = []
 
         for (sourceURL, variant) in variants {
+            // Reject any variant whose filename isn't a safe basename.
+            guard PathSafety.isSafeComponent(variant.filename) else {
+                Log.video.error("Skipping variant with unsafe filename: \(variant.filename)")
+                continue
+            }
             let destURL = entryDir.appendingPathComponent(variant.filename)
             do {
                 if fileManager.fileExists(atPath: destURL.path) {
@@ -156,9 +159,7 @@ enum VideoDeploymentService {
     /// Remove variant files and clear the variants array in metadata for an entry.
     @MainActor
     static func removeVariants(entryID: String) {
-        let entryDir = extensionDocsURL
-            .appendingPathComponent("videos")
-            .appendingPathComponent(entryID)
+        guard let entryDir = validatedEntryDir(entryID) else { return }
         let metadataURL = entryDir.appendingPathComponent("metadata.json")
         let fm = FileManager.default
 
@@ -167,6 +168,7 @@ enum VideoDeploymentService {
         else { return }
 
         for variant in metadata.variants ?? [] {
+            guard PathSafety.isSafeComponent(variant.filename) else { continue }
             let variantURL = entryDir.appendingPathComponent(variant.filename)
             try? fm.removeItem(at: variantURL)
         }
@@ -181,12 +183,24 @@ enum VideoDeploymentService {
 
     /// Remove a video entry from the extension container.
     static func removeVideo(entryID: String) {
-        let dir = extensionDocsURL
-            .appendingPathComponent("videos")
-            .appendingPathComponent(entryID)
+        guard let dir = validatedEntryDir(entryID) else { return }
         try? FileManager.default.removeItem(at: dir)
         Log.video.info("Removed video entry \(entryID) from extension container")
         notifyExtensionLibraryChanged()
+    }
+
+    /// Resolve an entry's directory only when `entryID` is a valid UUID and the
+    /// resulting path stays inside the extension's `videos/` tree. The single
+    /// gate every entry-id-derived filesystem mutation passes through, so a
+    /// malformed id can never reach removeItem/copyItem with an escaped path.
+    private static func validatedEntryDir(_ entryID: String) -> URL? {
+        let videosDir = extensionDocsURL.appendingPathComponent("videos")
+        let dir = videosDir.appendingPathComponent(entryID)
+        guard PathSafety.isValidEntryID(entryID), PathSafety.contained(dir, in: videosDir) else {
+            Log.video.error("Rejecting unsafe entry id: \(entryID)")
+            return nil
+        }
+        return dir
     }
 
     /// Metadata structure for reading entries (mirrors the extension's VideoEntry).
@@ -255,9 +269,7 @@ enum VideoDeploymentService {
     /// Re-probe an existing entry's video and update its metadata.json.
     /// Useful for migrating entries imported before probing was added.
     static func probeAndUpdateMetadata(for entryID: String) async {
-        let entryDir = extensionDocsURL
-            .appendingPathComponent("videos")
-            .appendingPathComponent(entryID)
+        guard let entryDir = validatedEntryDir(entryID) else { return }
         let metadataURL = entryDir.appendingPathComponent("metadata.json")
 
         guard let data = try? Data(contentsOf: metadataURL),

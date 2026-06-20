@@ -138,17 +138,36 @@ final class VideoLibrary: Sendable {
 
         for dir in subdirs where dir.hasDirectoryPath {
             let id = dir.lastPathComponent
+
+            // Quarantine anything that isn't a well-formed entry directory.
+            // Skip (never delete) so a corrupt or hand-edited library can't make
+            // a stray name drive a removal outside the tree.
+            guard PathSafety.isValidEntryID(id) else {
+                extensionLog("[VideoLibrary] Skipping non-UUID directory: \(id)")
+                continue
+            }
+
             let metadataURL = dir.appendingPathComponent("metadata.json")
 
             if let data = try? Data(contentsOf: metadataURL),
                let entry = try? JSONDecoder().decode(VideoEntry.self, from: data) {
+                // Metadata id must match its containing directory, and the
+                // filename must be a safe basename that resolves inside `dir`.
+                guard entry.id == id, PathSafety.isSafeComponent(entry.filename) else {
+                    extensionLog("[VideoLibrary] Quarantining \(id): metadata id/filename mismatch or unsafe")
+                    continue
+                }
                 let videoFile = dir.appendingPathComponent(entry.filename)
+                guard PathSafety.contained(videoFile, in: videosDir) else {
+                    extensionLog("[VideoLibrary] Quarantining \(id): video path escapes library")
+                    continue
+                }
                 guard fm.fileExists(atPath: videoFile.path) else {
                     extensionLog("[VideoLibrary] Pruning orphaned entry \(id): video file missing")
                     try? fm.removeItem(at: dir)
                     continue
                 }
-                discovered.append(entry)
+                discovered.append(sanitizingVariants(entry))
             } else if let videoFile = findVideoFile(in: dir) {
                 let entry = VideoEntry(
                     id: id,
@@ -213,12 +232,30 @@ final class VideoLibrary: Sendable {
     /// Remove a video from the library.
     func removeVideo(id: String) {
         let dir = videosDir.appendingPathComponent(id)
+        // Only ever delete a valid UUID directory that resolves inside the
+        // library — a malformed id must not reach removeItem at all.
+        guard PathSafety.isValidEntryID(id), PathSafety.contained(dir, in: videosDir) else {
+            extensionLog("[VideoLibrary] Refusing to remove unsafe id: \(id)")
+            return
+        }
         try? FileManager.default.removeItem(at: dir)
         lock.withLock { entries in
             entries.removeAll { $0.id == id }
         }
         saveIndex(entries)
         extensionLog("[VideoLibrary] Removed: \(id)")
+    }
+
+    /// Drop any variants whose filename isn't a safe basename, so a corrupt
+    /// metadata.json can't steer variant selection to an out-of-tree path.
+    private func sanitizingVariants(_ entry: VideoEntry) -> VideoEntry {
+        guard let variants = entry.variants else { return entry }
+        let safe = variants.filter { PathSafety.isSafeComponent($0.filename) }
+        guard safe.count != variants.count else { return entry }
+        extensionLog("[VideoLibrary] Dropped \(variants.count - safe.count) unsafe variant(s) from \(entry.id)")
+        var copy = entry
+        copy.variants = safe.isEmpty ? nil : safe
+        return copy
     }
 
     /// Update metadata for a video entry (e.g., after probing duration/fps/resolution).

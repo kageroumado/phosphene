@@ -9,6 +9,18 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import <QuartzCore/QuartzCore.h>
+#import <bsm/libbsm.h>
+
+// MARK: - Private NSXPCConnection caller identity
+//
+// NSXPCConnection exposes the connecting peer's audit token as private API.
+// Declaring it here lets Swift read the token to validate the caller's code
+// signature before accepting a connection. Guarded with -respondsToSelector:
+// at the call site so a future OS that drops the SPI degrades gracefully.
+
+@interface NSXPCConnection (PhospheneCallerIdentity)
+@property (nonatomic, readonly) audit_token_t auditToken;
+@end
 
 // MARK: - Private CAContext API (for remote rendering)
 

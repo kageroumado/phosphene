@@ -10,6 +10,14 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
     func accept(connection: NSXPCConnection) -> Bool {
         extensionLog("XPC from PID=\(connection.processIdentifier)")
 
+        // Validate the caller before building interfaces, exporting the handler,
+        // or resuming — an unexpected (non-Apple) process never reaches our
+        // exported methods.
+        guard CallerValidation.isAcceptable(connection) else {
+            extensionLog("XPC rejected: untrusted caller")
+            return false
+        }
+
         let exported = NSXPCInterface(with: (any WallpaperExtensionXPCProtocol).self)
 
         // Build class whitelist from runtime-loaded WallpaperExtensionKit classes

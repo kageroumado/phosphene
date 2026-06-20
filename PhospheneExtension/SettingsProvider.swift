@@ -103,6 +103,14 @@ func makeEmptyGroupsResponse() -> AnyObject? {
 }
 
 /// Archive via ShimViewModelsXPC, remap class name on unarchive to the real XPC type.
+///
+/// Secure coding cannot be required here: the whole point is to archive our own
+/// `ShimViewModelsXPC` and decode it back as the private `WallpaperSettingsViewModelsXPC`
+/// via `setClass(_:forClassName:)`, a substitution secure coding is designed to
+/// forbid. This is safe because the archive is never persisted or received over
+/// any boundary — it is produced and consumed in-process within this one function
+/// from values we just constructed, so there is no untrusted input to defend
+/// against. The decoded object is handed straight back to WallpaperAgent.
 private func remapToRealXPC(_ viewModels: SettingsViewModels) -> AnyObject? {
     let shimXPC = ShimViewModelsXPC(value: viewModels)
 

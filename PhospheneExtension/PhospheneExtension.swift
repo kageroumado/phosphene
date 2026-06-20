@@ -17,6 +17,7 @@ final class PhospheneExtension: NSObject, AppExtension {
             // Keep handle open — framework must stay loaded for vtable/C-function-pointer validity.
             _ = handle
             extensionLog("INIT (PID: \(ProcessInfo.processInfo.processIdentifier)) — WallpaperExtensionKit loaded")
+            verifyRuntimeLayout()
             swizzleSnapshotEncodeIfNeeded()
             VideoLibrary.shared.scan()
             observeLibraryChanges()
@@ -45,6 +46,28 @@ final class PhospheneExtension: NSObject, AppExtension {
         } else {
             let err = String(cString: dlerror())
             extensionLog("INIT (PID: \(ProcessInfo.processInfo.processIdentifier)) — dlopen failed: \(err)")
+        }
+    }
+
+    /// Startup self-check: confirm the private WallpaperExtensionKit classes the
+    /// extension bridges to are present after dlopen. This doesn't fail the
+    /// launch — the per-call guards already fail closed — but it surfaces an
+    /// unsupported OS/runtime layout in one clear log line up front instead of
+    /// as scattered downstream failures, which is the documented manual
+    /// compatibility check for OS upgrades.
+    private func verifyRuntimeLayout() {
+        let critical = [
+            "WallpaperRemoteContextXPC",
+            "WallpaperSnapshotXPC",
+            "WallpaperCreationRequestXPC",
+            "WallpaperSettingsViewModelsXPC",
+            "WallpaperIDXPC",
+        ]
+        let missing = critical.filter { objc_getClass($0) == nil }
+        if missing.isEmpty {
+            extensionLog("  [SelfCheck] Runtime layout OK — all \(critical.count) critical classes present")
+        } else {
+            extensionLog("  [SelfCheck] UNSUPPORTED RUNTIME — missing: \(missing.joined(separator: ", ")). Rendering/snapshots may be degraded.")
         }
     }
 
