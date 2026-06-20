@@ -545,7 +545,7 @@ final class VideoRenderer: @unchecked Sendable {
                 return
             }
 
-            DispatchQueue.main.async {
+            await MainActor.run { [weak self] in
                 guard let self, self.isPaused else { return }
                 self.stillFrameLayer.contents = cgImage
                 self.stillFrameLayer.opacity = 1
