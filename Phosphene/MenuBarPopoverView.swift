@@ -11,10 +11,6 @@ struct MenuBarPopoverView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let newVersion = manager.updateCheck.availableVersion {
-                updateBanner(version: newVersion)
-                Divider()
-            }
             if prefsService.selections.count > 1 {
                 carouselSection
                 Divider()
@@ -197,30 +193,6 @@ struct MenuBarPopoverView: View {
         !VideoDeploymentService.listEntries().isEmpty
     }
 
-    // MARK: - Update Banner
-
-    private func updateBanner(version: String) -> some View {
-        Button {
-            NSWorkspace.shared.open(manager.updateCheck.releasesPageURL)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.tint)
-                Text("Update available — version \(version)")
-                    .font(.system(size: 13, weight: .medium))
-                Spacer()
-                Image(systemName: "arrow.up.forward")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-        }
-        .buttonStyle(PopoverMenuItemStyle())
-        .padding(4)
-    }
-
     // MARK: - Actions
 
     private var actionsSection: some View {
@@ -258,6 +230,50 @@ struct MenuBarPopoverView: View {
             }
             .buttonStyle(PopoverMenuItemStyle())
             .padding(4)
+
+            Button {
+                if manager.updateCheck.availableVersion != nil {
+                    NSWorkspace.shared.open(manager.updateCheck.releasesPageURL)
+                } else {
+                    Task { await manager.updateCheck.check(manual: true) }
+                }
+            } label: {
+                HStack {
+                    Text(updateRowTitle)
+                        .font(.system(size: 13,
+                                      weight: manager.updateCheck.availableVersion != nil ? .medium : .regular))
+                        .foregroundStyle(manager.updateCheck.availableVersion != nil ? Color.accentColor : Color.primary)
+                    Spacer()
+                    updateRowIcon
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(PopoverMenuItemStyle())
+            .disabled(manager.updateCheck.isChecking)
+            .padding(4)
+        }
+    }
+
+    private var updateRowTitle: String {
+        let uc = manager.updateCheck
+        if let version = uc.availableVersion { return "Update available — version \(version)" }
+        if uc.isChecking { return "Checking for Updates…" }
+        if uc.checkedUpToDate { return "You're up to date" }
+        return "Check for Updates"
+    }
+
+    @ViewBuilder private var updateRowIcon: some View {
+        if manager.updateCheck.isChecking {
+            ProgressView().controlSize(.small)
+        } else if manager.updateCheck.availableVersion != nil {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.tint)
+        } else {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
         }
     }
 
