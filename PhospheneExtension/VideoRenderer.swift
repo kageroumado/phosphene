@@ -270,7 +270,7 @@ final class VideoRenderer: @unchecked Sendable {
 
     func resume() {
         guard isPaused else { return }
-        extensionLog("  [resume #\(debugID)] currentReader=\(currentReader == nil ? "nil(deep)" : "live")")
+        extensionLog("  [resume #\(debugID)] currentReader=\(currentReader == nil ? "nil(deep)" : "live") asset=\(asset.url.lastPathComponent) rate→1")
         isPaused = false
         cancelDeepPauseTimer()
         stillFrameLayer.opacity = 0
@@ -290,6 +290,7 @@ final class VideoRenderer: @unchecked Sendable {
         guard policy != currentPolicy else { return }
         let oldPolicy = currentPolicy
         currentPolicy = policy
+        extensionLog("  [applyPolicy #\(debugID)] \(oldPolicy) → \(policy) animated=\(animated) asset=\(asset.url.lastPathComponent)")
         cancelRamp()
 
         switch policy {
@@ -748,25 +749,13 @@ final class VideoRenderer: @unchecked Sendable {
     // MARK: - Still Frame
 
     private func generateStillFrame() {
-        let captureTime = CMTimebaseGetTime(timebase)
-        let currentAsset = asset
-
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let generator = AVAssetImageGenerator(asset: currentAsset)
-            generator.requestedTimeToleranceBefore = .zero
-            generator.requestedTimeToleranceAfter = .zero
-            generator.appliesPreferredTrackTransform = true
-
-            guard let (cgImage, _) = try? await generator.image(at: captureTime) else {
-                extensionLog("  [Renderer] Failed to generate still frame")
-                return
-            }
-
-            await MainActor.run { [weak self] in
-                guard let self, self.isPaused else { return }
-                self.stillFrameLayer.contents = cgImage
-                self.stillFrameLayer.opacity = 1
-            }
-        }
+        // DISABLED. This spawned an AVAssetImageGenerator (its own video decoder) on
+        // every pause to set stillFrameLayer.contents — but a CALayer.contents CGImage
+        // does NOT composite in a remote CAContext (RE-confirmed), so it never showed
+        // anything. Meanwhile, when the desktop thrashes idle/default, these generators
+        // pile up and compete with the playback reader for the appex's limited video-
+        // decoder resources, stalling playback (the ~20s "starvation"). When paused the
+        // displayLayer already holds the last frame, so nothing visible is lost.
+        extensionLog("  [generateStillFrame #\(debugID)] skipped (no-op still; last frame held by displayLayer)")
     }
 }

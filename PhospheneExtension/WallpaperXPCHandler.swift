@@ -312,16 +312,6 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             }
         }
 
-        // Preview connections must not drive the shared desktop renderer: their
-        // presentation state idles/toggles with the Settings picker and would freeze
-        // the visible wallpaper. Ignore their updates entirely (don't even mutate the
-        // global mode) — only the live desktop connection governs playback.
-        if acquiredAsPreview {
-            extensionLog("=== UPDATE (preview pid \(connectionPID), ignored) === mode: \(presentationMode), activity: \(activityState)")
-            reply(nil)
-            return
-        }
-
         // Store current mode/state so other policy paths use the correct values.
         WallpaperState.shared.presentationMode = presentationMode
         WallpaperState.shared.activityState = activityState
