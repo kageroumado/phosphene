@@ -489,13 +489,19 @@ final class VideoRenderer: @unchecked Sendable {
     /// Must run on `queue`.
     private func cutToCurrentAssetSeamlessly() {
         renderer.stopRequestingMediaData()
-        // Continue the timeline from the highest PTS enqueued so far.
-        ptsOffset = lastEnqueuedEnd
-        if renderer.requiresFlushToResumeDecoding {
-            // Format change across the cut — the decoder needs a flush to accept the
-            // new stream. This still holds the last displayed image (no black).
-            renderer.flush()
-        }
+        // Drop the OLD video's buffered-ahead frames (~2s worth) so the previous
+        // clip stops immediately. flush() retains the currently displayed frame, so
+        // the desktop holds the last image (no black) until the new video arrives.
+        renderer.flush()
+        // Anchor the new timeline just ahead of the LIVE timebase so its frames land
+        // on time. Using lastEnqueuedEnd here (as a loop-boundary swap does) places
+        // them ~2s ahead — the buffered-ahead depth — which is exactly the multi-
+        // second switch delay we saw. The 0.1s lead absorbs the async enqueue gap so
+        // the first frame isn't already "late" against the advancing timebase.
+        let lead = CMTime(value: 1, timescale: 10) // 0.1s
+        ptsOffset = CMTimeAdd(CMTimebaseGetTime(timebase), lead)
+        lastEnqueuedEnd = ptsOffset
+
         currentReader?.cancelReading()
         nextReader?.cancelReading()
         nextReader = nil
