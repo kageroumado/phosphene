@@ -7,19 +7,25 @@ import Foundation
 import os
 import QuartzCore
 
+/// One persistent per-display rendering slot. Reused across acquires (Apple's
+/// model): the `caContext`/`contextId`/`rootLayer` live for the display's lifetime
+/// and only the `renderer`/`videoID` swap when the wallpaper changes — so the Agent
+/// never drops the context on switch (no gray gap) and contexts never accumulate.
 struct ActiveWallpaper: @unchecked Sendable {
     let caContext: AnyObject // CAContext (private class, hold as AnyObject)
+    let contextId: UInt32
     let rootLayer: CALayer
-    let renderer: VideoRenderer?
+    var renderer: VideoRenderer?
     let displayID: UInt32?
-    let videoID: String?
-    /// `true` for Settings/picker preview acquires (`WallpaperCreationRequest.isPreview`).
-    /// Only non-preview contexts represent the live desktop render we must protect.
     let isPreview: Bool
-    /// Identity of the XPC connection that created this context. A connection only
-    /// owns the contexts it acquired, so its teardown must not touch another
-    /// connection's render (the cross-connection clobber behind issue #13).
-    let owner: UUID
+    var videoID: String?
+}
+
+/// Identifies one persistent rendering slot: a display, plus whether it's the
+/// Settings preview or the live desktop (a display can have both at once).
+struct DisplayKey: Hashable {
+    let displayID: UInt32
+    let isPreview: Bool
 }
 
 final class WallpaperState: Sendable {
@@ -28,9 +34,8 @@ final class WallpaperState: Sendable {
     private static let selectedVideoKey = "selectedVideoID"
 
     private struct State: @unchecked Sendable {
-        var activeContexts: [UInt32: ActiveWallpaper] = [:]
-        var wallpaperIDToContext: [String: UInt32] = [:]
-        var acquireGeneration: Int = 0
+        /// Persistent contexts keyed by display slot. Reused across acquires.
+        var contexts: [DisplayKey: ActiveWallpaper] = [:]
         var cachedThumbnailURL: URL?
         var cacheDirectoryURL: URL?
         var currentVideoID: String? = UserDefaults.standard.string(forKey: WallpaperState.selectedVideoKey)
@@ -66,63 +71,36 @@ final class WallpaperState: Sendable {
         }
     }
 
-    // MARK: - Acquire Activity
+    // MARK: - Context Management (persistent, reused per display)
 
-    /// Monotonic counter bumped at the start of every `acquire`. The recovery
-    /// path compares it across the grace window: if it changed, WallpaperAgent is
-    /// actively acquiring (e.g. rapid wallpaper switching) and a momentarily-empty
-    /// live set is just a transient gap, not the genuine quiescent loss that
-    /// warrants a recovery exit.
-    func noteAcquire() {
-        lock.withLock { $0.acquireGeneration += 1 }
+    /// The existing persistent context for a display slot, if any.
+    func context(for key: DisplayKey) -> ActiveWallpaper? {
+        lock.withLock { $0.contexts[key] }
     }
 
-    var acquireGeneration: Int {
-        lock.withLock { $0.acquireGeneration }
+    /// Install a freshly-created context for a display slot (first acquire).
+    func installContext(_ context: ActiveWallpaper, for key: DisplayKey) {
+        lock.withLock { $0.contexts[key] = context }
     }
 
-    // MARK: - Context Management
-
-    /// Result of attempting to store a context.
-    enum StoreOutcome {
-        /// Stored; `replaced` is any prior context for the same wallpaperID (stop its renderer).
-        case stored(replaced: ActiveWallpaper?)
-        /// Refused because the owning connection invalidated mid-acquire.
-        case ownerInvalidated
-    }
-
-    /// Store a new rendering context, stopping any existing renderer for the same
-    /// wallpaperID. `abortIfInvalidated` is evaluated under the lock so the
-    /// store and the owning connection's teardown can't interleave: if the
-    /// connection died while this acquire was in flight, the store is refused and
-    /// no orphaned context is left behind.
-    func storeContext(_ context: ActiveWallpaper, id: UInt32, wallpaperID: String?, abortIfInvalidated: @Sendable () -> Bool) -> StoreOutcome {
+    /// Swap the renderer for an existing display slot (the wallpaper changed),
+    /// keeping the same `caContext`/`contextId`/`rootLayer`. Returns the previous
+    /// renderer for the caller to stop.
+    func setRenderer(_ renderer: VideoRenderer?, videoID: String?, for key: DisplayKey) -> VideoRenderer? {
         lock.withLock { state in
-            if abortIfInvalidated() { return .ownerInvalidated }
-            var existing: ActiveWallpaper?
-            if let wid = wallpaperID, let oldId = state.wallpaperIDToContext[wid] {
-                existing = state.activeContexts.removeValue(forKey: oldId)
-            }
-            state.activeContexts[id] = context
-            if let wid = wallpaperID {
-                state.wallpaperIDToContext[wid] = id
-            }
-            return .stored(replaced: existing)
-        }
-    }
-
-    /// Remove and return the context for a wallpaperID UUID string.
-    func removeContext(wallpaperID: String) -> ActiveWallpaper? {
-        lock.withLock { state in
-            guard let contextId = state.wallpaperIDToContext.removeValue(forKey: wallpaperID) else { return nil }
-            return state.activeContexts.removeValue(forKey: contextId)
+            guard var context = state.contexts[key] else { return nil }
+            let previous = context.renderer
+            context.renderer = renderer
+            context.videoID = videoID
+            state.contexts[key] = context
+            return previous
         }
     }
 
     /// Execute a closure for each active renderer (snapshot copy under lock, iteration outside).
     func forEachRenderer(_ body: (VideoRenderer) -> Void) {
         let renderers = lock.withLock { state in
-            state.activeContexts.values.compactMap(\.renderer)
+            state.contexts.values.compactMap(\.renderer)
         }
         for renderer in renderers {
             body(renderer)
@@ -132,7 +110,7 @@ final class WallpaperState: Sendable {
     /// Execute a closure for renderers on a specific display.
     func forRenderers(displayID: UInt32, _ body: (VideoRenderer) -> Void) {
         let renderers = lock.withLock { state in
-            state.activeContexts.values
+            state.contexts.values
                 .filter { $0.displayID == displayID }
                 .compactMap(\.renderer)
         }
@@ -141,30 +119,27 @@ final class WallpaperState: Sendable {
         }
     }
 
-    /// Stop and remove every renderer whose context owns the given videoID.
-    /// Returns the displayIDs that were affected so callers can log/react.
-    /// Other contexts keep running — they belong to displays with a different choice.
+    /// Tear down (stop renderer + invalidate context) every display slot using the
+    /// given videoID — the video was removed from the library, so its slots are
+    /// genuinely gone (not a reuse). Returns affected displayIDs.
     @discardableResult
-    func stopRenderers(forVideoID videoID: String) -> [UInt32?] {
-        let affected = lock.withLock { state -> [(UInt32, ActiveWallpaper)] in
-            let matches = state.activeContexts.filter { $0.value.videoID == videoID }
-            for (contextId, _) in matches {
-                state.activeContexts.removeValue(forKey: contextId)
-            }
-            state.wallpaperIDToContext = state.wallpaperIDToContext.filter { state.activeContexts[$0.value] != nil }
-            return matches.map { ($0.key, $0.value) }
+    func removeContexts(forVideoID videoID: String) -> [UInt32?] {
+        let removed = lock.withLock { state -> [ActiveWallpaper] in
+            let matches = state.contexts.filter { $0.value.videoID == videoID }
+            for (key, _) in matches { state.contexts.removeValue(forKey: key) }
+            return Array(matches.values)
         }
-        for (_, ctx) in affected {
-            ctx.renderer?.stop()
-            invalidateRemoteContext(ctx.caContext)
+        for context in removed {
+            context.renderer?.stop()
+            invalidateRemoteContext(context.caContext)
         }
-        return affected.map { $0.1.displayID }
+        return removed.map { $0.displayID }
     }
 
     /// All unique display IDs from active contexts.
     func uniqueDisplayIDs() -> Set<UInt32> {
         lock.withLock { state in
-            Set(state.activeContexts.values.compactMap(\.displayID))
+            Set(state.contexts.values.compactMap(\.displayID))
         }
     }
 
@@ -173,45 +148,23 @@ final class WallpaperState: Sendable {
         lock.withLock { state in
             var seen = Set<UInt32>()
             var result: [(displayID: UInt32, videoID: String?)] = []
-            for ctx in state.activeContexts.values {
-                guard let did = ctx.displayID, seen.insert(did).inserted else { continue }
-                result.append((displayID: did, videoID: ctx.videoID))
+            for context in state.contexts.values {
+                guard let did = context.displayID, seen.insert(did).inserted else { continue }
+                result.append((displayID: did, videoID: context.videoID))
             }
             return result
         }
     }
 
     var activeContextCount: Int {
-        lock.withLock { $0.activeContexts.count }
+        lock.withLock { $0.contexts.count }
     }
 
-    /// Count of live (non-preview) desktop render contexts. Preview contexts from
-    /// the Settings picker don't count — losing them must not look like losing the
-    /// desktop wallpaper.
+    /// Count of live (non-preview) desktop render slots with a running renderer.
     var liveContextCount: Int {
         lock.withLock { state in
-            state.activeContexts.values.lazy.filter { !$0.isPreview }.count
+            state.contexts.values.lazy.filter { !$0.isPreview && $0.renderer != nil }.count
         }
-    }
-
-    /// Remove and stop only the contexts owned by the given XPC connection. Other
-    /// connections' contexts (e.g. the live desktop render owned by WallpaperAgent)
-    /// are left untouched. Returns the removed contexts.
-    @discardableResult
-    func removeContexts(ownedBy owner: UUID) -> [ActiveWallpaper] {
-        let removed = lock.withLock { state -> [ActiveWallpaper] in
-            let matches = state.activeContexts.filter { $0.value.owner == owner }
-            for (contextId, _) in matches {
-                state.activeContexts.removeValue(forKey: contextId)
-            }
-            state.wallpaperIDToContext = state.wallpaperIDToContext.filter { state.activeContexts[$0.value] != nil }
-            return Array(matches.values)
-        }
-        for ctx in removed {
-            ctx.renderer?.stop()
-            invalidateRemoteContext(ctx.caContext)
-        }
-        return removed
     }
 
     // MARK: - Properties

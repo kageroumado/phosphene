@@ -7,12 +7,6 @@ import ExtensionFoundation
 import Foundation
 
 struct WallpaperExtensionConfig: AppExtensionConfiguration {
-    /// How long to keep the still-frame bridge up after a mid-render connection
-    /// drop before forcing recovery. Covers the observed re-acquire latency
-    /// (~1-2 s) with margin while keeping post-churn / post-hibernation recovery
-    /// quick.
-    nonisolated static let recoveryGrace: Double = 3
-
     func accept(connection: NSXPCConnection) -> Bool {
         extensionLog("XPC from PID=\(connection.processIdentifier)")
 
@@ -116,64 +110,21 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
         connection.interruptionHandler = { extensionLog("XPC interrupted") }
         connection.invalidationHandler = { [weak handler] in
             guard let handler else { extensionLog("XPC invalidated (handler gone)"); return }
-            // Flag first, before tearing down contexts: an acquire Task still in
-            // flight on this connection checks this under the state lock and skips
-            // its store, so it can't orphan a live context after we've cleaned up.
-            handler.invalidation.markInvalidated()
             handler.agentProxy = nil
             let pid = handler.connectionPID
 
-            // Remove and stop ONLY this connection's contexts. One extension process
-            // serves several connections — the live desktop render (WallpaperAgent),
-            // the Settings preview (isPreview), the snapshot/thumbnail service — each
-            // with its own contexts. Apple keys teardown per-WallpaperID and never
-            // touches another connection's render; a process-global wipe here is what
-            // let a routine preview/thumbnail disconnect kill the live wallpaper and
-            // force a recovery exit on every pick (issue #13). Tearing down promptly
-            // also lets WallpaperAgent fall back to its own cached BMP snapshot — its
-            // normal bridge — instead of a stale surface (keeping a dropped CAContext
-            // alive confuses the Agent's compositor: mis-sized/mis-placed surface).
-            let removed = WallpaperState.shared.removeContexts(ownedBy: handler.ownerToken)
-            guard !removed.isEmpty else {
-                extensionLog("XPC invalidated (pid: \(pid)) — no owned contexts")
-                return
-            }
-
-            let removedLive = removed.contains { !$0.isPreview }
-            let remainingLive = WallpaperState.shared.liveContextCount
-            WallpaperPrefs.shared.setActive(remainingLive > 0)
-
-            guard removedLive, remainingLive == 0 else {
-                extensionLog("XPC invalidated (pid: \(pid)) — released \(removed.count) context(s); live render intact (remaining live: \(remainingLive))")
-                return
-            }
-
-            // We lost the live desktop render. On every wallpaper pick (and idle
-            // transitions) WallpaperAgent drops the connection holding the current
-            // render and re-acquires ~1s later, bridging with its cached BMP — so
-            // DON'T exit yet. Arm a delayed recovery instead.
-            let genAtArm = WallpaperState.shared.acquireGeneration
-            extensionLog("XPC invalidated mid-render (pid: \(pid)) — lost live render (freed \(removed.count) ctx); arming \(Int(Self.recoveryGrace)) s recovery")
-            RecoveryCoordinator.shared.arm(grace: .seconds(Self.recoveryGrace)) {
-                // Grace elapsed with no replacement. If the agent is still actively
-                // acquiring (generation changed), this is just a transient gap from
-                // rapid switching — don't exit. Only a genuinely quiescent desktop
-                // (deep standby/hibernation), where WallpaperAgent won't re-acquire
-                // on its own (verified by disassembling it), warrants exiting so
-                // RunningBoard relaunches us into a fresh acquire (issue #2). The
-                // exit is debounced cross-process — RunningBoard's relaunch backoff
-                // can't be tuned and repeated exits would brick the wallpaper (#13).
-                if WallpaperState.shared.acquireGeneration != genAtArm {
-                    extensionLog("[Recovery] Agent still acquiring — no exit (waiting to settle)")
-                    return
-                }
-                guard RecoveryGate.shouldExitForRecovery() else {
-                    extensionLog("[Recovery] Live render still gone but recovery debounced — staying alive")
-                    return
-                }
-                extensionLog("[Recovery] Live render not restored within grace — exiting to force re-acquire")
-                _exit(0)
-            }
+            // Context-reuse model: DO NOT tear down contexts on connection drop.
+            // Every wallpaper pick (and idle transition) drops the connection holding
+            // the current render and re-acquires ~1s later. Our contexts are keyed by
+            // display slot (not by connection) and outlive the connection, so the
+            // re-acquire reuses the SAME CAContext (returns the same contextId) — the
+            // Agent never drops its host, so there's no gray gap and no exit/recovery
+            // is needed. A destroy-on-drop is exactly what caused issue #13 (a routine
+            // preview/thumbnail disconnect killing the live wallpaper) and the
+            // escalating gray. Contexts are only freed when their video is removed
+            // (`removeChoiceRequest`); a genuinely idle process is suspended by
+            // RunningBoard, which pauses the renderers at no cost.
+            extensionLog("XPC invalidated (pid: \(pid)) — kept \(WallpaperState.shared.activeContextCount) context(s) for reuse")
         }
 
         // Publish the proxy before resuming so an early incoming callback can't
