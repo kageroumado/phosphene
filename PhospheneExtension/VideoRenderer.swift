@@ -493,8 +493,8 @@ final class VideoRenderer: @unchecked Sendable {
         nextReader = nil
         nextOutput = nil
 
-        extensionLog("  [restart #\(debugID)] flushing decoder for \(asset.url.lastPathComponent)")
-        renderer.flush(removingDisplayedImage: false) { [weak self] in
+        extensionLog("  [restart #\(debugID)] flushing decoder (removing displayed image) for \(asset.url.lastPathComponent)")
+        renderer.flush(removingDisplayedImage: true) { [weak self] in
             guard let self else { return }
             queue.async { [weak self] in
                 guard let self else { return }
