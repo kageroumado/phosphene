@@ -19,7 +19,11 @@ private let logLock = OSAllocatedUnfairLock(initialState: nil as FileHandle?)
 /// Cached formatter — `ISO8601DateFormatter` is thread-safe with immutable config.
 /// `nonisolated(unsafe)` because ISO8601DateFormatter doesn't conform to Sendable,
 /// but it's effectively immutable after initialization (no properties are mutated).
-private nonisolated(unsafe) let logDateFormatter = ISO8601DateFormatter()
+private nonisolated(unsafe) let logDateFormatter: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds] // millisecond precision for timing
+    return f
+}()
 
 /// Get or create the persistent log file handle.
 /// Rotates the log if it exceeds `maxLogSize`.

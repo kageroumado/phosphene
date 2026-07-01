@@ -9,14 +9,50 @@ import CoreMedia
 import os
 import QuartzCore
 
+/// One-way "this connection died" flag, shared between a handler and any of its
+/// in-flight `acquire` Tasks. Sendable so a Task can capture it without retaining
+/// the (non-Sendable) handler.
+final class InvalidationFlag: Sendable {
+    private let invalidated = OSAllocatedUnfairLock(initialState: false)
+    var isInvalidated: Bool { invalidated.withLock { $0 } }
+    func markInvalidated() { invalidated.withLock { $0 = true } }
+}
+
 final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
-    /// Proxy to call methods on WallpaperAgent (ping, invalidateSnapshots, etc.)
-    var agentProxy: (any WallpaperExtensionProxyXPCProtocol)?
+    /// Proxy to call methods on WallpaperAgent (ping, invalidateSnapshots, etc.).
+    /// Lock-backed: it's assigned in `accept(connection:)` and nilled from the
+    /// invalidation queue, while XPC callbacks read it from the message queue.
+    /// The proxy existential isn't Sendable, so this uses a plain `NSLock` around
+    /// `nonisolated(unsafe)` storage rather than `OSAllocatedUnfairLock` (whose
+    /// `withLock` body is `@Sendable` and would reject the non-Sendable value).
+    private let agentProxyLock = NSLock()
+    nonisolated(unsafe) private var _agentProxy: (any WallpaperExtensionProxyXPCProtocol)?
+    var agentProxy: (any WallpaperExtensionProxyXPCProtocol)? {
+        get { agentProxyLock.lock(); defer { agentProxyLock.unlock() }; return _agentProxy }
+        set { agentProxyLock.lock(); defer { agentProxyLock.unlock() }; _agentProxy = newValue }
+    }
+
+    /// Stable identity for this connection's handler. Every context this handler
+    /// acquires is tagged with it, so the connection's invalidation tears down
+    /// only its own contexts — never another connection's live render.
+    let ownerToken = UUID()
+
+    /// Set the moment this connection invalidates (before its contexts are torn
+    /// down). An `acquire` Task started before the drop but resolving after it
+    /// checks this under `WallpaperState`'s lock and refuses to store, so a late
+    /// store can't leave an orphaned live context that masks future recovery.
+    let invalidation = InvalidationFlag()
+
+    /// PID of the peer on this connection (WallpaperAgent vs. Settings preview vs.
+    /// the thumbnail service), set in `accept(connection:)`. Logged so acquire and
+    /// invalidation can be attributed to a specific connection.
+    var connectionPID: Int32 = -1
 
     // MARK: - Lifecycle
 
     func acquire(withId id: Any?, request: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
         extensionLog("=== ACQUIRE ===")
+        WallpaperState.shared.noteAcquire()
 
         // Extract WallpaperID UUID for mapping to context — required for cleanup in invalidate()
         var wallpaperIDString: String?
@@ -99,7 +135,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             }
         }
 
-        extensionLog("  destination: \(destSize) @\(scaleFactor)x, isPreview: \(isPreview), id: \(wallpaperIDString ?? "nil"), choice: \(choiceConfiguration ?? "nil"), files: \(choiceFiles)")
+        extensionLog("  destination: \(destSize) @\(scaleFactor)x, isPreview: \(isPreview), pid: \(connectionPID), id: \(wallpaperIDString ?? "nil"), choice: \(choiceConfiguration ?? "nil"), files: \(choiceFiles)")
 
         // Each acquire's `choiceConfiguration` is authoritative for *this* display's
         // context. Do NOT mutate the process-wide `currentVideoID` here based on a
@@ -112,21 +148,23 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             WallpaperState.shared.currentVideoID = videoID
         }
 
-        // 1. Create a remote CAContext for cross-process rendering
+        // 1. Create a remote CAContext for cross-process rendering. `remoteContext`
+        // is purpose-built for CALayerHost hosting by another process (the Agent);
+        // `contextWithCGSConnection:` binds to our own window-server connection and
+        // the Agent hosts it slowly/unreliably (seconds of gray), so we use the
+        // remote context. (It doesn't render a plain CALayer.contents cross-process
+        // either — the still needs an IOSurface-backed layer — but hosting is fast.)
         var contextOptions: [String: Any] = [:]
         if let did = displayID {
             contextOptions["displayId"] = did
         }
-        // `remoteContext` is private CA API returning `id`; guard the cast so a
-        // changed return type fails the acquire with an error instead of a
-        // force-cast crash that would take down the extension.
         let caContextRaw: Any? = if contextOptions.isEmpty {
             CAContext.remoteContext()
         } else {
             CAContext.perform(NSSelectorFromString("remoteContextWithOptions:"), with: contextOptions)?.takeUnretainedValue()
         }
         guard let caContext = caContextRaw as? CAContext else {
-            extensionLog("  ERROR: remote CAContext creation returned \(String(describing: caContextRaw.map { type(of: $0) })) — failing acquire")
+            extensionLog("  ERROR: remote CAContext creation failed — failing acquire")
             reply(nil, NSError(domain: "PhospheneExtension", code: 4, userInfo: [
                 NSLocalizedDescriptionKey: "Failed to create remote CAContext",
             ]))
@@ -182,10 +220,15 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // process-wide singleton, otherwise concurrent acquires can race.
         let videoURL = findVideoURL(forChoice: choiceConfiguration)
 
+        // Sendable locals so the store path (sync fallback or async Task) tags the
+        // context with this connection and can refuse a store after invalidation.
+        let owner = ownerToken
+        let invalidation = invalidation
+
         if let videoURL {
             extensionLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent)")
 
-            // 5. Set layer on context and flush to WindowServer immediately
+            // 5. Set layer on context and flush to WindowServer immediately.
             caContext.layer = rootLayer
             CATransaction.flush()
 
@@ -230,21 +273,38 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     return VideoLibrary.shared.bestVariantURL(for: videoID, policy: policy) ?? videoURL
                 }
 
-                // Stop any existing renderer for this wallpaperID before storing
-                let existing = WallpaperState.shared.storeContext(
-                    ActiveWallpaper(caContext: unsafeCAContext, rootLayer: unsafeRootLayer, renderer: videoRenderer, displayID: displayID, videoID: choiceConfiguration),
+                // Stop any existing renderer for this wallpaperID before storing.
+                // If this connection invalidated while the renderer was being
+                // created, refuse the store and discard the renderer — otherwise it
+                // would orphan a live context tagged to a dead connection and mask
+                // future recovery.
+                let outcome = WallpaperState.shared.storeContext(
+                    ActiveWallpaper(caContext: unsafeCAContext, rootLayer: unsafeRootLayer, renderer: videoRenderer, displayID: displayID, videoID: choiceConfiguration, isPreview: isPreview, owner: owner),
                     id: contextId,
                     wallpaperID: wallpaperIDString,
+                    abortIfInvalidated: { invalidation.isInvalidated },
                 )
-                if let existing {
-                    existing.renderer?.stop()
-                    extensionLog("  Stopped existing renderer for wallpaperID: \(wallpaperIDString ?? "?")")
+                switch outcome {
+                case .ownerInvalidated:
+                    videoRenderer.stop()
+                    extensionLog("  Connection invalidated mid-acquire — discarded renderer (contextId: \(contextId))")
+                    doReply("connection gone")
+                    return
+                case let .stored(existing):
+                    if let existing {
+                        existing.renderer?.stop()
+                        extensionLog("  Stopped existing renderer for wallpaperID: \(wallpaperIDString ?? "?")")
+                    }
+                }
+                // A live desktop render is up — cancel any pending recovery.
+                if !isPreview {
+                    RecoveryCoordinator.shared.cancel()
                 }
                 WallpaperPrefs.shared.setActive(true)
 
-                // 6. Start renderer, then defer reply for render pipeline
+                // 6. Start renderer, then defer reply for the render pipeline to
+                // stabilize (the Agent shows its cached BMP snapshot meanwhile).
                 videoRenderer.start()
-                extensionLog("  VideoRenderer started (reply deferred 500ms for render pipeline)")
                 try? await Task.sleep(for: .milliseconds(500))
                 doReply("pipeline ready")
             }
@@ -278,11 +338,15 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             rootLayer.addSublayer(gradientLayer)
 
             caContext.layer = rootLayer
-            _ = WallpaperState.shared.storeContext(
-                ActiveWallpaper(caContext: caContext, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration),
+            let outcome = WallpaperState.shared.storeContext(
+                ActiveWallpaper(caContext: caContext, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration, isPreview: isPreview, owner: owner),
                 id: contextId,
                 wallpaperID: wallpaperIDString,
+                abortIfInvalidated: { invalidation.isInvalidated },
             )
+            if case .stored = outcome, !isPreview {
+                RecoveryCoordinator.shared.cancel()
+            }
 
             doReply("no video")
         }
@@ -291,64 +355,55 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     private var previousPresentationMode = "default"
 
     func update(withId _: Any?, request: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
-        var presentationMode = "?"
-        var activityState = "?"
-        if let reqObj = request as? NSObject {
-            let mirror = Mirror(reflecting: reqObj)
-            if let innerValue = mirror.children.first?.value {
-                let desc = String(describing: innerValue)
-                if let modeRange = desc.range(of: "presentationMode: ") {
-                    let afterMode = desc[modeRange.upperBound...]
-                    if let endRange = afterMode.range(of: ",") ?? afterMode.range(of: ")") {
-                        presentationMode = String(afterMode[..<endRange.lowerBound])
-                    }
-                }
-                if let actRange = desc.range(of: "activityState: ") {
-                    let afterAct = desc[actRange.upperBound...]
-                    if let endRange = afterAct.range(of: ",") ?? afterAct.range(of: ")") {
-                        activityState = String(afterAct[..<endRange.lowerBound])
-                    }
-                }
-
-                // Store current mode/state so other policy paths use the correct values.
-                WallpaperState.shared.presentationMode = presentationMode
-                WallpaperState.shared.activityState = activityState
-
-                // Agent is the authoritative source for presentation mode.
-                // Clear the screen-lock override when the Agent confirms
-                // the screen is no longer locked.
-                if presentationMode == "locked" {
-                    WallpaperState.shared.isScreenLocked = true
-                } else if presentationMode != "?" {
-                    WallpaperState.shared.isScreenLocked = false
-                }
-
-                let prefs = WallpaperPrefs.shared
-                let power = PowerMonitor.shared.currentState
-
-                let policy = PlaybackPolicy.compute(
-                    presentationMode: presentationMode,
-                    activityState: activityState,
-                    userPaused: prefs.userPaused,
-                    alwaysPauseDesktop: prefs.alwaysPauseDesktop,
-                    pauseWhenOccluded: prefs.pauseWhenOccluded,
-                    desktopOccluded: prefs.desktopOccluded,
-                    powerState: power,
-                )
-
-                // Apple-like ramp when alwaysPauseDesktop is on:
-                // desktop → lock = ramp up (start playing), lock → desktop = ramp down (pause).
-                // Only ramp when activity is active (suspended = hard pause, process may sleep).
-                let modeChanged = presentationMode != previousPresentationMode
-                let animated = prefs.alwaysPauseDesktop
-                    && activityState == "active"
-                    && modeChanged
-
-                WallpaperState.shared.forEachRenderer { renderer in
-                    renderer.applyPolicy(policy, animated: animated)
-                }
+        // Extract presentation mode / activity state by walking the request's Mirror
+        // for the named properties and reading the enum case, rather than scanning a
+        // stringified description (which silently fell through to "?" — and so failed
+        // to pause — whenever the description format didn't match). Default to the
+        // benign desktop-active values if a field genuinely can't be found.
+        var presentationMode = "default"
+        var activityState = "active"
+        if let request {
+            if let mode = mirrorFindProperty("presentationMode", in: request) {
+                presentationMode = enumCaseName(mode)
+            }
+            if let activity = mirrorFindProperty("activityState", in: request) {
+                activityState = enumCaseName(activity)
             }
         }
+
+        // Store current mode/state so other policy paths use the correct values.
+        WallpaperState.shared.presentationMode = presentationMode
+        WallpaperState.shared.activityState = activityState
+
+        // Agent is the authoritative source for presentation mode.
+        // Clear the screen-lock override when the Agent confirms the screen isn't locked.
+        WallpaperState.shared.isScreenLocked = (presentationMode == "locked")
+
+        let prefs = WallpaperPrefs.shared
+        let power = PowerMonitor.shared.currentState
+
+        let policy = PlaybackPolicy.compute(
+            presentationMode: presentationMode,
+            activityState: activityState,
+            userPaused: prefs.userPaused,
+            alwaysPauseDesktop: prefs.alwaysPauseDesktop,
+            pauseWhenOccluded: prefs.pauseWhenOccluded,
+            desktopOccluded: prefs.desktopOccluded,
+            powerState: power,
+        )
+
+        // Apple-like ramp when alwaysPauseDesktop is on:
+        // desktop → lock = ramp up (start playing), lock → desktop = ramp down (pause).
+        // Only ramp when activity is active (suspended = hard pause, process may sleep).
+        let modeChanged = presentationMode != previousPresentationMode
+        let animated = prefs.alwaysPauseDesktop
+            && activityState == "active"
+            && modeChanged
+
+        WallpaperState.shared.forEachRenderer { renderer in
+            renderer.applyPolicy(policy, animated: animated)
+        }
+
         previousPresentationMode = presentationMode
         extensionLog("=== UPDATE === mode: \(presentationMode), activity: \(activityState)")
         reply(nil)
@@ -373,9 +428,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             extensionLog("  WARNING: invalidate called with nil id")
         }
         let remaining = WallpaperState.shared.activeContextCount
-        if remaining == 0 {
-            WallpaperPrefs.shared.setActive(false)
-        }
+        WallpaperPrefs.shared.setActive(WallpaperState.shared.liveContextCount > 0)
         extensionLog("=== INVALIDATE === (cleaned: \(cleaned), remaining: \(remaining))")
         reply(nil)
     }
@@ -608,4 +661,27 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         extensionLog("handleNotification(\(name ?? "nil"))")
         reply(nil)
     }
+}
+
+/// Recursively search a value's `Mirror` for a stored property with the given
+/// label, to a shallow depth. Robust to the XPC wrapper nesting, unlike scanning
+/// a stringified description.
+private func mirrorFindProperty(_ label: String, in value: Any, depth: Int = 0) -> Any? {
+    guard depth < 6 else { return nil }
+    for child in Mirror(reflecting: value).children {
+        if child.label == label { return child.value }
+        if let found = mirrorFindProperty(label, in: child.value, depth: depth + 1) { return found }
+    }
+    return nil
+}
+
+/// Extract an enum case name from a value: `.idle` → `"idle"`,
+/// `.suspended(reason)` → `"suspended"`. Falls back to `String(describing:)` for
+/// non-enums or payload-less cases (whose description is already the case name).
+private func enumCaseName(_ value: Any) -> String {
+    let mirror = Mirror(reflecting: value)
+    if mirror.displayStyle == .enum, let label = mirror.children.first?.label {
+        return label
+    }
+    return String(describing: value)
 }

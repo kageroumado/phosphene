@@ -13,6 +13,13 @@ struct ActiveWallpaper: @unchecked Sendable {
     let renderer: VideoRenderer?
     let displayID: UInt32?
     let videoID: String?
+    /// `true` for Settings/picker preview acquires (`WallpaperCreationRequest.isPreview`).
+    /// Only non-preview contexts represent the live desktop render we must protect.
+    let isPreview: Bool
+    /// Identity of the XPC connection that created this context. A connection only
+    /// owns the contexts it acquired, so its teardown must not touch another
+    /// connection's render (the cross-connection clobber behind issue #13).
+    let owner: UUID
 }
 
 final class WallpaperState: Sendable {
@@ -23,6 +30,7 @@ final class WallpaperState: Sendable {
     private struct State: @unchecked Sendable {
         var activeContexts: [UInt32: ActiveWallpaper] = [:]
         var wallpaperIDToContext: [String: UInt32] = [:]
+        var acquireGeneration: Int = 0
         var cachedThumbnailURL: URL?
         var cacheDirectoryURL: URL?
         var currentVideoID: String? = UserDefaults.standard.string(forKey: WallpaperState.selectedVideoKey)
@@ -58,11 +66,39 @@ final class WallpaperState: Sendable {
         }
     }
 
+    // MARK: - Acquire Activity
+
+    /// Monotonic counter bumped at the start of every `acquire`. The recovery
+    /// path compares it across the grace window: if it changed, WallpaperAgent is
+    /// actively acquiring (e.g. rapid wallpaper switching) and a momentarily-empty
+    /// live set is just a transient gap, not the genuine quiescent loss that
+    /// warrants a recovery exit.
+    func noteAcquire() {
+        lock.withLock { $0.acquireGeneration += 1 }
+    }
+
+    var acquireGeneration: Int {
+        lock.withLock { $0.acquireGeneration }
+    }
+
     // MARK: - Context Management
 
-    /// Store a new rendering context, stopping any existing renderer for the same wallpaperID.
-    func storeContext(_ context: ActiveWallpaper, id: UInt32, wallpaperID: String?) -> ActiveWallpaper? {
+    /// Result of attempting to store a context.
+    enum StoreOutcome {
+        /// Stored; `replaced` is any prior context for the same wallpaperID (stop its renderer).
+        case stored(replaced: ActiveWallpaper?)
+        /// Refused because the owning connection invalidated mid-acquire.
+        case ownerInvalidated
+    }
+
+    /// Store a new rendering context, stopping any existing renderer for the same
+    /// wallpaperID. `abortIfInvalidated` is evaluated under the lock so the
+    /// store and the owning connection's teardown can't interleave: if the
+    /// connection died while this acquire was in flight, the store is refused and
+    /// no orphaned context is left behind.
+    func storeContext(_ context: ActiveWallpaper, id: UInt32, wallpaperID: String?, abortIfInvalidated: @Sendable () -> Bool) -> StoreOutcome {
         lock.withLock { state in
+            if abortIfInvalidated() { return .ownerInvalidated }
             var existing: ActiveWallpaper?
             if let wid = wallpaperID, let oldId = state.wallpaperIDToContext[wid] {
                 existing = state.activeContexts.removeValue(forKey: oldId)
@@ -71,7 +107,7 @@ final class WallpaperState: Sendable {
             if let wid = wallpaperID {
                 state.wallpaperIDToContext[wid] = id
             }
-            return existing
+            return .stored(replaced: existing)
         }
     }
 
@@ -148,14 +184,27 @@ final class WallpaperState: Sendable {
         lock.withLock { $0.activeContexts.count }
     }
 
-    /// Remove all contexts, stopping their renderers. Returns the removed contexts.
+    /// Count of live (non-preview) desktop render contexts. Preview contexts from
+    /// the Settings picker don't count — losing them must not look like losing the
+    /// desktop wallpaper.
+    var liveContextCount: Int {
+        lock.withLock { state in
+            state.activeContexts.values.lazy.filter { !$0.isPreview }.count
+        }
+    }
+
+    /// Remove and stop only the contexts owned by the given XPC connection. Other
+    /// connections' contexts (e.g. the live desktop render owned by WallpaperAgent)
+    /// are left untouched. Returns the removed contexts.
     @discardableResult
-    func removeAllContexts() -> [ActiveWallpaper] {
+    func removeContexts(ownedBy owner: UUID) -> [ActiveWallpaper] {
         let removed = lock.withLock { state -> [ActiveWallpaper] in
-            let all = Array(state.activeContexts.values)
-            state.activeContexts.removeAll()
-            state.wallpaperIDToContext.removeAll()
-            return all
+            let matches = state.activeContexts.filter { $0.value.owner == owner }
+            for (contextId, _) in matches {
+                state.activeContexts.removeValue(forKey: contextId)
+            }
+            state.wallpaperIDToContext = state.wallpaperIDToContext.filter { state.activeContexts[$0.value] != nil }
+            return Array(matches.values)
         }
         for ctx in removed {
             ctx.renderer?.stop()

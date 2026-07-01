@@ -101,32 +101,37 @@ final class VideoRenderer: @unchecked Sendable {
         displayLayer.controlTimebase = timebase
     }
 
-    /// Start playback. Synchronously decodes and enqueues the first frame
-    /// for immediate display, then begins the continuous feed loop.
+    /// Start playback: decode and enqueue the first frame, then begin the feed loop.
+    /// Runs on the renderer's serial queue rather than the caller's thread — the
+    /// first-frame `copyNextSampleBuffer` is a blocking decode, and the caller is a
+    /// Swift-concurrency (cooperative) task; blocking a cooperative thread violates
+    /// forward progress and starves the extension's tiny executor.
     func start() {
-        guard let reader = try? AVAssetReader(asset: asset) else { return }
-        let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-        output.alwaysCopiesSampleData = false
-        reader.add(output)
-        reader.startReading()
+        queue.async { [weak self] in
+            guard let self, let reader = try? AVAssetReader(asset: self.asset) else { return }
+            let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+            output.alwaysCopiesSampleData = false
+            reader.add(output)
+            reader.startReading()
 
-        // Reset timebase BEFORE first enqueue so the frame isn't seen as late.
-        CMTimebaseSetTime(timebase, time: .zero)
+            // Reset timebase BEFORE first enqueue so the frame isn't seen as late.
+            CMTimebaseSetTime(timebase, time: .zero)
 
-        if let firstSample = output.copyNextSampleBuffer() {
-            renderer.enqueue(firstSample)
+            if let firstSample = output.copyNextSampleBuffer() {
+                renderer.enqueue(firstSample)
+            }
+
+            currentReader = reader
+            currentOutput = output
+            ptsOffset = .zero
+            lastEnqueuedEnd = .zero
+
+            // Begin advancing the timebase — playback starts.
+            CMTimebaseSetRate(timebase, rate: 1.0)
+
+            prepareNextReader()
+            feedFromCurrentReader()
         }
-
-        currentReader = reader
-        currentOutput = output
-        ptsOffset = .zero
-        lastEnqueuedEnd = .zero
-
-        // Begin advancing the timebase — playback starts.
-        CMTimebaseSetRate(timebase, rate: 1.0)
-
-        prepareNextReader()
-        feedFromCurrentReader()
     }
 
     /// Stop playback. Dispatches synchronously to the renderer queue to ensure
