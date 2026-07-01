@@ -35,17 +35,11 @@ final class VideoRenderer: @unchecked Sendable {
     private var nextReader: AVAssetReader?
     private var nextOutput: AVAssetReaderTrackOutput?
 
-    /// Monotonic pipeline generation, mutated and read ONLY on `queue`. Bumped on
-    /// every switch and every `recreatePlayback`. Async completions (switch track
-    /// load, variant preload) capture the generation at kickoff and no-op if it has
-    /// since advanced — so a slow older load can never clobber a newer pick, and a
-    /// switch invalidates any in-flight variant install. This is what makes rapid
-    /// switching last-*requested*-wins instead of last-*completed*-wins.
-    private var generation = 0
-
-    /// The in-flight switch track load, cancelled when a newer switch supersedes it.
-    /// Touched only on `queue`.
-    private var loadTask: Task<Void, Never>?
+    /// Bumped on each `restartWithCurrentAsset`, read ONLY on `queue`. The renderer's
+    /// `flush` completion is the one genuinely asynchronous hop in the pipeline; the
+    /// completion checks this so a superseded restart (rapid re-switch) can't feed the
+    /// old asset over the new one. Everything else runs strictly ordered on `queue`.
+    private var restartEpoch = 0
 
     // Gapless looping state.
     // ptsOffset accumulates across loops so both DTS and PTS are monotonically increasing.
@@ -184,58 +178,47 @@ final class VideoRenderer: @unchecked Sendable {
     /// hosted by WallpaperAgent, so feeding it frames from a new asset updates the
     /// desktop — whereas building a fresh renderer (new `AVSampleBufferDisplayLayer`)
     /// added to an already-hosted context does NOT composite (the switch-between-
-    /// videos bug). Same mechanism as the adaptive-variant `swapToNextReader`, just
-    /// triggered immediately instead of at a loop boundary.
+    /// videos bug). So we keep the one hosted layer and restart it on the new asset.
     ///
-    /// Serialized on `queue`: dedups a repeat of the current video, bumps the pipeline
-    /// `generation` to supersede any in-flight switch, cancels the previous track load,
-    /// and drops its own result if a newer switch has since landed. This makes rapid
-    /// switching last-*requested*-wins — without it, out-of-order `loadTracks`
-    /// completions strand playback on a stale asset (BUG 2) and can hand
-    /// `recreatePlayback` a track/asset mismatch that crashes the appex (BUG 1).
+    /// Fully serialized on `queue`, no `Task`: the track load blocks the queue thread
+    /// (a real thread we own, which already blocks for decodes). Because every switch
+    /// runs to completion in FIFO order on one thread, rapid switching is naturally
+    /// last-*requested*-wins with no cancellation bookkeeping — the only async hop is
+    /// the renderer's `flush`, guarded by `restartEpoch`.
     func switchVideo(to url: URL) {
-        extensionLog("  [switchVideo #\(debugID)] REQUEST target=\(url.lastPathComponent) (dispatching to queue)")
+        extensionLog("  [switchVideo #\(debugID)] REQUEST target=\(url.lastPathComponent)")
         queue.async { [weak self] in
-            guard let self else { extensionLog("  [switchVideo] DROP: self gone"); return }
-            guard isRunning else { extensionLog("  [switchVideo #\(debugID)] DROP: renderer not running (stopped) — target=\(url.lastPathComponent)"); return }
+            guard let self, isRunning else { return }
             // Same file already playing → nothing to do (defuses repeated identical picks).
             if asset.url == url {
-                extensionLog("  [switchVideo] DEDUP: already on \(url.lastPathComponent) (asset.url==url), skipping")
+                extensionLog("  [switchVideo #\(debugID)] DEDUP: already on \(url.lastPathComponent)")
                 return
             }
-            generation += 1
-            let gen = generation
-            extensionLog("  [switchVideo #\(debugID)] BEGIN gen=\(gen) current=\(asset.url.lastPathComponent) -> \(url.lastPathComponent); cancelling prior load=\(loadTask != nil)")
-            loadTask?.cancel()
             let newAsset = AVURLAsset(url: url)
-            loadTask = Task.detached { @Sendable [weak self] in
-                guard let self else { return }
-                let track = try? await newAsset.loadTracks(withMediaType: .video).first
-                nonisolated(unsafe) let loadedTrack = track
-                extensionLog("  [switchVideo] LOADED gen=\(gen) track=\(track != nil ? "ok" : "nil") for \(url.lastPathComponent) (hopping to queue)")
-                queue.async { [weak self] in
-                    guard let self else { return }
-                    // Superseded by a newer switch (or torn down) → drop this result.
-                    guard isRunning else { extensionLog("  [switchVideo] DROP gen=\(gen): not running at apply-time"); return }
-                    guard gen == generation else {
-                        extensionLog("  [switchVideo] DROP gen=\(gen): superseded (current generation=\(generation))")
-                        return
-                    }
-                    guard let loadedTrack else {
-                        extensionLog("  [switchVideo] DROP gen=\(gen): no video track in \(url.lastPathComponent)")
-                        return
-                    }
-                    extensionLog("  [switchVideo #\(debugID)] APPLY gen=\(gen): asset=\(url.lastPathComponent), cutting seamlessly")
-                    asset = newAsset
-                    videoTrack = loadedTrack
-                    cutToCurrentAssetSeamlessly()
-                    // Keep the running timebase (do NOT reset to 0): new frames are
-                    // enqueued just ahead of the current time and take over cleanly.
-                    if isPaused { CMTimebaseSetRate(timebase, rate: 0.0) }
-                    extensionLog("  [switchVideo #\(debugID)] DONE gen=\(gen): cut to \(url.lastPathComponent), rate=\(isPaused ? 0 : 1)")
-                }
+            guard let track = Self.loadFirstVideoTrackBlocking(newAsset) else {
+                extensionLog("  [switchVideo #\(debugID)] no video track in \(url.lastPathComponent)")
+                return
             }
+            asset = newAsset
+            videoTrack = track
+            extensionLog("  [switchVideo #\(debugID)] restarting from 0 → \(url.lastPathComponent)")
+            restartWithCurrentAsset()
         }
+    }
+
+    /// Load the first video track synchronously. Call ONLY from the renderer's serial
+    /// `queue` — it blocks that (real, owned) thread on a semaphore while AVFoundation
+    /// loads the track on its own internal queue, so there's no cooperative-executor
+    /// starvation and no out-of-order Task completion. Local files load in a few ms.
+    private static func loadFirstVideoTrackBlocking(_ asset: AVURLAsset) -> AVAssetTrack? {
+        let sem = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: AVAssetTrack?
+        asset.loadTracks(withMediaType: .video) { tracks, _ in
+            result = tracks?.first
+            sem.signal()
+        }
+        sem.wait()
+        return result
     }
 
     /// Stop playback. Dispatches synchronously to the renderer queue to ensure
@@ -446,9 +429,7 @@ final class VideoRenderer: @unchecked Sendable {
     /// by both deep-pause-wake and the error recovery path. Restarts the
     /// timeline from zero — caller is responsible for restoring timebase rate.
     private func recreatePlayback() {
-        // Rebuilding the pipeline supersedes any in-flight variant/switch load.
-        generation += 1
-        extensionLog("  [recreatePlayback #\(debugID)] gen->\(generation) asset=\(asset.url.lastPathComponent) track.mediaType=\(videoTrack.mediaType.rawValue)")
+        extensionLog("  [recreatePlayback #\(debugID)] asset=\(asset.url.lastPathComponent) track.mediaType=\(videoTrack.mediaType.rawValue)")
         renderer.stopRequestingMediaData()
         renderer.flush()
         ptsOffset = .zero
@@ -478,53 +459,70 @@ final class VideoRenderer: @unchecked Sendable {
         feedFromCurrentReader()
     }
 
-    /// Cut to the already-set `asset`/`videoTrack` seamlessly, the same way a loop
-    /// boundary swaps variants: DO NOT `flush()` and DO NOT reset the timebase.
-    /// Instead continue the timeline (`ptsOffset = lastEnqueuedEnd`) so the new
-    /// video's frames are enqueued *just ahead* of the current time and take over
-    /// as the running timebase reaches them — the last frame holds until then, no
-    /// black gap. (Flushing + resetting the timebase to 0, as `recreatePlayback`
-    /// does, strands the layer on the old frame: the freshly-enqueued PTS-0 frames
-    /// arrive "late" against an already-advancing timebase and get dropped.)
-    /// Must run on `queue`.
-    private func cutToCurrentAssetSeamlessly() {
+    /// Restart playback on the already-set `asset`/`videoTrack` from time 0 — the
+    /// video changed, so there's no timeline to preserve (that's only for gapless
+    /// looping of the SAME clip). This is `start()`'s sequence applied to a live
+    /// renderer: freeze the clock (rate 0) so the fresh PTS-0 frames aren't judged
+    /// "late", async-flush the decoder (a `flush` is a decoder RESET and discards
+    /// anything enqueued before it completes — that was the "no reaction" bug), then
+    /// in the completion reset the timeline to 0, enqueue the first IDR frame, and
+    /// resume at rate 1. `removingDisplayedImage:false` holds the last frame (no
+    /// black) until that first frame lands. Must run on `queue`.
+    private func restartWithCurrentAsset() {
+        restartEpoch += 1
+        let epoch = restartEpoch
+        // Freeze the clock up front so it can't advance past PTS 0 during the async
+        // flush — otherwise the first frames arrive "late" and get dropped.
+        CMTimebaseSetRate(timebase, rate: 0.0)
         renderer.stopRequestingMediaData()
         currentReader?.cancelReading()
         nextReader?.cancelReading()
         nextReader = nil
         nextOutput = nil
 
-        guard let reader = try? AVAssetReader(asset: asset) else {
-            extensionLog("  [cut #\(debugID)] FAILED to create AVAssetReader for \(asset.url.lastPathComponent)")
-            currentReader = nil
-            currentOutput = nil
-            return
-        }
-        let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-        output.alwaysCopiesSampleData = false
-        reader.add(output)
-        reader.startReading()
-        currentReader = reader
-        currentOutput = output
-
-        // flush is a DECODER RESET and is ASYNC — frames enqueued before it completes
-        // get discarded (that was the "no reaction, same frame" bug). So drop the old
-        // video's buffered-ahead frames here, and only START FEEDING the new video in
-        // the completion. removingDisplayedImage:false keeps the last frame on screen
-        // (no black) until the new video's first (IDR) frame lands.
-        extensionLog("  [cut #\(debugID)] reader status=\(reader.status.rawValue), flushing decoder before feed for \(asset.url.lastPathComponent)")
+        extensionLog("  [restart #\(debugID)] epoch=\(epoch) flushing decoder for \(asset.url.lastPathComponent)")
         renderer.flush(removingDisplayedImage: false) { [weak self] in
             guard let self else { return }
             queue.async { [weak self] in
                 guard let self, isRunning else { return }
-                // Anchor the new timeline just ahead of the LIVE timebase (post-flush)
-                // so its frames land on time. lastEnqueuedEnd would be ~2s ahead (the
-                // buffered depth) → a multi-second delay; the 0.1s lead just covers the
-                // enqueue gap.
-                let lead = CMTime(value: 1, timescale: 10) // 0.1s
-                ptsOffset = CMTimeAdd(CMTimebaseGetTime(timebase), lead)
-                lastEnqueuedEnd = ptsOffset
-                extensionLog("  [cut #\(debugID)] post-flush feed ptsOffset=\(ptsOffset.seconds) timebase=\(CMTimebaseGetTime(timebase).seconds)")
+                // A newer switch superseded us while the flush was in flight → bail.
+                guard epoch == restartEpoch else {
+                    extensionLog("  [restart #\(debugID)] epoch=\(epoch) superseded by \(restartEpoch), dropping")
+                    return
+                }
+                guard let reader = try? AVAssetReader(asset: asset) else {
+                    extensionLog("  [restart #\(debugID)] FAILED to create AVAssetReader for \(asset.url.lastPathComponent)")
+                    currentReader = nil
+                    currentOutput = nil
+                    return
+                }
+                let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+                output.alwaysCopiesSampleData = false
+                reader.add(output)
+                reader.startReading()
+                currentReader = reader
+                currentOutput = output
+
+                // Fresh timeline from 0.
+                ptsOffset = .zero
+                lastEnqueuedEnd = .zero
+                CMTimebaseSetTime(timebase, time: .zero)
+
+                // Enqueue the first (IDR) frame while the clock is still frozen, exactly
+                // like start(), so it isn't dropped as late.
+                if let first = output.copyNextSampleBuffer() {
+                    renderer.enqueue(first)
+                    let pts = CMSampleBufferGetPresentationTimeStamp(first)
+                    let dur = CMSampleBufferGetDuration(first)
+                    if pts.isValid {
+                        lastEnqueuedEnd = dur.isValid && dur > .zero
+                            ? CMTimeAdd(pts, dur)
+                            : CMTimeAdd(pts, CMTime(value: 1, timescale: 60))
+                    }
+                }
+
+                CMTimebaseSetRate(timebase, rate: isPaused ? 0.0 : 1.0)
+                extensionLog("  [restart #\(debugID)] epoch=\(epoch) playing \(asset.url.lastPathComponent) rate=\(isPaused ? 0 : 1)")
                 prepareNextReader()
                 feedFromCurrentReader()
             }
@@ -534,30 +532,19 @@ final class VideoRenderer: @unchecked Sendable {
     // MARK: - Preloaded Loop Reader
 
     private func prepareNextReader() {
+        // Deferred to a separate queue job so the (brief, blocking) variant track load
+        // doesn't stall whatever called us — but still strictly ordered on `queue`,
+        // no Task.
         queue.async { [weak self] in
             guard let self, isRunning else { return }
-
-            // The selector is synchronous; the only async work is loading the
-            // track for a *new* asset URL. Do that in a Task and hop back to
-            // the renderer queue to install the resulting reader, instead of
-            // blocking this queue thread on a DispatchSemaphore.
             let nextURL = variantSelector?()
             if let nextURL, nextURL != asset.url {
-                let gen = generation
                 let newAsset = AVURLAsset(url: nextURL)
-                Task.detached { @Sendable [weak self] in
-                    guard let self else { return }
-                    guard let track = try? await newAsset.loadTracks(withMediaType: .video).first else {
-                        extensionLog("  [Renderer] No video track in variant: \(nextURL.lastPathComponent)")
-                        return
-                    }
-                    nonisolated(unsafe) let loadedTrack = track
-                    queue.async { [weak self] in
-                        // A switch/recreate since kickoff invalidated this variant.
-                        guard let self, isRunning, gen == generation else { return }
-                        installNextReader(asset: newAsset, track: loadedTrack)
-                    }
+                guard let track = Self.loadFirstVideoTrackBlocking(newAsset) else {
+                    extensionLog("  [Renderer] No video track in variant: \(nextURL.lastPathComponent)")
+                    return
                 }
+                installNextReader(asset: newAsset, track: track)
             } else {
                 installNextReader(asset: asset, track: videoTrack)
             }
