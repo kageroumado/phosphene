@@ -211,6 +211,23 @@ final class VideoRenderer: @unchecked Sendable {
         }
     }
 
+    /// Tag a sample buffer so the renderer displays it immediately, replacing all
+    /// previously enqueued/displayed images regardless of timestamps (per
+    /// AVQueuedSampleBufferRendering docs). Used for the first frame of a switched
+    /// video so the swap is instant and doesn't wait on the control timebase.
+    private static func setDisplayImmediately(_ sample: CMSampleBuffer) {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true) else { return }
+        let count = CFArrayGetCount(attachments)
+        for i in 0..<count {
+            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, i), to: CFMutableDictionary.self)
+            CFDictionarySetValue(
+                dict,
+                Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
+            )
+        }
+    }
+
     /// Load the first video track synchronously. Call ONLY from the renderer's serial
     /// `queue` — it blocks that (real, owned) thread on a semaphore while AVFoundation
     /// loads the track on its own internal queue, so there's no cooperative-executor
@@ -493,8 +510,10 @@ final class VideoRenderer: @unchecked Sendable {
         nextReader = nil
         nextOutput = nil
 
-        extensionLog("  [restart #\(debugID)] flushing decoder (removing displayed image) for \(asset.url.lastPathComponent)")
-        renderer.flush(removingDisplayedImage: true) { [weak self] in
+        extensionLog("  [restart #\(debugID)] flushing decoder for \(asset.url.lastPathComponent)")
+        // Keep the currently displayed frame (no blank) — the first new frame below is
+        // tagged DisplayImmediately, which replaces it the instant it decodes.
+        renderer.flush(removingDisplayedImage: false) { [weak self] in
             guard let self else { return }
             queue.async { [weak self] in
                 guard let self else { return }
@@ -527,8 +546,12 @@ final class VideoRenderer: @unchecked Sendable {
                 CMTimebaseSetTime(timebase, time: .zero)
 
                 // Enqueue the first (IDR) frame while the clock is still frozen, exactly
-                // like start(), so it isn't dropped as late.
+                // like start(), so it isn't dropped as late. Tag it DisplayImmediately so
+                // it replaces the retained old frame the moment it decodes — an instant,
+                // blank-free swap that doesn't depend on the timebase (important since a
+                // switch can land while paused, rate=0).
                 if let first = output.copyNextSampleBuffer() {
+                    Self.setDisplayImmediately(first)
                     renderer.enqueue(first)
                     let pts = CMSampleBufferGetPresentationTimeStamp(first)
                     let dur = CMSampleBufferGetDuration(first)
