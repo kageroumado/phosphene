@@ -157,6 +157,33 @@ final class VideoRenderer: @unchecked Sendable {
         }
     }
 
+    /// Switch to a different video IN PLACE, reusing this renderer's existing
+    /// `displayLayer`. The layer is already attached to the display's CAContext and
+    /// hosted by WallpaperAgent, so feeding it frames from a new asset updates the
+    /// desktop — whereas building a fresh renderer (new `AVSampleBufferDisplayLayer`)
+    /// added to an already-hosted context does NOT composite (the switch-between-
+    /// videos bug). Same mechanism as the adaptive-variant `swapToNextReader`, just
+    /// triggered immediately instead of at a loop boundary.
+    func switchVideo(to url: URL) {
+        let newAsset = AVURLAsset(url: url)
+        Task.detached { @Sendable [weak self] in
+            guard let self else { return }
+            guard let track = try? await newAsset.loadTracks(withMediaType: .video).first else {
+                extensionLog("  [Renderer] switchVideo: no video track in \(url.lastPathComponent)")
+                return
+            }
+            nonisolated(unsafe) let loadedTrack = track
+            queue.async { [weak self] in
+                guard let self, isRunning else { return }
+                asset = newAsset
+                videoTrack = loadedTrack
+                recreatePlayback()
+                CMTimebaseSetRate(timebase, rate: isPaused ? 0.0 : 1.0)
+                extensionLog("  [Renderer] Switched video in place to \(url.lastPathComponent)")
+            }
+        }
+    }
+
     /// Stop playback. Dispatches synchronously to the renderer queue to ensure
     /// no callback is mid-flight before canceling the reader.
     func stop() {

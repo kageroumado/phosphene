@@ -17,15 +17,18 @@ struct ActiveWallpaper: @unchecked Sendable {
     let rootLayer: CALayer
     var renderer: VideoRenderer?
     let displayID: UInt32?
-    let isPreview: Bool
     var videoID: String?
 }
 
-/// Identifies one persistent rendering slot: a display, plus whether it's the
-/// Settings preview or the live desktop (a display can have both at once).
+/// Identifies one persistent rendering slot. There is exactly ONE context per
+/// display, `isPreview`-agnostic: whichever acquire wins the queue first (desktop
+/// or Settings preview) creates it, and every other consumer — the live desktop,
+/// the Settings preview, and the app's own menu-bar panel — hosts that SAME
+/// `contextId`/surface. The WindowServer tracks one context per display and
+/// multiple `CALayerHost`s on it render identical content (RE Q3), so there is no
+/// desktop-vs-preview distinction to track.
 struct DisplayKey: Hashable {
     let displayID: UInt32
-    let isPreview: Bool
 }
 
 final class WallpaperState: Sendable {
@@ -97,6 +100,16 @@ final class WallpaperState: Sendable {
         }
     }
 
+    /// Update the videoID a slot is tracking after an in-place `switchVideo`
+    /// (the renderer object is unchanged — only its content switched).
+    func updateVideoID(_ videoID: String?, for key: DisplayKey) {
+        lock.withLock { state in
+            guard var context = state.contexts[key] else { return }
+            context.videoID = videoID
+            state.contexts[key] = context
+        }
+    }
+
     /// Execute a closure for each active renderer (snapshot copy under lock, iteration outside).
     func forEachRenderer(_ body: (VideoRenderer) -> Void) {
         let renderers = lock.withLock { state in
@@ -160,10 +173,10 @@ final class WallpaperState: Sendable {
         lock.withLock { $0.contexts.count }
     }
 
-    /// Count of live (non-preview) desktop render slots with a running renderer.
+    /// Count of display slots with a running renderer.
     var liveContextCount: Int {
         lock.withLock { state in
-            state.contexts.values.lazy.filter { !$0.isPreview && $0.renderer != nil }.count
+            state.contexts.values.lazy.filter { $0.renderer != nil }.count
         }
     }
 
