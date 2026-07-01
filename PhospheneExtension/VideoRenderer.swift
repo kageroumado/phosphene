@@ -41,6 +41,7 @@ final class VideoRenderer: @unchecked Sendable {
     static func create(
         rootLayer: CALayer,
         videoURL: URL,
+        stillImage: CGImage? = nil,
     ) async throws -> VideoRenderer {
         let asset = AVURLAsset(url: videoURL)
         let tracks = try await asset.loadTracks(withMediaType: .video)
@@ -54,13 +55,14 @@ final class VideoRenderer: @unchecked Sendable {
         displayLayer.videoGravity = .resizeAspectFill
         displayLayer.frame = rootLayer.bounds
         displayLayer.contentsScale = rootLayer.contentsScale
-        rootLayer.addSublayer(displayLayer)
+        // Added to the tree in init() inside an action-free transaction (below).
 
         return VideoRenderer(
             rootLayer: rootLayer,
             displayLayer: displayLayer,
             asset: asset,
             videoTrack: track,
+            stillImage: stillImage,
         )
     }
 
@@ -69,6 +71,7 @@ final class VideoRenderer: @unchecked Sendable {
         displayLayer: AVSampleBufferDisplayLayer,
         asset: AVURLAsset,
         videoTrack: AVAssetTrack,
+        stillImage: CGImage?,
     ) {
         self.displayLayer = displayLayer
         self.renderer = displayLayer.sampleBufferRenderer
@@ -80,11 +83,7 @@ final class VideoRenderer: @unchecked Sendable {
         stillFrameLayer.contentsGravity = .resizeAspectFill
         stillFrameLayer.contentsScale = rootLayer.contentsScale
         stillFrameLayer.opacity = 0
-        // Name the layer so stale copies can be removed on recreation
         stillFrameLayer.name = "phosphene.stillFrame"
-        // Remove any stale still frame layer from a previous renderer
-        rootLayer.sublayers?.filter { $0.name == "phosphene.stillFrame" }.forEach { $0.removeFromSuperlayer() }
-        rootLayer.addSublayer(stillFrameLayer)
 
         var tb: CMTimebase?
         CMTimebaseCreateWithSourceClock(
@@ -99,6 +98,30 @@ final class VideoRenderer: @unchecked Sendable {
         // the first batch of frames to be considered "late" and dropped.
         CMTimebaseSetRate(timebase, rate: 0.0)
         displayLayer.controlTimebase = timebase
+
+        // Install the layers and seed the still in ONE action-free transaction, so
+        // Core Animation doesn't play an implicit "onOrderIn" animation (the video
+        // appearing to zoom/fade in). The still is an IOSurface-backed sample buffer
+        // at PTS 0 — unlike CALayer.contents (black when hosted cross-process) it
+        // composites into WallpaperAgent's CALayerHost, so the desktop shows the
+        // still immediately; the video's first real frame (also PTS 0) plays over it
+        // once rate=1.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        rootLayer.sublayers?.filter { $0.name == "phosphene.stillFrame" }.forEach { $0.removeFromSuperlayer() }
+        rootLayer.addSublayer(displayLayer)
+        rootLayer.addSublayer(stillFrameLayer)
+        if let stillImage, let stillBuffer = makeStillSampleBuffer(from: stillImage) {
+            renderer.enqueue(stillBuffer)
+            extensionLog("  [Renderer] Seeded still into display layer (\(stillImage.width)x\(stillImage.height))")
+        } else {
+            extensionLog("  [Renderer] No still to seed (stillImage present: \(stillImage != nil))")
+        }
+        CATransaction.commit()
+        // flush() (not just commit()) is what pushes the layer tree to the render
+        // server for a REMOTE context — without it the still never reaches the
+        // WindowServer and the desktop stays black until a later flush.
+        CATransaction.flush()
     }
 
     /// Start playback: decode and enqueue the first frame, then begin the feed loop.

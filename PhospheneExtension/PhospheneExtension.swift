@@ -18,7 +18,6 @@ final class PhospheneExtension: NSObject, AppExtension {
             _ = handle
             extensionLog("INIT (PID: \(ProcessInfo.processInfo.processIdentifier)) — WallpaperExtensionKit loaded")
             verifyRuntimeLayout()
-            swizzleSnapshotEncodeIfNeeded()
             VideoLibrary.shared.scan()
             observeLibraryChanges()
             observeDisplaySleepWake()
@@ -71,45 +70,6 @@ final class PhospheneExtension: NSObject, AppExtension {
         }
     }
 
-    /// Swizzle WallpaperSnapshotXPC's encodeWithCoder: to bypass the exact NSXPCCoder class check.
-    ///
-    /// WallpaperSnapshotXPC's encode checks `type(of: coder) == NSXPCCoder.self`, but the
-    /// actual coder is NSXPCEncoder (a subclass). Without this fix, encoding is a silent no-op
-    /// and the Agent receives no snapshot data — showing gray during transitions.
-    ///
-    /// Fix: temporarily set the coder's ISA to NSXPCCoder before calling the original encode,
-    /// then restore it. Both classes implement `encodeXPCObject:forKey:`, so dispatch works.
-    private func swizzleSnapshotEncodeIfNeeded() {
-        guard let snapshotClass = objc_getClass("WallpaperSnapshotXPC") as? AnyClass else {
-            extensionLog("  [Swizzle] WallpaperSnapshotXPC not found")
-            return
-        }
-
-        let sel = NSSelectorFromString("encodeWithCoder:")
-        guard let origMethod = class_getInstanceMethod(snapshotClass, sel) else {
-            extensionLog("  [Swizzle] encodeWithCoder: not found on WallpaperSnapshotXPC")
-            return
-        }
-
-        let origIMP = method_getImplementation(origMethod)
-        typealias EncodeFunc = @convention(c) (AnyObject, Selector, NSCoder) -> Void
-        let origFunc = unsafeBitCast(origIMP, to: EncodeFunc.self)
-
-        guard let nsxpcCoderClass = NSClassFromString("NSXPCCoder") else {
-            extensionLog("  [Swizzle] NSXPCCoder class not found")
-            return
-        }
-
-        let block: @convention(block) (AnyObject, NSCoder) -> Void = { obj, coder in
-            let origClass: AnyClass = object_getClass(coder)!
-            object_setClass(coder, nsxpcCoderClass)
-            origFunc(obj, sel, coder)
-            object_setClass(coder, origClass)
-        }
-        let newIMP = imp_implementationWithBlock(block)
-        method_setImplementation(origMethod, newIMP)
-        extensionLog("  [Swizzle] Patched WallpaperSnapshotXPC encodeWithCoder:")
-    }
 
     /// Observe display sleep/wake to stop rendering when no display is awake
     /// and resume on wake with correct policy.

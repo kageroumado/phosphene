@@ -211,9 +211,13 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         rootLayer.contentsScale = scaleFactor
         rootLayer.contentsGravity = .resizeAspectFill
 
-        if let cachedImage = loadCachedSnapshotImage(forChoice: choiceConfiguration) {
-            rootLayer.contents = cachedImage
-            extensionLog("  Set cached snapshot as initial layer content")
+        // Loaded once here and handed to the renderer, which seeds it into the
+        // display layer as an IOSurface-backed sample buffer (renders cross-process,
+        // unlike CALayer.contents). Also set as contents as a harmless base.
+        let cachedStill = loadCachedSnapshotImage(forChoice: choiceConfiguration)
+        if let cachedStill {
+            rootLayer.contents = cachedStill
+            extensionLog("  Loaded cached still for IOSurface seed")
         }
 
         // 4. Set up video rendering — resolve per this context's choice, not the
@@ -240,7 +244,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 let videoRenderer: VideoRenderer
                 do {
                     videoRenderer = try await VideoRenderer.create(
-                        rootLayer: unsafeRootLayer, videoURL: videoURL,
+                        rootLayer: unsafeRootLayer, videoURL: videoURL, stillImage: cachedStill,
                     )
                 } catch {
                     extensionLog("  [Renderer] Failed to create: \(error)")
@@ -303,11 +307,11 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 }
                 WallpaperPrefs.shared.setActive(true)
 
-                // 6. Start renderer, then defer reply for the render pipeline to
-                // stabilize (the Agent shows its cached BMP snapshot meanwhile).
+                // 6. Start playback and reply now — the still is already seeded into
+                // the display layer's surface (committed), so the hosted context shows
+                // the still immediately; no need to stall the reply.
                 videoRenderer.start()
-                try? await Task.sleep(for: .milliseconds(500))
-                doReply("pipeline ready")
+                doReply("still seeded, pipeline starting")
             }
 
             // Safety net timeout
