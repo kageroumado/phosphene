@@ -489,19 +489,6 @@ final class VideoRenderer: @unchecked Sendable {
     /// Must run on `queue`.
     private func cutToCurrentAssetSeamlessly() {
         renderer.stopRequestingMediaData()
-        // Drop the OLD video's buffered-ahead frames (~2s worth) so the previous
-        // clip stops immediately. flush() retains the currently displayed frame, so
-        // the desktop holds the last image (no black) until the new video arrives.
-        renderer.flush()
-        // Anchor the new timeline just ahead of the LIVE timebase so its frames land
-        // on time. Using lastEnqueuedEnd here (as a loop-boundary swap does) places
-        // them ~2s ahead — the buffered-ahead depth — which is exactly the multi-
-        // second switch delay we saw. The 0.1s lead absorbs the async enqueue gap so
-        // the first frame isn't already "late" against the advancing timebase.
-        let lead = CMTime(value: 1, timescale: 10) // 0.1s
-        ptsOffset = CMTimeAdd(CMTimebaseGetTime(timebase), lead)
-        lastEnqueuedEnd = ptsOffset
-
         currentReader?.cancelReading()
         nextReader?.cancelReading()
         nextReader = nil
@@ -519,10 +506,29 @@ final class VideoRenderer: @unchecked Sendable {
         reader.startReading()
         currentReader = reader
         currentOutput = output
-        extensionLog("  [cut #\(debugID)] reader started status=\(reader.status.rawValue) ptsOffset=\(ptsOffset.seconds) timebase=\(CMTimebaseGetTime(timebase).seconds) for \(asset.url.lastPathComponent)")
 
-        prepareNextReader()
-        feedFromCurrentReader()
+        // flush is a DECODER RESET and is ASYNC — frames enqueued before it completes
+        // get discarded (that was the "no reaction, same frame" bug). So drop the old
+        // video's buffered-ahead frames here, and only START FEEDING the new video in
+        // the completion. removingDisplayedImage:false keeps the last frame on screen
+        // (no black) until the new video's first (IDR) frame lands.
+        extensionLog("  [cut #\(debugID)] reader status=\(reader.status.rawValue), flushing decoder before feed for \(asset.url.lastPathComponent)")
+        renderer.flush(removingDisplayedImage: false) { [weak self] in
+            guard let self else { return }
+            queue.async { [weak self] in
+                guard let self, isRunning else { return }
+                // Anchor the new timeline just ahead of the LIVE timebase (post-flush)
+                // so its frames land on time. lastEnqueuedEnd would be ~2s ahead (the
+                // buffered depth) → a multi-second delay; the 0.1s lead just covers the
+                // enqueue gap.
+                let lead = CMTime(value: 1, timescale: 10) // 0.1s
+                ptsOffset = CMTimeAdd(CMTimebaseGetTime(timebase), lead)
+                lastEnqueuedEnd = ptsOffset
+                extensionLog("  [cut #\(debugID)] post-flush feed ptsOffset=\(ptsOffset.seconds) timebase=\(CMTimebaseGetTime(timebase).seconds)")
+                prepareNextReader()
+                feedFromCurrentReader()
+            }
+        }
     }
 
     // MARK: - Preloaded Loop Reader
