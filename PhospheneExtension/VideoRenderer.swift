@@ -225,12 +225,14 @@ final class VideoRenderer: @unchecked Sendable {
                         extensionLog("  [switchVideo] DROP gen=\(gen): no video track in \(url.lastPathComponent)")
                         return
                     }
-                    extensionLog("  [switchVideo #\(debugID)] APPLY gen=\(gen): asset=\(url.lastPathComponent), recreating playback")
+                    extensionLog("  [switchVideo #\(debugID)] APPLY gen=\(gen): asset=\(url.lastPathComponent), cutting seamlessly")
                     asset = newAsset
                     videoTrack = loadedTrack
-                    recreatePlayback()
-                    CMTimebaseSetRate(timebase, rate: isPaused ? 0.0 : 1.0)
-                    extensionLog("  [switchVideo #\(debugID)] DONE gen=\(gen): switched in place to \(url.lastPathComponent), rate=\(isPaused ? 0 : 1)")
+                    cutToCurrentAssetSeamlessly()
+                    // Keep the running timebase (do NOT reset to 0): new frames are
+                    // enqueued just ahead of the current time and take over cleanly.
+                    if isPaused { CMTimebaseSetRate(timebase, rate: 0.0) }
+                    extensionLog("  [switchVideo #\(debugID)] DONE gen=\(gen): cut to \(url.lastPathComponent), rate=\(isPaused ? 0 : 1)")
                 }
             }
         }
@@ -471,6 +473,47 @@ final class VideoRenderer: @unchecked Sendable {
         currentReader = reader
         currentOutput = output
         extensionLog("  [recreatePlayback #\(debugID)] reader started status=\(reader.status.rawValue) for \(asset.url.lastPathComponent)")
+
+        prepareNextReader()
+        feedFromCurrentReader()
+    }
+
+    /// Cut to the already-set `asset`/`videoTrack` seamlessly, the same way a loop
+    /// boundary swaps variants: DO NOT `flush()` and DO NOT reset the timebase.
+    /// Instead continue the timeline (`ptsOffset = lastEnqueuedEnd`) so the new
+    /// video's frames are enqueued *just ahead* of the current time and take over
+    /// as the running timebase reaches them — the last frame holds until then, no
+    /// black gap. (Flushing + resetting the timebase to 0, as `recreatePlayback`
+    /// does, strands the layer on the old frame: the freshly-enqueued PTS-0 frames
+    /// arrive "late" against an already-advancing timebase and get dropped.)
+    /// Must run on `queue`.
+    private func cutToCurrentAssetSeamlessly() {
+        renderer.stopRequestingMediaData()
+        // Continue the timeline from the highest PTS enqueued so far.
+        ptsOffset = lastEnqueuedEnd
+        if renderer.requiresFlushToResumeDecoding {
+            // Format change across the cut — the decoder needs a flush to accept the
+            // new stream. This still holds the last displayed image (no black).
+            renderer.flush()
+        }
+        currentReader?.cancelReading()
+        nextReader?.cancelReading()
+        nextReader = nil
+        nextOutput = nil
+
+        guard let reader = try? AVAssetReader(asset: asset) else {
+            extensionLog("  [cut #\(debugID)] FAILED to create AVAssetReader for \(asset.url.lastPathComponent)")
+            currentReader = nil
+            currentOutput = nil
+            return
+        }
+        let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+        output.alwaysCopiesSampleData = false
+        reader.add(output)
+        reader.startReading()
+        currentReader = reader
+        currentOutput = output
+        extensionLog("  [cut #\(debugID)] reader started status=\(reader.status.rawValue) ptsOffset=\(ptsOffset.seconds) timebase=\(CMTimebaseGetTime(timebase).seconds) for \(asset.url.lastPathComponent)")
 
         prepareNextReader()
         feedFromCurrentReader()
