@@ -9,8 +9,14 @@
 
 import AVFoundation
 import CoreMedia
+import os
 
 final class VideoRenderer: @unchecked Sendable {
+    /// Process-wide instance counter so log lines can be attributed to a specific
+    /// renderer object (to catch stale/duplicate renderers from acquire races).
+    private static let idCounter = OSAllocatedUnfairLock(initialState: 0)
+    let debugID: Int = VideoRenderer.idCounter.withLock { $0 += 1; return $0 }
+
     let displayLayer: AVSampleBufferDisplayLayer
     let timebase: CMTimebase
     private let renderer: AVSampleBufferVideoRenderer
@@ -123,11 +129,12 @@ final class VideoRenderer: @unchecked Sendable {
         rootLayer.sublayers?.filter { $0.name == "phosphene.stillFrame" }.forEach { $0.removeFromSuperlayer() }
         rootLayer.addSublayer(displayLayer)
         rootLayer.addSublayer(stillFrameLayer)
+        extensionLog("  [Renderer #\(debugID)] CREATED for \(asset.url.lastPathComponent), displayLayer=\(ObjectIdentifier(displayLayer)), rootLayer sublayers=\((rootLayer.sublayers?.count ?? 0))")
         if let stillImage, let stillBuffer = makeStillSampleBuffer(from: stillImage) {
             renderer.enqueue(stillBuffer)
-            extensionLog("  [Renderer] Seeded still into display layer (\(stillImage.width)x\(stillImage.height))")
+            extensionLog("  [Renderer #\(debugID)] Seeded still into display layer (\(stillImage.width)x\(stillImage.height))")
         } else {
-            extensionLog("  [Renderer] No still to seed (stillImage present: \(stillImage != nil))")
+            extensionLog("  [Renderer #\(debugID)] No still to seed (stillImage present: \(stillImage != nil))")
         }
         CATransaction.commit()
         // flush() (not just commit()) is what pushes the layer tree to the render
@@ -142,8 +149,11 @@ final class VideoRenderer: @unchecked Sendable {
     /// Swift-concurrency (cooperative) task; blocking a cooperative thread violates
     /// forward progress and starves the extension's tiny executor.
     func start() {
+        extensionLog("  [start #\(debugID)] asset=\(asset.url.lastPathComponent)")
         queue.async { [weak self] in
-            guard let self, let reader = try? AVAssetReader(asset: self.asset) else { return }
+            guard let self else { return }
+            guard isRunning else { extensionLog("  [start #\(debugID)] aborted — already stopped"); return }
+            guard let reader = try? AVAssetReader(asset: self.asset) else { return }
             let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
             output.alwaysCopiesSampleData = false
             reader.add(output)
@@ -184,33 +194,43 @@ final class VideoRenderer: @unchecked Sendable {
     /// completions strand playback on a stale asset (BUG 2) and can hand
     /// `recreatePlayback` a track/asset mismatch that crashes the appex (BUG 1).
     func switchVideo(to url: URL) {
+        extensionLog("  [switchVideo #\(debugID)] REQUEST target=\(url.lastPathComponent) (dispatching to queue)")
         queue.async { [weak self] in
-            guard let self, isRunning else { return }
+            guard let self else { extensionLog("  [switchVideo] DROP: self gone"); return }
+            guard isRunning else { extensionLog("  [switchVideo #\(debugID)] DROP: renderer not running (stopped) — target=\(url.lastPathComponent)"); return }
             // Same file already playing → nothing to do (defuses repeated identical picks).
             if asset.url == url {
-                extensionLog("  [Renderer] switchVideo: already on \(url.lastPathComponent), skipping")
+                extensionLog("  [switchVideo] DEDUP: already on \(url.lastPathComponent) (asset.url==url), skipping")
                 return
             }
             generation += 1
             let gen = generation
+            extensionLog("  [switchVideo #\(debugID)] BEGIN gen=\(gen) current=\(asset.url.lastPathComponent) -> \(url.lastPathComponent); cancelling prior load=\(loadTask != nil)")
             loadTask?.cancel()
             let newAsset = AVURLAsset(url: url)
             loadTask = Task.detached { @Sendable [weak self] in
                 guard let self else { return }
                 let track = try? await newAsset.loadTracks(withMediaType: .video).first
                 nonisolated(unsafe) let loadedTrack = track
+                extensionLog("  [switchVideo] LOADED gen=\(gen) track=\(track != nil ? "ok" : "nil") for \(url.lastPathComponent) (hopping to queue)")
                 queue.async { [weak self] in
+                    guard let self else { return }
                     // Superseded by a newer switch (or torn down) → drop this result.
-                    guard let self, isRunning, gen == generation else { return }
-                    guard let loadedTrack else {
-                        extensionLog("  [Renderer] switchVideo: no video track in \(url.lastPathComponent)")
+                    guard isRunning else { extensionLog("  [switchVideo] DROP gen=\(gen): not running at apply-time"); return }
+                    guard gen == generation else {
+                        extensionLog("  [switchVideo] DROP gen=\(gen): superseded (current generation=\(generation))")
                         return
                     }
+                    guard let loadedTrack else {
+                        extensionLog("  [switchVideo] DROP gen=\(gen): no video track in \(url.lastPathComponent)")
+                        return
+                    }
+                    extensionLog("  [switchVideo #\(debugID)] APPLY gen=\(gen): asset=\(url.lastPathComponent), recreating playback")
                     asset = newAsset
                     videoTrack = loadedTrack
                     recreatePlayback()
                     CMTimebaseSetRate(timebase, rate: isPaused ? 0.0 : 1.0)
-                    extensionLog("  [Renderer] Switched video in place to \(url.lastPathComponent)")
+                    extensionLog("  [switchVideo #\(debugID)] DONE gen=\(gen): switched in place to \(url.lastPathComponent), rate=\(isPaused ? 0 : 1)")
                 }
             }
         }
@@ -219,6 +239,7 @@ final class VideoRenderer: @unchecked Sendable {
     /// Stop playback. Dispatches synchronously to the renderer queue to ensure
     /// no callback is mid-flight before canceling the reader.
     func stop() {
+        extensionLog("  [stop #\(debugID)] stopping renderer for \(asset.url.lastPathComponent)")
         cancelDeepPauseTimer()
         queue.sync {
             isRunning = false
@@ -233,6 +254,7 @@ final class VideoRenderer: @unchecked Sendable {
 
     func pause() {
         guard !isPaused else { return }
+        extensionLog("  [pause #\(debugID)]")
         isPaused = true
         CMTimebaseSetRate(timebase, rate: 0.0)
         generateStillFrame()
@@ -241,6 +263,7 @@ final class VideoRenderer: @unchecked Sendable {
 
     func resume() {
         guard isPaused else { return }
+        extensionLog("  [resume #\(debugID)] currentReader=\(currentReader == nil ? "nil(deep)" : "live")")
         isPaused = false
         cancelDeepPauseTimer()
         stillFrameLayer.opacity = 0
@@ -423,6 +446,7 @@ final class VideoRenderer: @unchecked Sendable {
     private func recreatePlayback() {
         // Rebuilding the pipeline supersedes any in-flight variant/switch load.
         generation += 1
+        extensionLog("  [recreatePlayback #\(debugID)] gen->\(generation) asset=\(asset.url.lastPathComponent) track.mediaType=\(videoTrack.mediaType.rawValue)")
         renderer.stopRequestingMediaData()
         renderer.flush()
         ptsOffset = .zero
@@ -435,7 +459,7 @@ final class VideoRenderer: @unchecked Sendable {
         nextOutput = nil
 
         guard let reader = try? AVAssetReader(asset: asset) else {
-            extensionLog("  [Renderer] Failed to create reader during recreate")
+            extensionLog("  [recreatePlayback] FAILED to create AVAssetReader for \(asset.url.lastPathComponent)")
             currentReader = nil
             currentOutput = nil
             return
@@ -446,6 +470,7 @@ final class VideoRenderer: @unchecked Sendable {
         reader.startReading()
         currentReader = reader
         currentOutput = output
+        extensionLog("  [recreatePlayback #\(debugID)] reader started status=\(reader.status.rawValue) for \(asset.url.lastPathComponent)")
 
         prepareNextReader()
         feedFromCurrentReader()

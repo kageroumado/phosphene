@@ -148,20 +148,21 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // accumulation, no orphan). Only swap the video if the choice actually
         // changed; re-selecting the same wallpaper is a no-op.
         if let existing = WallpaperState.shared.context(for: key) {
+            extensionLog("  [acquire] REUSE ctx=\(existing.contextId) display=\(key.displayID) storedVideoID=\(existing.videoID ?? "nil") newChoice=\(choiceConfiguration ?? "nil") renderer=\(existing.renderer.map { "#\($0.debugID)" } ?? "nil") videoURL=\(findVideoURL(forChoice: choiceConfiguration)?.lastPathComponent ?? "nil")")
             guard let replyObj = createRemoteContextXPC(contextId: existing.contextId) else {
                 reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
             }
             reply(replyObj, nil)
 
             if existing.videoID == choiceConfiguration, existing.renderer != nil {
-                extensionLog("  Reused context \(existing.contextId) (display \(key.displayID)) — same choice, no swap")
+                extensionLog("  [acquire] SAME choice (\(choiceConfiguration ?? "nil")) + renderer present → no swap")
                 return
             }
             guard let videoURL else {
-                extensionLog("  Reused context \(existing.contextId) — no video for new choice, keeping current")
+                extensionLog("  [acquire] no video for new choice, keeping current")
                 return
             }
-            extensionLog("  Reused context \(existing.contextId) — switching to \(videoURL.lastPathComponent)")
+            extensionLog("  [acquire] switching to \(videoURL.lastPathComponent) (renderer \(existing.renderer != nil ? "present → switchVideo" : "nil → create"))")
             let selector = makeVariantSelector(choice: choiceConfiguration, fallback: videoURL)
             if let renderer = existing.renderer {
                 // Switch the video IN PLACE on the already-hosted display layer.
@@ -172,16 +173,19 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 renderer.switchVideo(to: videoURL)
                 WallpaperState.shared.updateVideoID(choiceConfiguration, for: key)
                 WallpaperPrefs.shared.setActive(true)
-            } else {
-                // Context exists but no renderer yet (rare race with a still-pending
-                // create) — attach one to the existing root layer.
+            } else if WallpaperState.shared.claimRendererCreate(for: key) {
+                // Context exists but no renderer yet AND no create already in flight —
+                // attach one to the existing root layer. The claim prevents a racing
+                // (preview) acquire from creating a duplicate renderer on the same layer.
                 nonisolated(unsafe) let unsafeRoot = existing.rootLayer
                 Task {
                     let renderer: VideoRenderer
                     do {
                         renderer = try await VideoRenderer.create(rootLayer: unsafeRoot, videoURL: videoURL, stillImage: cachedStill)
                     } catch {
-                        extensionLog("  [Renderer] swap create failed: \(error)"); return
+                        extensionLog("  [Renderer] swap create failed: \(error)")
+                        WallpaperState.shared.clearRendererPending(for: key)
+                        return
                     }
                     renderer.variantSelector = selector
                     let old = WallpaperState.shared.setRenderer(renderer, videoID: choiceConfiguration, for: key)
@@ -189,6 +193,8 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     WallpaperPrefs.shared.setActive(true)
                     renderer.start()
                 }
+            } else {
+                extensionLog("  [acquire] renderer create already in flight for display \(key.displayID) — skipping duplicate")
             }
             let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
             Task { await writeBMPSnapshot(videoURL: videoURL, videoID: choiceConfiguration, displayPixelWidth: w, displayPixelHeight: h) }
@@ -249,21 +255,29 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             return
         }
 
-        extensionLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent)")
-        nonisolated(unsafe) let unsafeRoot = rootLayer
-        let selector = makeVariantSelector(choice: choiceConfiguration, fallback: videoURL)
-        Task {
-            let renderer: VideoRenderer
-            do {
-                renderer = try await VideoRenderer.create(rootLayer: unsafeRoot, videoURL: videoURL, stillImage: cachedStill)
-            } catch {
-                extensionLog("  [Renderer] Failed to create: \(error)"); return
+        // Claim the single create slot for this display. If a racing (preview)
+        // acquire beat us to it, skip — exactly one renderer per display.
+        if WallpaperState.shared.claimRendererCreate(for: key) {
+            extensionLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent)")
+            nonisolated(unsafe) let unsafeRoot = rootLayer
+            let selector = makeVariantSelector(choice: choiceConfiguration, fallback: videoURL)
+            Task {
+                let renderer: VideoRenderer
+                do {
+                    renderer = try await VideoRenderer.create(rootLayer: unsafeRoot, videoURL: videoURL, stillImage: cachedStill)
+                } catch {
+                    extensionLog("  [Renderer] Failed to create: \(error)")
+                    WallpaperState.shared.clearRendererPending(for: key)
+                    return
+                }
+                renderer.variantSelector = selector
+                let old = WallpaperState.shared.setRenderer(renderer, videoID: choiceConfiguration, for: key)
+                old?.stop()
+                WallpaperPrefs.shared.setActive(true)
+                renderer.start()
             }
-            renderer.variantSelector = selector
-            let old = WallpaperState.shared.setRenderer(renderer, videoID: choiceConfiguration, for: key)
-            old?.stop()
-            WallpaperPrefs.shared.setActive(true)
-            renderer.start()
+        } else {
+            extensionLog("  [acquire] renderer create already in flight for display \(key.displayID) — skipping duplicate (create path)")
         }
         let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
         Task { await writeBMPSnapshot(videoURL: videoURL, videoID: choiceConfiguration, displayPixelWidth: w, displayPixelHeight: h) }

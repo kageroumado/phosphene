@@ -18,6 +18,11 @@ struct ActiveWallpaper: @unchecked Sendable {
     var renderer: VideoRenderer?
     let displayID: UInt32?
     var videoID: String?
+    /// True while a `VideoRenderer.create` is in flight for this slot. Prevents a
+    /// second (e.g. preview) acquire from spinning up a *duplicate* renderer on the
+    /// same rootLayer while the first acquire's async create hasn't populated
+    /// `renderer` yet. Cleared when the renderer is set or the create fails.
+    var rendererPending: Bool = false
 }
 
 /// Identifies one persistent rendering slot. There is exactly ONE context per
@@ -86,18 +91,47 @@ final class WallpaperState: Sendable {
         lock.withLock { $0.contexts[key] = context }
     }
 
+    /// Atomically claim the right to create the renderer for a slot. Returns true
+    /// only if the slot has no renderer AND no create is already in flight — in
+    /// which case it marks a create pending. A concurrent (preview) acquire gets
+    /// false and must NOT create a duplicate renderer. This is what guarantees
+    /// exactly one renderer per display despite racing desktop+preview acquires.
+    func claimRendererCreate(for key: DisplayKey) -> Bool {
+        let claimed = lock.withLock { state -> Bool in
+            guard var context = state.contexts[key] else { return false }
+            if context.renderer != nil || context.rendererPending { return false }
+            context.rendererPending = true
+            state.contexts[key] = context
+            return true
+        }
+        extensionLog("  [claimRendererCreate] display=\(key.displayID) → \(claimed ? "CLAIMED (will create)" : "denied (renderer exists or create pending)")")
+        return claimed
+    }
+
+    /// Release a create claim without installing a renderer (create threw).
+    func clearRendererPending(for key: DisplayKey) {
+        lock.withLock { state in
+            guard var context = state.contexts[key] else { return }
+            context.rendererPending = false
+            state.contexts[key] = context
+        }
+    }
+
     /// Swap the renderer for an existing display slot (the wallpaper changed),
     /// keeping the same `caContext`/`contextId`/`rootLayer`. Returns the previous
     /// renderer for the caller to stop.
     func setRenderer(_ renderer: VideoRenderer?, videoID: String?, for key: DisplayKey) -> VideoRenderer? {
-        lock.withLock { state in
+        let previous = lock.withLock { state -> VideoRenderer? in
             guard var context = state.contexts[key] else { return nil }
             let previous = context.renderer
             context.renderer = renderer
             context.videoID = videoID
+            context.rendererPending = false
             state.contexts[key] = context
             return previous
         }
+        extensionLog("  [setRenderer] display=\(key.displayID) new=\(renderer.map { "#\($0.debugID)" } ?? "nil") replacing=\(previous.map { "#\($0.debugID)" } ?? "nil") videoID=\(videoID ?? "nil")")
+        return previous
     }
 
     /// Update the videoID a slot is tracking after an in-place `switchVideo`
