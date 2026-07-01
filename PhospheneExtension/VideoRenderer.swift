@@ -35,11 +35,16 @@ final class VideoRenderer: @unchecked Sendable {
     private var nextReader: AVAssetReader?
     private var nextOutput: AVAssetReaderTrackOutput?
 
-    /// Bumped on each `restartWithCurrentAsset`, read ONLY on `queue`. The renderer's
-    /// `flush` completion is the one genuinely asynchronous hop in the pipeline; the
-    /// completion checks this so a superseded restart (rapid re-switch) can't feed the
-    /// old asset over the new one. Everything else runs strictly ordered on `queue`.
-    private var restartEpoch = 0
+    /// A renderer `flush` (decoder reset) is the one async hop in the pipeline, and
+    /// TWO overlapping flushes corrupt the renderer (rapid-switch breakage). These two
+    /// flags — touched ONLY on `queue` — serialize it: at most one flush is ever in
+    /// flight, and a switch arriving during a flush is coalesced, so when the flush
+    /// completes we restart once to whatever the latest selected asset is.
+    private var flushInFlight = false
+    private var restartPending = false
+
+    /// Diagnostic: number of remaining feed-loop ticks to log after a restart.
+    private var feedLogBudget = 0
 
     // Gapless looping state.
     // ptsOffset accumulates across loops so both DTS and PTS are monotonically increasing.
@@ -184,7 +189,7 @@ final class VideoRenderer: @unchecked Sendable {
     /// (a real thread we own, which already blocks for decodes). Because every switch
     /// runs to completion in FIFO order on one thread, rapid switching is naturally
     /// last-*requested*-wins with no cancellation bookkeeping — the only async hop is
-    /// the renderer's `flush`, guarded by `restartEpoch`.
+    /// the renderer's `flush`, which is serialized and coalesces rapid switches.
     func switchVideo(to url: URL) {
         extensionLog("  [switchVideo #\(debugID)] REQUEST target=\(url.lastPathComponent)")
         queue.async { [weak self] in
@@ -469,8 +474,16 @@ final class VideoRenderer: @unchecked Sendable {
     /// resume at rate 1. `removingDisplayedImage:false` holds the last frame (no
     /// black) until that first frame lands. Must run on `queue`.
     private func restartWithCurrentAsset() {
-        restartEpoch += 1
-        let epoch = restartEpoch
+        // Serialize the decoder reset: if a flush is already in flight, just mark that
+        // a restart is wanted. When that flush completes it will restart to whatever
+        // `asset` is by then (the latest pick) — so rapid switching coalesces to one
+        // reset per settle, never two overlapping flushes.
+        if flushInFlight {
+            restartPending = true
+            extensionLog("  [restart #\(debugID)] flush in flight → coalescing to latest (\(asset.url.lastPathComponent))")
+            return
+        }
+        flushInFlight = true
         // Freeze the clock up front so it can't advance past PTS 0 during the async
         // flush — otherwise the first frames arrive "late" and get dropped.
         CMTimebaseSetRate(timebase, rate: 0.0)
@@ -480,16 +493,21 @@ final class VideoRenderer: @unchecked Sendable {
         nextReader = nil
         nextOutput = nil
 
-        extensionLog("  [restart #\(debugID)] epoch=\(epoch) flushing decoder for \(asset.url.lastPathComponent)")
+        extensionLog("  [restart #\(debugID)] flushing decoder for \(asset.url.lastPathComponent)")
         renderer.flush(removingDisplayedImage: false) { [weak self] in
             guard let self else { return }
             queue.async { [weak self] in
-                guard let self, isRunning else { return }
-                // A newer switch superseded us while the flush was in flight → bail.
-                guard epoch == restartEpoch else {
-                    extensionLog("  [restart #\(debugID)] epoch=\(epoch) superseded by \(restartEpoch), dropping")
+                guard let self else { return }
+                flushInFlight = false
+                // Switches arrived during the flush → do exactly one more restart to
+                // the newest asset, instead of feeding this (now stale) one.
+                if restartPending {
+                    restartPending = false
+                    extensionLog("  [restart #\(debugID)] coalesced → restarting to \(asset.url.lastPathComponent)")
+                    restartWithCurrentAsset()
                     return
                 }
+                guard isRunning else { return }
                 guard let reader = try? AVAssetReader(asset: asset) else {
                     extensionLog("  [restart #\(debugID)] FAILED to create AVAssetReader for \(asset.url.lastPathComponent)")
                     currentReader = nil
@@ -522,7 +540,8 @@ final class VideoRenderer: @unchecked Sendable {
                 }
 
                 CMTimebaseSetRate(timebase, rate: isPaused ? 0.0 : 1.0)
-                extensionLog("  [restart #\(debugID)] epoch=\(epoch) playing \(asset.url.lastPathComponent) rate=\(isPaused ? 0 : 1)")
+                extensionLog("  [restart #\(debugID)] playing \(asset.url.lastPathComponent) rate=\(isPaused ? 0 : 1) rendererStatus=\(renderer.status.rawValue) requiresFlush=\(renderer.requiresFlushToResumeDecoding) readerStatus=\(reader.status.rawValue) err=\(renderer.error?.localizedDescription ?? "-")")
+                feedLogBudget = 4
                 prepareNextReader()
                 feedFromCurrentReader()
             }
@@ -624,12 +643,15 @@ final class VideoRenderer: @unchecked Sendable {
 
             // Decoder hit a discontinuity or error — flush and continue feeding.
             if renderer.requiresFlushToResumeDecoding {
+                extensionLog("  [feed #\(debugID)] requiresFlushToResumeDecoding=YES → renderer.flush() (frames enqueued after may be discarded); status=\(renderer.status.rawValue)")
                 renderer.flush()
             }
 
+            var enqueuedThisTick = 0
             while renderer.isReadyForMoreMediaData {
                 if let sample = currentOutput?.copyNextSampleBuffer() {
                     let adjusted = offsetTimingForLoop(sample)
+                    enqueuedThisTick += 1
 
                     // Track the highest end time (max handles B-frame reordering).
                     // Some containers emit padding samples with invalid PTS — skip those
@@ -648,12 +670,19 @@ final class VideoRenderer: @unchecked Sendable {
                     renderer.enqueue(adjusted)
                 } else {
                     // Dispatch async: requestMediaDataWhenReady is not reentrant.
+                    if feedLogBudget > 0 {
+                        extensionLog("  [feed #\(debugID)] reader exhausted after enqueuing this tick=\(enqueuedThisTick); status=\(renderer.status.rawValue) → swapToNextReader")
+                    }
                     renderer.stopRequestingMediaData()
                     queue.async { [weak self] in
                         self?.swapToNextReader()
                     }
                     return
                 }
+            }
+            if feedLogBudget > 0 {
+                feedLogBudget -= 1
+                extensionLog("  [feed #\(debugID)] tick enqueued=\(enqueuedThisTick) status=\(renderer.status.rawValue) requiresFlush=\(renderer.requiresFlushToResumeDecoding) ready=\(renderer.isReadyForMoreMediaData) timebase=\(CMTimebaseGetTime(timebase).seconds)")
             }
         }
     }
