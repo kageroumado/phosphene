@@ -51,6 +51,15 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     /// invalidation can be attributed to a specific connection.
     var connectionPID: Int32 = -1
 
+    /// Whether this connection's most recent acquire was a Settings *preview*
+    /// (`isPreview: true`). A preview connection reports its own presentation state
+    /// (which idles/toggles as the picker is interacted with), and since every
+    /// connection shares the one desktop renderer, letting a preview's `update()`
+    /// apply pause policy would freeze the visible desktop wallpaper. Preview
+    /// connections therefore don't drive playback; only the live desktop connection
+    /// (`isPreview: false`) does.
+    private var acquiredAsPreview = false
+
     // MARK: - Lifecycle
 
     func acquire(withId id: Any?, request: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
@@ -126,6 +135,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         }
 
         extensionLog("  destination: \(destSize) @\(scaleFactor)x, isPreview: \(isPreview), pid: \(connectionPID), choice: \(choiceConfiguration ?? "nil"), files: \(choiceFiles)")
+        acquiredAsPreview = isPreview
 
         // Each acquire's `choiceConfiguration` is authoritative for *this* display's
         // context. Do NOT mutate the process-wide `currentVideoID` here based on a
@@ -302,6 +312,16 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             }
         }
 
+        // Preview connections must not drive the shared desktop renderer: their
+        // presentation state idles/toggles with the Settings picker and would freeze
+        // the visible wallpaper. Ignore their updates entirely (don't even mutate the
+        // global mode) — only the live desktop connection governs playback.
+        if acquiredAsPreview {
+            extensionLog("=== UPDATE (preview pid \(connectionPID), ignored) === mode: \(presentationMode), activity: \(activityState)")
+            reply(nil)
+            return
+        }
+
         // Store current mode/state so other policy paths use the correct values.
         WallpaperState.shared.presentationMode = presentationMode
         WallpaperState.shared.activityState = activityState
@@ -336,7 +356,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         }
 
         previousPresentationMode = presentationMode
-        extensionLog("=== UPDATE === mode: \(presentationMode), activity: \(activityState)")
+        extensionLog("=== UPDATE (desktop pid \(connectionPID)) === mode: \(presentationMode), activity: \(activityState), policy: \(policy)")
         reply(nil)
     }
 
