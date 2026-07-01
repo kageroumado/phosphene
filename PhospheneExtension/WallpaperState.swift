@@ -156,6 +156,7 @@ final class WallpaperState: Sendable {
         }
         for (_, ctx) in affected {
             ctx.renderer?.stop()
+            invalidateRemoteContext(ctx.caContext)
         }
         return affected.map { $0.1.displayID }
     }
@@ -208,6 +209,7 @@ final class WallpaperState: Sendable {
         }
         for ctx in removed {
             ctx.renderer?.stop()
+            invalidateRemoteContext(ctx.caContext)
         }
         return removed
     }
@@ -260,4 +262,17 @@ final class WallpaperState: Sendable {
         get { lock.withLock { $0.isScreenLocked } }
         set { lock.withLock { $0.isScreenLocked = newValue } }
     }
+}
+
+/// Force the WindowServer to reclaim a remote `CAContext`. Dropping our Swift
+/// reference (ARC) is NOT enough: the context is refcounted across processes, and
+/// WallpaperAgent's `CALayerHost` keeps the context's layer tree resident in the
+/// render server until it's explicitly invalidated. Without this, every wallpaper
+/// switch leaves a pinned tree behind → escalating composite cost / gray, reset
+/// only by `killall WallpaperAgent`. `-[CAContext invalidate]` reclaims it even
+/// while a consumer host is still attached.
+func invalidateRemoteContext(_ caContext: AnyObject) {
+    let sel = NSSelectorFromString("invalidate")
+    guard let object = caContext as? NSObject, object.responds(to: sel) else { return }
+    object.perform(sel)
 }

@@ -293,6 +293,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 case let .stored(existing):
                     if let existing {
                         existing.renderer?.stop()
+                        invalidateRemoteContext(existing.caContext)
                         extensionLog("  Stopped existing renderer for wallpaperID: \(wallpaperIDString ?? "?")")
                     }
                 }
@@ -417,6 +418,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 let uuid = String(idStr[range])
                 if let active = WallpaperState.shared.removeContext(wallpaperID: uuid) {
                     active.renderer?.stop()
+                    invalidateRemoteContext(active.caContext)
                     cleaned = true
                 } else {
                     extensionLog("  WARNING: No context found for wallpaperID \(uuid)")
