@@ -233,6 +233,7 @@ final class VideoRenderer: @unchecked Sendable {
     /// loads the track on its own internal queue, so there's no cooperative-executor
     /// starvation and no out-of-order Task completion. Local files load in a few ms.
     private static func loadFirstVideoTrackBlocking(_ asset: AVURLAsset) -> AVAssetTrack? {
+        extensionLog("  [load] blocking-load START \(asset.url.lastPathComponent) (queue will block until AVF replies)")
         let sem = DispatchSemaphore(value: 0)
         nonisolated(unsafe) var result: AVAssetTrack?
         asset.loadTracks(withMediaType: .video) { tracks, _ in
@@ -240,6 +241,7 @@ final class VideoRenderer: @unchecked Sendable {
             sem.signal()
         }
         sem.wait()
+        extensionLog("  [load] blocking-load DONE \(asset.url.lastPathComponent) track=\(result != nil ? "ok" : "nil")")
         return result
     }
 
@@ -496,6 +498,7 @@ final class VideoRenderer: @unchecked Sendable {
         // a restart is wanted. When that flush completes it will restart to whatever
         // `asset` is by then (the latest pick) — so rapid switching coalesces to one
         // reset per settle, never two overlapping flushes.
+        extensionLog("  [restart #\(debugID)] ENTER flushInFlight=\(flushInFlight) restartPending=\(restartPending) asset=\(asset.url.lastPathComponent)")
         if flushInFlight {
             restartPending = true
             extensionLog("  [restart #\(debugID)] flush in flight → coalescing to latest (\(asset.url.lastPathComponent))")
@@ -515,10 +518,12 @@ final class VideoRenderer: @unchecked Sendable {
         // Keep the currently displayed frame (no blank) — the first new frame below is
         // tagged DisplayImmediately, which replaces it the instant it decodes.
         renderer.flush(removingDisplayedImage: false) { [weak self] in
-            guard let self else { return }
+            guard let self else { extensionLog("  [restart] FLUSH-CB but self gone (flushInFlight leaks!)"); return }
+            extensionLog("  [restart #\(debugID)] FLUSH-CB fired (rendererStatus=\(renderer.status.rawValue)) → hop to queue")
             queue.async { [weak self] in
                 guard let self else { return }
                 flushInFlight = false
+                extensionLog("  [restart #\(debugID)] FLUSH-CB on queue: flushInFlight→false, restartPending=\(restartPending), asset=\(asset.url.lastPathComponent), isRunning=\(isRunning)")
                 // Switches arrived during the flush → do exactly one more restart to
                 // the newest asset, instead of feeding this (now stale) one.
                 if restartPending {
