@@ -29,6 +29,18 @@ final class VideoRenderer: @unchecked Sendable {
     private var nextReader: AVAssetReader?
     private var nextOutput: AVAssetReaderTrackOutput?
 
+    /// Monotonic pipeline generation, mutated and read ONLY on `queue`. Bumped on
+    /// every switch and every `recreatePlayback`. Async completions (switch track
+    /// load, variant preload) capture the generation at kickoff and no-op if it has
+    /// since advanced — so a slow older load can never clobber a newer pick, and a
+    /// switch invalidates any in-flight variant install. This is what makes rapid
+    /// switching last-*requested*-wins instead of last-*completed*-wins.
+    private var generation = 0
+
+    /// The in-flight switch track load, cancelled when a newer switch supersedes it.
+    /// Touched only on `queue`.
+    private var loadTask: Task<Void, Never>?
+
     // Gapless looping state.
     // ptsOffset accumulates across loops so both DTS and PTS are monotonically increasing.
     // lastEnqueuedEnd tracks the highest sample end time (max, not last — handles B-frames).
@@ -164,22 +176,42 @@ final class VideoRenderer: @unchecked Sendable {
     /// added to an already-hosted context does NOT composite (the switch-between-
     /// videos bug). Same mechanism as the adaptive-variant `swapToNextReader`, just
     /// triggered immediately instead of at a loop boundary.
+    ///
+    /// Serialized on `queue`: dedups a repeat of the current video, bumps the pipeline
+    /// `generation` to supersede any in-flight switch, cancels the previous track load,
+    /// and drops its own result if a newer switch has since landed. This makes rapid
+    /// switching last-*requested*-wins — without it, out-of-order `loadTracks`
+    /// completions strand playback on a stale asset (BUG 2) and can hand
+    /// `recreatePlayback` a track/asset mismatch that crashes the appex (BUG 1).
     func switchVideo(to url: URL) {
-        let newAsset = AVURLAsset(url: url)
-        Task.detached { @Sendable [weak self] in
-            guard let self else { return }
-            guard let track = try? await newAsset.loadTracks(withMediaType: .video).first else {
-                extensionLog("  [Renderer] switchVideo: no video track in \(url.lastPathComponent)")
+        queue.async { [weak self] in
+            guard let self, isRunning else { return }
+            // Same file already playing → nothing to do (defuses repeated identical picks).
+            if asset.url == url {
+                extensionLog("  [Renderer] switchVideo: already on \(url.lastPathComponent), skipping")
                 return
             }
-            nonisolated(unsafe) let loadedTrack = track
-            queue.async { [weak self] in
-                guard let self, isRunning else { return }
-                asset = newAsset
-                videoTrack = loadedTrack
-                recreatePlayback()
-                CMTimebaseSetRate(timebase, rate: isPaused ? 0.0 : 1.0)
-                extensionLog("  [Renderer] Switched video in place to \(url.lastPathComponent)")
+            generation += 1
+            let gen = generation
+            loadTask?.cancel()
+            let newAsset = AVURLAsset(url: url)
+            loadTask = Task.detached { @Sendable [weak self] in
+                guard let self else { return }
+                let track = try? await newAsset.loadTracks(withMediaType: .video).first
+                nonisolated(unsafe) let loadedTrack = track
+                queue.async { [weak self] in
+                    // Superseded by a newer switch (or torn down) → drop this result.
+                    guard let self, isRunning, gen == generation else { return }
+                    guard let loadedTrack else {
+                        extensionLog("  [Renderer] switchVideo: no video track in \(url.lastPathComponent)")
+                        return
+                    }
+                    asset = newAsset
+                    videoTrack = loadedTrack
+                    recreatePlayback()
+                    CMTimebaseSetRate(timebase, rate: isPaused ? 0.0 : 1.0)
+                    extensionLog("  [Renderer] Switched video in place to \(url.lastPathComponent)")
+                }
             }
         }
     }
@@ -389,6 +421,8 @@ final class VideoRenderer: @unchecked Sendable {
     /// by both deep-pause-wake and the error recovery path. Restarts the
     /// timeline from zero — caller is responsible for restoring timebase rate.
     private func recreatePlayback() {
+        // Rebuilding the pipeline supersedes any in-flight variant/switch load.
+        generation += 1
         renderer.stopRequestingMediaData()
         renderer.flush()
         ptsOffset = .zero
@@ -429,6 +463,7 @@ final class VideoRenderer: @unchecked Sendable {
             // blocking this queue thread on a DispatchSemaphore.
             let nextURL = variantSelector?()
             if let nextURL, nextURL != asset.url {
+                let gen = generation
                 let newAsset = AVURLAsset(url: nextURL)
                 Task.detached { @Sendable [weak self] in
                     guard let self else { return }
@@ -438,7 +473,8 @@ final class VideoRenderer: @unchecked Sendable {
                     }
                     nonisolated(unsafe) let loadedTrack = track
                     queue.async { [weak self] in
-                        guard let self, isRunning else { return }
+                        // A switch/recreate since kickoff invalidated this variant.
+                        guard let self, isRunning, gen == generation else { return }
                         installNextReader(asset: newAsset, track: loadedTrack)
                     }
                 }
