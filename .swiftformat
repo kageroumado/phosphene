@@ -11,13 +11,12 @@
 --enable blankLineAfterImports,blockComments,wrapEnumCases,wrapSingleLineComments
 
 # Disabled rules
---disable wrapMultilineStatementBraces,wrapMultilineConditionalAssignment,blankLinesBetweenScopes,redundantInternal
+# redundantSelf: strips `self.` that closures need for explicit capture (build-breaking here).
+# initCoderUnavailable: marks required init?(coder:) @available(*,unavailable), breaking NSCoding shims.
+--disable wrapMultilineStatementBraces,wrapMultilineConditionalAssignment,blankLinesBetweenScopes,redundantInternal,redundantSelf,initCoderUnavailable
 
 # Header stripping
 --header strip
-
-# self usage
---self init-only
 
 # Numeric formatting
 --decimalgrouping 3
