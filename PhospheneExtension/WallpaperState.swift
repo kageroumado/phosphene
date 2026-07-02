@@ -255,6 +255,19 @@ final class WallpaperState: Sendable {
         }
     }
 
+    /// Whether this display already has a slot with a running renderer — i.e. an
+    /// existing Phosphene surface WallpaperAgent can keep compositing while a new
+    /// acquire's context comes up. False on a cold start (first activation / nothing to
+    /// hold). The acquire path uses this to decide reply timing: on a cold start it
+    /// replies as soon as the poster still is up (the agent shows the still, no black
+    /// gap); on a real switch it defers the reply until the new context is rendering
+    /// video, so the host swap lands directly on video with no still-flash.
+    func hasLiveRenderer(onDisplay displayID: UInt32) -> Bool {
+        lock.withLock { state in
+            state.contexts.values.contains { $0.displayID == displayID && $0.renderer != nil }
+        }
+    }
+
     // MARK: - Properties
 
     var cachedThumbnailURL: URL? {

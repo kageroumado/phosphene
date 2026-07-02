@@ -371,31 +371,52 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             return
         }
 
+        // Cold start = no existing Phosphene surface on this display for the agent to keep
+        // compositing during the swap. Unlike a switch (where the outgoing context is OURS
+        // and stays hosted, via the teardown grace, until we reply), here the agent has
+        // nothing of ours to hold — the instant it hosts our context it shows whatever the
+        // context contains. `rootLayer.contents` is BLACK cross-process (only IOSurface-
+        // backed AVSampleBufferDisplayLayer content composites remotely — see
+        // Research/wallpaper-extension-issue13-and-rendering-findings.md), so replying
+        // before the renderer exists paints black. Instead, on a cold start we reply the
+        // instant VideoRenderer.create() has seeded + flushed the IOSurface still into the
+        // display layer: the agent then hosts a context already showing the still, and the
+        // video plays over it in place. A switch keeps deferring until the first video frame.
+        let coldStart = !WallpaperState.shared.hasLiveRenderer(onDisplay: displayID0)
+
         // Claim the single create slot for this display. If a racing (preview)
         // acquire beat us to it, skip — exactly one renderer per display.
         if WallpaperState.shared.claimRendererCreate(for: key) {
-            traceLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent)")
+            traceLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent) (coldStart=\(coldStart))")
             let boxedRoot = SendableBox(value: rootLayer)
             // The reply object is non-Sendable; box it to cross into the render Task.
             let boxedReply = SendableBox(value: replyObj)
             let selector = makeVariantSelector(choice: choiceConfiguration, fallback: videoURL)
-            Task { [boxedRoot, boxedReply, videoURL, cachedStill, selector, key, choiceConfiguration] in
+            Task { [coldStart, boxedRoot, boxedReply, videoURL, cachedStill, selector, key, choiceConfiguration] in
                 let renderer: VideoRenderer
                 do {
                     renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill)
                 } catch {
                     extensionLog("  [Renderer] Failed to create: \(error)")
                     WallpaperState.shared.clearRendererPending(for: key)
-                    reply(boxedReply.value, nil)  // context still has the cached still — let the swap proceed
+                    reply(boxedReply.value, nil) // unblock the acquire regardless (create failed)
                     return
+                }
+                // Cold start: the IOSurface still is now seeded + flushed into the display
+                // layer, so reply — the agent hosts our context already showing the still
+                // (no black gap), and video plays over it.
+                if coldStart {
+                    reply(boxedReply.value, nil)
+                    traceLog("  [acquire] cold start → replied after still seeded for \(videoURL.lastPathComponent)")
                 }
                 renderer.variantSelector = selector
                 let old = WallpaperState.shared.setRenderer(renderer, videoID: choiceConfiguration, for: key)
                 WallpaperPrefs.shared.setActive(true)
-                // Reply only once the first video frame is composited into this context,
-                // then stop the old renderer (the agent has been told to swap off it).
+                // Switch: reply only once the first video frame is composited (cold start
+                // already replied with the still). Either way, stop the old renderer once
+                // we've told the agent to swap off it.
                 renderer.start(onFirstFrameReady: {
-                    reply(boxedReply.value, nil)
+                    if !coldStart { reply(boxedReply.value, nil) }
                     old?.stop()
                 })
             }

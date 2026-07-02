@@ -1,6 +1,19 @@
 import AVFoundation
 import CoreMedia
+import ObjectiveC
 import os
+
+/// Call AVSampleBufferDisplayLayer's private `_setDisallowsVideoLayerDisplayCompositing:`
+/// (a BOOL setter Apple's WallpaperExtensionKit uses on every AVSBDL). Resolved via the
+/// ObjC runtime so the private selector never appears in a header; a no-op if the API
+/// ever disappears. Prevents the layer painting opaque black before its first frame.
+private func setDisallowsVideoLayerDisplayCompositing(_ layer: CALayer, _ flag: Bool) {
+    let sel = NSSelectorFromString("_setDisallowsVideoLayerDisplayCompositing:")
+    guard layer.responds(to: sel),
+          let imp = class_getMethodImplementation(type(of: layer), sel) else { return }
+    typealias SetBoolFn = @convention(c) (AnyObject, Selector, ObjCBool) -> Void
+    unsafeBitCast(imp, to: SetBoolFn.self)(layer, sel, ObjCBool(flag))
+}
 
 final class VideoRenderer: @unchecked Sendable {
     /// Process-wide instance counter so log lines can be attributed to a specific
@@ -69,6 +82,11 @@ final class VideoRenderer: @unchecked Sendable {
         // makes the layer visibly blink while the compositor rebuilds it during a
         // switch. Opaque keeps the switch seamless.
         displayLayer.isOpaque = true
+        // Match Apple's WallpaperExtensionKit: stop the AVSampleBufferDisplayLayer from
+        // painting opaque BLACK before its first frame is composited. On a cold start the
+        // Agent hosts our context the instant we reply, and without this an as-yet-empty
+        // layer flashes black (the residual "black still"). Apple sets this on every AVSBDL.
+        setDisallowsVideoLayerDisplayCompositing(displayLayer, true)
         // Added to the tree in init() inside an action-free transaction (below).
 
         return VideoRenderer(
@@ -127,6 +145,10 @@ final class VideoRenderer: @unchecked Sendable {
         rootLayer.addSublayer(stillFrameLayer)
         traceLog("  [Renderer #\(debugID)] CREATED for \(asset.url.lastPathComponent), displayLayer=\(ObjectIdentifier(displayLayer)), rootLayer sublayers=\((rootLayer.sublayers?.count ?? 0))")
         if let stillImage, let stillBuffer = makeStillSampleBuffer(from: stillImage) {
+            // Tag DisplayImmediately so the still is shown the instant it's enqueued,
+            // rather than waiting on the control timebase (which is frozen at rate 0 here).
+            // Without this the frame can sit undisplayed → the layer reads empty → black.
+            Self.setDisplayImmediately(stillBuffer)
             renderer.enqueue(stillBuffer)
             traceLog("  [Renderer #\(debugID)] Seeded still into display layer (\(stillImage.width)x\(stillImage.height))")
         } else {
