@@ -1,12 +1,3 @@
-// Validation helpers that keep library file operations inside the managed
-// videos directory.
-//
-// Entry identifiers come from on-disk directory names and `metadata.json`
-// files; filenames come from the same metadata. A corrupted or hand-edited
-// library file must never be able to steer a read/copy/remove outside the
-// `videos/` tree, so every untrusted component is validated before it is
-// appended to a path, and the final URL is range-checked against its base.
-
 import Foundation
 
 enum PathSafety {

@@ -37,7 +37,7 @@ struct LibraryWindow: View {
             }
             .onAppear { loadEntries() }
             .onReceive(
-                NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification)
+                NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification),
             ) { _ in
                 loadEntries()
             }

@@ -1,9 +1,3 @@
-// Settings view model construction for the wallpaper picker UI.
-//
-// Builds WallpaperSettingsViewModelsXPC objects that tell System Settings
-// how to display our wallpapers in the picker. Each video in the library
-// becomes a selectable item.
-
 import AppKit
 import Foundation
 

@@ -1,9 +1,3 @@
-// Codable shims matching WallpaperTypes encoding format.
-//
-// These structs produce the same NSKeyedArchiver encoding as the real WallpaperTypes structs.
-// We archive a ShimViewModelsXPC, swap the class name to WallpaperSettingsViewModelsXPC
-// in the plist, and unarchive — the real class's init(coder:) decodes it via Codable.
-
 import Foundation
 
 struct SettingsViewModels: Codable {
@@ -56,10 +50,7 @@ enum Disposability: Codable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if container.contains(.none) { self = .none }
-        else if container.contains(.removable) { self = .removable }
-        else if container.contains(.purgeable) { self = .purgeable }
-        else { self = .none }
+        if container.contains(.none) { self = .none } else if container.contains(.removable) { self = .removable } else if container.contains(.purgeable) { self = .purgeable } else { self = .none }
     }
 }
 
@@ -122,10 +113,7 @@ enum ContentBadge: Codable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if container.contains(.none) { self = .none }
-        else if container.contains(.video) { self = .video }
-        else if container.contains(.dynamic) { self = .dynamic }
-        else { self = .none }
+        if container.contains(.none) { self = .none } else if container.contains(.video) { self = .video } else if container.contains(.dynamic) { self = .dynamic } else { self = .none }
     }
 }
 
@@ -202,10 +190,7 @@ enum CustomButton: Codable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if container.contains(.addPhotoButton) { self = .addPhotoButton }
-        else if container.contains(.addColorButton) { self = .addColorButton }
-        else if container.contains(.shuffleColorsButton) { self = .shuffleColorsButton }
-        else { self = .addPhotoButton }
+        if container.contains(.addPhotoButton) { self = .addPhotoButton } else if container.contains(.addColorButton) { self = .addColorButton } else if container.contains(.shuffleColorsButton) { self = .shuffleColorsButton } else { self = .addPhotoButton }
     }
 }
 
@@ -289,7 +274,7 @@ class ShimViewModelsXPC: NSObject, NSSecureCoding {
         super.init()
     }
 
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         fatalError("decode not needed")
     }
 

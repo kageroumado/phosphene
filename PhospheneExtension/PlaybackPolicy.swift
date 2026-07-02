@@ -2,7 +2,7 @@ import Foundation
 
 /// Central decision-maker for wallpaper playback behavior.
 /// Replaces scattered shouldPause boolean checks with a graduated policy system.
-enum PlaybackPolicy: Int, Sendable, Comparable {
+enum PlaybackPolicy: Int, Comparable {
     case full = 0
     case reduced = 1
     case minimal = 2
@@ -29,7 +29,7 @@ enum PlaybackPolicy: Int, Sendable, Comparable {
         isOnBattery: Bool,
         batteryLevel: Int,
         isGameModeActive: Bool,
-        displayBrightness: Float = 1.0
+        displayBrightness: Float = 1.0,
     ) -> PlaybackPolicy {
         var worst: PlaybackPolicy = .full
 
@@ -88,7 +88,7 @@ enum PlaybackPolicy: Int, Sendable, Comparable {
         alwaysPauseDesktop: Bool,
         pauseWhenOccluded: Bool,
         desktopOccluded: Bool,
-        powerState: PowerMonitor.PowerState
+        powerState: PowerMonitor.PowerState,
     ) -> PlaybackPolicy {
         compute(
             presentationMode: presentationMode,
@@ -101,7 +101,7 @@ enum PlaybackPolicy: Int, Sendable, Comparable {
             isOnBattery: powerState.isOnBattery,
             batteryLevel: powerState.batteryLevel,
             isGameModeActive: powerState.isGameModeActive,
-            displayBrightness: powerState.displayBrightness
+            displayBrightness: powerState.displayBrightness,
         )
     }
 }

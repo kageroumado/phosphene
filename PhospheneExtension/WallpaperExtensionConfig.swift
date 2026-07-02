@@ -1,14 +1,9 @@
-// XPC connection configuration for the wallpaper extension.
-//
-// Accepts incoming connections from WallpaperAgent, sets up class whitelists
-// for all XPC type parameters, and wires up the handler.
-
 import ExtensionFoundation
 import Foundation
 
 struct WallpaperExtensionConfig: AppExtensionConfiguration {
     func accept(connection: NSXPCConnection) -> Bool {
-        extensionLog("XPC from PID=\(connection.processIdentifier)")
+        traceLog("XPC from PID=\(connection.processIdentifier)")
 
         // Validate the caller before building interfaces, exporting the handler,
         // or resuming — an unexpected (non-Apple) process never reaches our
@@ -107,11 +102,22 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
         handler.connectionPID = connection.processIdentifier
         connection.exportedObject = handler
 
-        connection.interruptionHandler = { extensionLog("XPC interrupted") }
+        connection.interruptionHandler = { traceLog("XPC interrupted") }
         connection.invalidationHandler = { [weak handler] in
             guard let handler else { extensionLog("XPC invalidated (handler gone)"); return }
             handler.agentProxy = nil
             let pid = handler.connectionPID
+
+            // Spiral-of-death detection: a connection accepted then invalidated WITHOUT ever
+            // serving a method is "empty". A run of these with no healthy connection to
+            // cancel it means WallpaperAgent is stuck (see SpiralRecovery) → self-heal via
+            // relaunch. A connection that served any method already reset the run.
+            if handler.didServeMethod {
+                SpiralRecovery.noteHealthyConnection()
+            } else {
+                SpiralRecovery.noteEmptyConnection(pid: pid)
+                extensionLog("XPC invalidated (pid: \(pid)) — EMPTY (no method served)")
+            }
 
             // Context-reuse model: DO NOT tear down contexts on connection drop.
             // Every wallpaper pick (and idle transition) drops the connection holding
@@ -124,7 +130,7 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
             // escalating gray. Contexts are only freed when their video is removed
             // (`removeChoiceRequest`); a genuinely idle process is suspended by
             // RunningBoard, which pauses the renderers at no cost.
-            extensionLog("XPC invalidated (pid: \(pid)) — kept \(WallpaperState.shared.activeContextCount) context(s) for reuse")
+            traceLog("XPC invalidated (pid: \(pid)) — kept \(WallpaperState.shared.activeContextCount) context(s) for reuse")
         }
 
         // Publish the proxy before resuming so an early incoming callback can't
@@ -133,7 +139,7 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
 
         connection.resume()
 
-        extensionLog("XPC accepted with full protocol")
+        traceLog("XPC accepted with full protocol")
         return true
     }
 }

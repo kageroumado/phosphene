@@ -1,8 +1,3 @@
-// Runtime helpers for constructing WallpaperExtensionKit XPC objects.
-//
-// These use class_createInstance + ivar writes because the real types
-// don't expose Swift-accessible initializers.
-
 import Foundation
 import IOSurface
 
@@ -32,7 +27,7 @@ func createRemoteContextXPC(contextId: UInt32) -> AnyObject? {
         return nil
     }
     ptr.advanced(by: ivarOffset).storeBytes(of: contextId, as: UInt32.self)
-    extensionLog("  Created WallpaperRemoteContextXPC (contextId: \(contextId), offset: \(ivarOffset))")
+    traceLog("  Created WallpaperRemoteContextXPC (contextId: \(contextId), offset: \(ivarOffset))")
     return obj
 }
 

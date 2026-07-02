@@ -1,8 +1,3 @@
-// XPC handler implementing the WallpaperExtensionXPCProtocol.
-//
-// Handles lifecycle (acquire/update/invalidate/snapshot), settings,
-// and stub methods for choices, downloads, migration, shuffle, and debug.
-
 import AppKit
 import AVFoundation
 import CoreMedia
@@ -14,8 +9,8 @@ import QuartzCore
 /// Reading the per-context `choice` (not the process-wide `currentVideoID`) keeps
 /// each display on its own selection — otherwise every renderer would converge on
 /// whichever choice was set most recently (multi-monitor bug).
-func makeVariantSelector(choice: String?, fallback: URL) -> () -> URL {
-    return {
+func makeVariantSelector(choice: String?, fallback: URL) -> @Sendable () -> URL {
+    {
         guard let videoID = choice else { return fallback }
         let state = WallpaperState.shared
         let prefs = WallpaperPrefs.shared
@@ -32,6 +27,54 @@ func makeVariantSelector(choice: String?, fallback: URL) -> () -> URL {
     }
 }
 
+/// Process-wide serialization for wallpaper lifecycle XPC. Every connection gets its
+/// own `WallpaperXPCHandler`, but the Agent multiplexes desktop + Settings-preview +
+/// thumbnail connections, so lifecycle callbacks (acquire/update/invalidate/choice
+/// change) can otherwise interleave across connections. We funnel them all through ONE
+/// serial queue — mirroring Apple's single `Controller`-actor `AsyncQueue` — so an
+/// invalidate can't slip between the halves of an acquire.
+/// Carries a non-Sendable value (e.g. a `CALayer`) into a `Task` without tainting the
+/// closure's isolation region. `nonisolated(unsafe)` on a local isn't enough under Swift 6.2
+/// region-based isolation — capturing the raw layer merges other (Sendable) captures like
+/// `videoURL` into a non-Sendable region, which then trips the `sending` checker across the
+/// sibling BMP-snapshot Task. Boxing makes the capture genuinely Sendable.
+struct SendableBox<T>: @unchecked Sendable { let value: T }
+
+enum Lifecycle {
+    static let queue = DispatchQueue(label: "glass.kagerou.phosphene.lifecycle")
+
+    /// Pending per-display teardown timers. Touched ONLY on `queue`.
+    nonisolated(unsafe) static var teardownTimers: [DisplayKey: DispatchWorkItem] = [:]
+
+    /// Grace between an invalidate of a display's LIVE wallpaper and actually tearing it
+    /// down. A re-acquire (display woke / switched) cancels it; only a display that stays
+    /// gone (asleep/removed) lets it fire. Short enough to save power promptly, long enough
+    /// to ride out a brief sleep/wake flicker.
+    static let teardownGrace: TimeInterval = 15.0
+}
+
+/// Arm (or re-arm) the teardown timer for a display whose live wallpaper was invalidated.
+/// MUST be called on `Lifecycle.queue`.
+private func scheduleTeardown(for key: DisplayKey) {
+    Lifecycle.teardownTimers[key]?.cancel()
+    let item = DispatchWorkItem {
+        Lifecycle.teardownTimers[key] = nil
+        let torn = WallpaperState.shared.tearDownContext(for: key)
+        extensionLog("  [teardown] grace fired for display \(key.displayID) → \(torn ? "stopped renderer + invalidated CAContext" : "nothing to tear down")")
+    }
+    Lifecycle.teardownTimers[key] = item
+    Lifecycle.queue.asyncAfter(deadline: .now() + Lifecycle.teardownGrace, execute: item)
+}
+
+/// Cancel a display's pending teardown because it was re-acquired (woke / switched).
+/// MUST be called on `Lifecycle.queue`.
+private func cancelTeardown(for key: DisplayKey) {
+    if let item = Lifecycle.teardownTimers.removeValue(forKey: key) {
+        item.cancel()
+        extensionLog("  [teardown] cancelled pending teardown for display \(key.displayID) (re-acquired)")
+    }
+}
+
 final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     /// Proxy to call methods on WallpaperAgent (ping, invalidateSnapshots, etc.).
     /// Lock-backed: it's assigned in `accept(connection:)` and nilled from the
@@ -40,7 +83,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     /// `nonisolated(unsafe)` storage rather than `OSAllocatedUnfairLock` (whose
     /// `withLock` body is `@Sendable` and would reject the non-Sendable value).
     private let agentProxyLock = NSLock()
-    nonisolated(unsafe) private var _agentProxy: (any WallpaperExtensionProxyXPCProtocol)?
+    private nonisolated(unsafe) var _agentProxy: (any WallpaperExtensionProxyXPCProtocol)?
     var agentProxy: (any WallpaperExtensionProxyXPCProtocol)? {
         get { agentProxyLock.lock(); defer { agentProxyLock.unlock() }; return _agentProxy }
         set { agentProxyLock.lock(); defer { agentProxyLock.unlock() }; _agentProxy = newValue }
@@ -60,10 +103,42 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     /// (`isPreview: false`) does.
     private var acquiredAsPreview = false
 
+    /// Whether any exported method has been invoked on this connection. Read by the
+    /// invalidationHandler: a connection that is accepted and invalidated without ever
+    /// serving a method is "empty" — the WallpaperAgent spiral-of-death signal
+    /// (see SpiralRecovery). Set synchronously at each method's entry, before any queue hop.
+    private let servedMethod = OSAllocatedUnfairLock(initialState: false)
+    var didServeMethod: Bool {
+        servedMethod.withLock { $0 }
+    }
+
+    /// Mark this connection as healthy (a real method arrived) and clear any spiral run.
+    /// Call first thing in every exported entry point.
+    private func markServed() {
+        servedMethod.withLock { $0 = true }
+        SpiralRecovery.noteHealthyConnection()
+    }
+
     // MARK: - Lifecycle
 
+    /// Stable per-display surface UUID for the rare acquire that carries no WallpaperID — so
+    /// such acquires still collapse to one context per display (old behavior) instead of
+    /// minting a fresh context each time. Encodes the displayID into a fixed UUID layout.
+    static func fallbackSurfaceUUID(forDisplay displayID: UInt32) -> UUID {
+        UUID(uuidString: String(format: "00000000-0000-0000-0000-%012x", displayID))
+            ?? UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+    }
+
     func acquire(withId id: Any?, request: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
-        extensionLog("=== ACQUIRE ===")
+        markServed()
+        nonisolated(unsafe) let unsafeRequest = request
+        nonisolated(unsafe) let unsafeID = id
+        nonisolated(unsafe) let handler = self
+        Lifecycle.queue.async { handler.acquireBody(id: unsafeID, request: unsafeRequest, reply: reply) }
+    }
+
+    private func acquireBody(id: Any?, request: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
+        traceLog("=== ACQUIRE ===")
 
         // Extract destination size from WallpaperCreationRequestXPC
         var destSize = CGSize(width: 2_560, height: 1_440) // fallback
@@ -127,14 +202,14 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     let after = desc[idRange.upperBound...]
                     if let endQuote = after.firstIndex(of: "\"") {
                         let identifier = String(after[..<endQuote])
-                        extensionLog("  [Choice] Fallback extraction from description: identifier=\(identifier)")
+                        traceLog("  [Choice] Fallback extraction from description: identifier=\(identifier)")
                         choiceConfiguration = identifier
                     }
                 }
             }
         }
 
-        extensionLog("  destination: \(destSize) @\(scaleFactor)x, isPreview: \(isPreview), pid: \(connectionPID), choice: \(choiceConfiguration ?? "nil"), files: \(choiceFiles)")
+        traceLog("  destination: \(destSize) @\(scaleFactor)x, isPreview: \(isPreview), pid: \(connectionPID), choice: \(choiceConfiguration ?? "nil"), files: \(choiceFiles)")
         acquiredAsPreview = isPreview
 
         // Each acquire's `choiceConfiguration` is authoritative for *this* display's
@@ -148,9 +223,26 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             WallpaperState.shared.currentVideoID = videoID
         }
 
-        let key = DisplayKey(displayID: displayID ?? 0)
+        // Each WallpaperID (a Space, the lock-screen surface, or a Settings preview) is its own
+        // hosted surface and must get its OWN CAContext — sharing one context per display let a
+        // second Space or the lock surface steal it and black out the first. Key the context by
+        // the WallpaperID UUID; fall back to a per-display constant if an id ever lacks one.
+        let displayID0 = displayID ?? 0
+        let surfaceUUID = extractWallpaperUUID(fromID: id) ?? Self.fallbackSurfaceUUID(forDisplay: displayID0)
+        let key = DisplayKey(displayID: displayID0, surfaceUUID: surfaceUUID)
+        WallpaperState.shared.registerWallpaperID(surfaceUUID, key: key)
+        // A re-acquire of THIS surface (display woke / preview refresh / switch) cancels its
+        // pending teardown so a brief invalidate→re-acquire flicker doesn't drop it.
+        cancelTeardown(for: key)
         let videoURL = findVideoURL(forChoice: choiceConfiguration)
         let cachedStill = loadCachedSnapshotImage(forChoice: choiceConfiguration)
+
+        // Diagnostic bisection: host a still only (no video pipeline). Same context
+        // reuse/create/reply as below — that's what we're stress-testing — but no renderer.
+        if Bisect.stillOnly {
+            acquireStillOnlyBisect(key: key, displayID: displayID, destSize: destSize, scaleFactor: scaleFactor, videoURL: videoURL, cachedStill: cachedStill, choice: choiceConfiguration, reply: reply)
+            return
+        }
 
         // ---- REUSE: the display's single persistent context already exists ----
         // Return the SAME contextId regardless of whether this is the desktop or a
@@ -158,18 +250,20 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // accumulation, no orphan). Only swap the video if the choice actually
         // changed; re-selecting the same wallpaper is a no-op.
         if let existing = WallpaperState.shared.context(for: key) {
-            extensionLog("  [acquire] REUSE ctx=\(existing.contextId) display=\(key.displayID) storedVideoID=\(existing.videoID ?? "nil") newChoice=\(choiceConfiguration ?? "nil") renderer=\(existing.renderer.map { "#\($0.debugID)" } ?? "nil") videoURL=\(findVideoURL(forChoice: choiceConfiguration)?.lastPathComponent ?? "nil")")
+            traceLog("  [acquire] REUSE ctx=\(existing.contextId) display=\(key.displayID) storedVideoID=\(existing.videoID ?? "nil") newChoice=\(choiceConfiguration ?? "nil") renderer=\(existing.renderer.map { "#\($0.debugID)" } ?? "nil") videoURL=\(findVideoURL(forChoice: choiceConfiguration)?.lastPathComponent ?? "nil")")
             guard let replyObj = createRemoteContextXPC(contextId: existing.contextId) else {
                 reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
             }
             reply(replyObj, nil)
 
+            if ColorDiag.enabled { colorDiagInstall(rootLayer: existing.rootLayer, for: key); return }
+
             if existing.videoID == choiceConfiguration, existing.renderer != nil {
-                extensionLog("  [acquire] SAME choice (\(choiceConfiguration ?? "nil")) + renderer present → no swap")
+                traceLog("  [acquire] SAME choice (\(choiceConfiguration ?? "nil")) + renderer present → no swap")
                 return
             }
             guard let videoURL else {
-                extensionLog("  [acquire] no video for new choice, keeping current")
+                traceLog("  [acquire] no video for new choice, keeping current")
                 return
             }
             extensionLog("  [acquire] switching to \(videoURL.lastPathComponent) (renderer \(existing.renderer != nil ? "present → switchVideo" : "nil → create"))")
@@ -187,11 +281,11 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 // Context exists but no renderer yet AND no create already in flight —
                 // attach one to the existing root layer. The claim prevents a racing
                 // (preview) acquire from creating a duplicate renderer on the same layer.
-                nonisolated(unsafe) let unsafeRoot = existing.rootLayer
-                Task {
+                let boxedRoot = SendableBox(value: existing.rootLayer)
+                Task { [boxedRoot, videoURL, cachedStill, selector, key, choiceConfiguration] in
                     let renderer: VideoRenderer
                     do {
-                        renderer = try await VideoRenderer.create(rootLayer: unsafeRoot, videoURL: videoURL, stillImage: cachedStill)
+                        renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill)
                     } catch {
                         extensionLog("  [Renderer] swap create failed: \(error)")
                         WallpaperState.shared.clearRendererPending(for: key)
@@ -204,10 +298,10 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     renderer.start()
                 }
             } else {
-                extensionLog("  [acquire] renderer create already in flight for display \(key.displayID) — skipping duplicate")
+                traceLog("  [acquire] renderer create already in flight for display \(key.displayID) — skipping duplicate")
             }
             let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
-            Task { await writeBMPSnapshot(videoURL: videoURL, videoID: choiceConfiguration, displayPixelWidth: w, displayPixelHeight: h) }
+            Task { [videoURL, choiceConfiguration, w, h] in await writeBMPSnapshot(videoURL: videoURL, videoID: choiceConfiguration, displayPixelWidth: w, displayPixelHeight: h) }
             return
         }
 
@@ -241,10 +335,12 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // acquire for the same display reuses this context instead of creating another.
         WallpaperState.shared.installContext(
             ActiveWallpaper(caContext: caContext, contextId: contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration),
-            for: key
+            for: key,
         )
         reply(replyObj, nil)
         extensionLog("  Created context \(contextId) for display \(key.displayID)")
+
+        if ColorDiag.enabled { colorDiagInstall(rootLayer: rootLayer, for: key); return }
 
         guard let videoURL else {
             // No video file — solid gradient fallback.
@@ -268,13 +364,13 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // Claim the single create slot for this display. If a racing (preview)
         // acquire beat us to it, skip — exactly one renderer per display.
         if WallpaperState.shared.claimRendererCreate(for: key) {
-            extensionLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent)")
-            nonisolated(unsafe) let unsafeRoot = rootLayer
+            traceLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent)")
+            let boxedRoot = SendableBox(value: rootLayer)
             let selector = makeVariantSelector(choice: choiceConfiguration, fallback: videoURL)
-            Task {
+            Task { [boxedRoot, videoURL, cachedStill, selector, key, choiceConfiguration] in
                 let renderer: VideoRenderer
                 do {
-                    renderer = try await VideoRenderer.create(rootLayer: unsafeRoot, videoURL: videoURL, stillImage: cachedStill)
+                    renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill)
                 } catch {
                     extensionLog("  [Renderer] Failed to create: \(error)")
                     WallpaperState.shared.clearRendererPending(for: key)
@@ -287,15 +383,68 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 renderer.start()
             }
         } else {
-            extensionLog("  [acquire] renderer create already in flight for display \(key.displayID) — skipping duplicate (create path)")
+            traceLog("  [acquire] renderer create already in flight for display \(key.displayID) — skipping duplicate (create path)")
         }
         let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
         Task { await writeBMPSnapshot(videoURL: videoURL, videoID: choiceConfiguration, displayPixelWidth: w, displayPixelHeight: h) }
     }
 
+    /// Bisection acquire: identical CAContext reuse/create/reply as `acquireBody`, but
+    /// hosts a still (via `bisectShowStill`) instead of a VideoRenderer. Runs on
+    /// `Lifecycle.queue`. See StillBisect.swift.
+    private func acquireStillOnlyBisect(key: DisplayKey, displayID: UInt32?, destSize: CGSize, scaleFactor: CGFloat, videoURL: URL?, cachedStill: CGImage?, choice: String?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
+        if let existing = WallpaperState.shared.context(for: key) {
+            traceLog("  [bisect] REUSE ctx=\(existing.contextId) display=\(key.displayID) stored=\(existing.videoID ?? "nil") new=\(choice ?? "nil")")
+            guard let replyObj = createRemoteContextXPC(contextId: existing.contextId) else {
+                reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
+            }
+            reply(replyObj, nil)
+            if existing.videoID == choice {
+                traceLog("  [bisect] SAME choice → no re-seed")
+                return
+            }
+            bisectShowStill(videoURL: videoURL, cachedStill: cachedStill, rootLayer: existing.rootLayer, for: key)
+            WallpaperState.shared.updateVideoID(choice, for: key)
+            return
+        }
+
+        var contextOptions: [String: Any] = [:]
+        if let did = displayID { contextOptions["displayId"] = did }
+        let caContextRaw: Any? = contextOptions.isEmpty
+            ? CAContext.remoteContext()
+            : CAContext.perform(NSSelectorFromString("remoteContextWithOptions:"), with: contextOptions)?.takeUnretainedValue()
+        guard let caContext = caContextRaw as? CAContext, caContext.contextId != 0 else {
+            reply(nil, NSError(domain: "PhospheneExtension", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to create remote CAContext"]))
+            return
+        }
+        let rootLayer = CALayer()
+        rootLayer.frame = CGRect(origin: .zero, size: destSize)
+        rootLayer.contentsScale = scaleFactor
+        rootLayer.contentsGravity = .resizeAspectFill
+        caContext.layer = rootLayer
+        CATransaction.flush()
+        guard let replyObj = createRemoteContextXPC(contextId: caContext.contextId) else {
+            reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
+        }
+        WallpaperState.shared.installContext(
+            ActiveWallpaper(caContext: caContext, contextId: caContext.contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choice),
+            for: key,
+        )
+        reply(replyObj, nil)
+        traceLog("  [bisect] CREATED ctx=\(caContext.contextId) display=\(key.displayID) choice=\(choice ?? "nil")")
+        bisectShowStill(videoURL: videoURL, cachedStill: cachedStill, rootLayer: rootLayer, for: key)
+    }
+
     private var previousPresentationMode = "default"
 
     func update(withId _: Any?, request: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+        markServed()
+        nonisolated(unsafe) let unsafeRequest = request
+        nonisolated(unsafe) let handler = self
+        Lifecycle.queue.async { handler.updateBody(request: unsafeRequest, reply: reply) }
+    }
+
+    private func updateBody(request: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
         // Extract presentation mode / activity state by walking the request's Mirror
         // for the named properties and reading the enum case, rather than scanning a
         // stringified description (which silently fell through to "?" — and so failed
@@ -350,22 +499,38 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         reply(nil)
     }
 
-    func invalidate(withId _: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
-        // Context-reuse model: a per-`WallpaperID` invalidate is the Agent tearing
-        // down the *previous* wallpaper right before it acquires the next one on the
-        // SAME display. We deliberately do NOT destroy the display's persistent
-        // CAContext here — the immediately-following acquire reuses it (returns the
-        // same contextId) so the Agent never drops the host and there's no gray gap.
-        // A context is only torn down when its video is removed from the library
-        // (`removeChoiceRequest`). If the user switches to a non-Phosphene provider
-        // and no reacquire follows, the Agent stops hosting us and RunningBoard
-        // suspends the process — the idle renderer costs nothing while suspended.
-        extensionLog("=== INVALIDATE === (persisted \(WallpaperState.shared.activeContextCount) context(s) for reuse)")
+    func invalidate(withId id: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+        markServed()
+        nonisolated(unsafe) let unsafeID = id
+        nonisolated(unsafe) let handler = self
+        Lifecycle.queue.async { handler.invalidateBody(id: unsafeID, reply: reply) }
+    }
+
+    private func invalidateBody(id: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+        // Per-SURFACE teardown, resolved via the WallpaperID UUID learned at acquire. Each
+        // surface (Space / lock screen / Settings preview) owns its own context, so we simply
+        // tear down THIS surface after a short grace — a re-acquire of the same UUID (display
+        // sleep/wake, a quick space revisit, a switch that reuses the id) cancels it. Because
+        // teardown is scoped to one surface, it can never black out another Space (the old
+        // shared-context cross-kill) and a superseded UUID just cleans up its own orphaned
+        // context instead of leaking it.
+        guard let uuid = extractWallpaperUUID(fromID: id) else {
+            extensionLog("=== INVALIDATE === no UUID in id → ignore (kept \(WallpaperState.shared.activeContextCount) context(s))")
+            reply(nil); return
+        }
+        guard let key = WallpaperState.shared.resolveWallpaperKey(uuid) else {
+            extensionLog("=== INVALIDATE === UUID \(uuid) unknown (not ours / already forgotten) → ignore")
+            reply(nil); return
+        }
+        WallpaperState.shared.forgetWallpaperID(uuid)
+        scheduleTeardown(for: key)
+        extensionLog("=== INVALIDATE === UUID \(uuid) → tear down surface on display \(key.displayID) in \(Lifecycle.teardownGrace)s unless re-acquired")
         reply(nil)
     }
 
     func snapshot(withId _: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
-        extensionLog("=== SNAPSHOT ===")
+        markServed()
+        traceLog("=== SNAPSHOT ===")
 
         // Get current time from any active renderer for a more representative snapshot
         var currentTime: CMTime?
@@ -376,10 +541,10 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         Task {
             if let snapshotXPC = await createSnapshotViaRuntime(currentTime: currentTime) {
                 reply(snapshotXPC, nil)
-                extensionLog("  Snapshot replied (IOSurface)")
+                traceLog("  Snapshot replied (IOSurface)")
             } else {
                 reply(nil, nil)
-                extensionLog("  Snapshot replied (nil)")
+                traceLog("  Snapshot replied (nil)")
             }
         }
     }
@@ -387,14 +552,15 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     // MARK: - Settings
 
     func provideSettingsViewModels(withContentTypes _: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
-        extensionLog("=== PROVIDE SETTINGS VIEW MODELS ===")
+        markServed()
+        traceLog("=== PROVIDE SETTINGS VIEW MODELS ===")
 
         Task {
             if let result = await buildSettingsViewModelsXPC() {
-                extensionLog("  [Settings] Remapped to \(NSStringFromClass(type(of: result as AnyObject)))")
+                traceLog("  [Settings] Remapped to \(NSStringFromClass(type(of: result as AnyObject)))")
                 reply(result, nil)
             } else {
-                extensionLog("  [Settings] Build failed, using empty fallback")
+                traceLog("  [Settings] Build failed, using empty fallback")
                 reply(makeEmptyGroupsResponse(), nil)
             }
         }
@@ -402,12 +568,20 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
 
     // MARK: - Choices
 
-    func addChoiceRequest(withChoiceRequest request: Any?, onBehalfOfProcess process: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
-        extensionLog("=== ADD CHOICE REQUEST ===")
+    func addChoiceRequest(withChoiceRequest _: Any?, onBehalfOfProcess _: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
+        markServed()
+        traceLog("=== ADD CHOICE REQUEST ===")
         reply(nil, nil)
     }
 
     func removeChoiceRequest(withChoiceRequest request: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+        markServed()
+        nonisolated(unsafe) let unsafeRequest = request
+        nonisolated(unsafe) let handler = self
+        Lifecycle.queue.async { handler.removeChoiceRequestBody(request: unsafeRequest, reply: reply) }
+    }
+
+    private func removeChoiceRequestBody(request: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
         extensionLog("=== REMOVE CHOICE REQUEST ===")
 
         // Extract video ID from the choice request using Mirror (same pattern as selectedChoicesDidChange)
@@ -459,6 +633,13 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     }
 
     func selectedChoicesDidChange(for id: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+        markServed()
+        nonisolated(unsafe) let unsafeID = id
+        nonisolated(unsafe) let handler = self
+        Lifecycle.queue.async { handler.selectedChoicesDidChangeBody(id: unsafeID, reply: reply) }
+    }
+
+    private func selectedChoicesDidChangeBody(id: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
         extensionLog("=== SELECTED CHOICES DID CHANGE ===")
 
         // Extract the choice identifier from the WallpaperChoiceID
@@ -522,7 +703,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             extensionLog("  Launching companion app via NSWorkspace")
             if let url = URL(string: "phosphene://add-video") {
                 let opened = NSWorkspace.shared.open(url)
-                extensionLog("  NSWorkspace.open = \(opened)")
+                traceLog("  NSWorkspace.open = \(opened)")
             }
         }
 
@@ -532,12 +713,12 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     // MARK: - Downloads
 
     func isChoiceDownloaded(with _: Any?, reply: @escaping @Sendable (Bool, (any Error)?) -> Void) {
-        extensionLog("isChoiceDownloaded")
+        traceLog("isChoiceDownloaded")
         reply(true, nil)
     }
 
     func download(withChoiceID _: Any?, reply: ((any Error)?) -> Void) -> Any? {
-        extensionLog("download")
+        traceLog("download")
         reply(nil)
         return nil
     }
@@ -561,36 +742,36 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     // MARK: - Migration
 
     func migrateSelectedChoice(for _: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
-        extensionLog("migrateSelectedChoice")
+        traceLog("migrateSelectedChoice")
         reply(nil, nil)
     }
 
     func migrate(from _: Any?, to _: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
-        extensionLog("migrate")
+        traceLog("migrate")
         reply(nil)
     }
 
     // MARK: - Shuffle
 
     func skipShuffledContent(withId _: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
-        extensionLog("skipShuffledContent")
+        traceLog("skipShuffledContent")
         reply(nil)
     }
 
     func canSkipShuffledContent(withId _: Any?, reply: @escaping @Sendable (Bool, (any Error)?) -> Void) {
-        extensionLog("canSkipShuffledContent")
+        traceLog("canSkipShuffledContent")
         reply(false, nil)
     }
 
     // MARK: - Debug & Notifications
 
     func handleDebugRequest(for _: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
-        extensionLog("handleDebugRequest")
+        traceLog("handleDebugRequest")
         reply(nil, nil)
     }
 
     func handleNotification(withNamed name: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
-        extensionLog("handleNotification(\(name ?? "nil"))")
+        traceLog("handleNotification(\(name ?? "nil"))")
         reply(nil)
     }
 }

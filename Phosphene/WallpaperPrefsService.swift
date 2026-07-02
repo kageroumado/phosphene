@@ -12,7 +12,7 @@ final class WallpaperPrefsService {
     static let shared = WallpaperPrefsService()
 
     struct WallpaperSelection: Identifiable, Equatable {
-        let id: String              // "{displayUUID}" or "{displayUUID}:{spaceUUID}"
+        let id: String // "{displayUUID}" or "{displayUUID}:{spaceUUID}"
         let videoID: String
         let displayUUID: String
         let displayName: String
@@ -45,7 +45,9 @@ final class WallpaperPrefsService {
     // MARK: - Selections (parsed from wallpaper plist)
 
     private(set) var selections: [WallpaperSelection] = []
-    var systemWallpaperIsOurs: Bool { !selections.isEmpty }
+    var systemWallpaperIsOurs: Bool {
+        !selections.isEmpty
+    }
 
     var pausedDisplays: Set<UInt32> = [] {
         didSet { guard pausedDisplays != oldValue else { return }; savePrefs() }
@@ -122,6 +124,53 @@ final class WallpaperPrefsService {
         observeWallpaperStore()
         observeDisplayChanges()
         observeSpaceChanges()
+        observeAgentStuck()
+    }
+
+    // MARK: - Spiral recovery (kill the stuck WallpaperAgent)
+
+    /// The sandboxed extension can detect WallpaperAgent's spiral-of-death but can't kill it.
+    /// It Darwin-signals us (unsandboxed) to `killall WallpaperAgent`, which is the only thing
+    /// that resets the Agent's desynced state — it then relaunches and re-acquires cleanly.
+    /// Rate-limited so we never loop on kills.
+    private var lastAgentKill: Date = .distantPast
+
+    private func observeAgentStuck() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        unsafe CFNotificationCenterAddObserver(
+            center,
+            nil,
+            { _, _, _, _, _ in
+                DispatchQueue.main.async { WallpaperPrefsService.shared.restartStuckAgent() }
+            },
+            "glass.kagerou.phosphene.agentStuck" as CFString,
+            nil,
+            .deliverImmediately,
+        )
+    }
+
+    private func restartStuckAgent() {
+        let now = Date()
+        guard now.timeIntervalSince(lastAgentKill) > 15 else {
+            NSLog("[Phosphene] agentStuck signal ignored (killed agent \(Int(now.timeIntervalSince(lastAgentKill)))s ago)")
+            return
+        }
+        lastAgentKill = now
+        killWallpaperAgent(reason: "spiral-of-death detected by extension")
+    }
+
+    /// Manual restart from the menu bar — user-initiated, so no cooldown.
+    func restartWallpaperAgent() {
+        lastAgentKill = Date()
+        killWallpaperAgent(reason: "manual restart from menu")
+    }
+
+    private func killWallpaperAgent(reason: String) {
+        NSLog("[Phosphene] killall WallpaperAgent — \(reason)")
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        task.arguments = ["WallpaperAgent"]
+        try? task.run()
     }
 
     // MARK: - Public
@@ -165,7 +214,7 @@ final class WallpaperPrefsService {
             alwaysPauseDesktop: alwaysPauseDesktop,
             pauseWhenOccluded: pauseWhenOccluded,
             desktopOccluded: desktopOccluded,
-            pausedDisplays: pausedDisplays.isEmpty ? nil : pausedDisplays
+            pausedDisplays: pausedDisplays.isEmpty ? nil : pausedDisplays,
         )
         guard let data = try? JSONEncoder().encode(prefs) else { return }
         try? data.write(to: Self.prefsURL, options: .atomic)
@@ -176,7 +225,7 @@ final class WallpaperPrefsService {
             CFNotificationName("glass.kagerou.phosphene.prefsChanged" as CFString),
             nil,
             nil,
-            true
+            true,
         )
     }
 
@@ -211,21 +260,17 @@ final class WallpaperPrefsService {
             },
             "glass.kagerou.phosphene.stateChanged" as CFString,
             nil,
-            .deliverImmediately
+            .deliverImmediately,
         )
     }
 
     // MARK: - System Wallpaper Detection
 
-    private static let wallpaperStoreURL: URL = {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/com.apple.wallpaper/Store/Index.plist")
-    }()
+    private static let wallpaperStoreURL: URL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/com.apple.wallpaper/Store/Index.plist")
 
-    private static let spacesConfigURL: URL = {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Preferences/com.apple.spaces.plist")
-    }()
+    private static let spacesConfigURL: URL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Preferences/com.apple.spaces.plist")
 
     private static let extensionBundleID = "glass.kagerou.phosphene.extension"
 
@@ -257,7 +302,7 @@ final class WallpaperPrefsService {
                     spaceUUID: nil,
                     spaceName: nil,
                     videoName: entry?.name,
-                    videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) }
+                    videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) },
                 ))
             }
         }
@@ -284,7 +329,7 @@ final class WallpaperPrefsService {
                             spaceUUID: spaceUUID,
                             spaceName: spaceName,
                             videoName: entry?.name,
-                            videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) }
+                            videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) },
                         ))
                     }
                 }
@@ -391,7 +436,7 @@ final class WallpaperPrefsService {
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: .write,
-            queue: .main
+            queue: .main,
         )
         source.setEventHandler { [weak self] in
             MainActor.assumeIsolated {
@@ -413,7 +458,7 @@ final class WallpaperPrefsService {
         displayReconfigToken = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
-            queue: .main
+            queue: .main,
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.checkSystemWallpaper()
@@ -427,7 +472,7 @@ final class WallpaperPrefsService {
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
             object: nil,
-            queue: .main
+            queue: .main,
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.spaceChangeCount += 1

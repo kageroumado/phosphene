@@ -9,7 +9,9 @@ struct VideoPreviewCard: View {
     @State private var previewPlayer: AVQueuePlayer?
     @State private var playerLooper: AVPlayerLooper?
 
-    private var prefsService: WallpaperPrefsService { .shared }
+    private var prefsService: WallpaperPrefsService {
+        .shared
+    }
 
     var body: some View {
         ZStack {

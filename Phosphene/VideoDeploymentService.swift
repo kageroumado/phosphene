@@ -54,8 +54,8 @@ enum VideoDeploymentService {
 
             let asset = AVURLAsset(url: destURL)
             if let track = try? await asset.loadTracks(withMediaType: .video).first {
-                fps = Double((try? await track.load(.nominalFrameRate)) ?? 0)
-                resolution = (try? await track.load(.naturalSize)) ?? .zero
+                fps = await Double((try? track.load(.nominalFrameRate)) ?? 0)
+                resolution = await (try? track.load(.naturalSize)) ?? .zero
                 let cmDuration = try? await asset.load(.duration)
                 duration = cmDuration.map { CMTimeGetSeconds($0) } ?? 0
             }
@@ -67,7 +67,7 @@ enum VideoDeploymentService {
                 duration: duration,
                 fps: fps,
                 resolution: resolution,
-                dateAdded: Date()
+                dateAdded: Date(),
             )
             let data = try JSONEncoder().encode(metadata)
             try data.write(to: dir.appendingPathComponent("metadata.json"))
@@ -91,7 +91,7 @@ enum VideoDeploymentService {
 
         let asset = AVURLAsset(url: url)
         guard let exportSession = AVAssetExportSession(
-            asset: asset, presetName: AVAssetExportPresetHEVCHighestQuality
+            asset: asset, presetName: AVAssetExportPresetHEVCHighestQuality,
         ) else {
             await deployVideo(url: url, name: name)
             return
@@ -222,7 +222,7 @@ enum VideoDeploymentService {
         let fm = FileManager.default
 
         guard let subdirs = try? fm.contentsOfDirectory(
-            at: videosDir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles
+            at: videosDir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles,
         ) else { return [] }
 
         var entries = [EntryInfo]()
@@ -279,8 +279,8 @@ enum VideoDeploymentService {
         let videoFile = entryDir.appendingPathComponent(metadata.filename)
         let asset = AVURLAsset(url: videoFile)
         if let track = try? await asset.loadTracks(withMediaType: .video).first {
-            metadata.fps = Double((try? await track.load(.nominalFrameRate)) ?? 0)
-            metadata.resolution = (try? await track.load(.naturalSize)) ?? .zero
+            metadata.fps = await Double((try? track.load(.nominalFrameRate)) ?? 0)
+            metadata.resolution = await (try? track.load(.naturalSize)) ?? .zero
             let cmDuration = try? await asset.load(.duration)
             metadata.duration = cmDuration.map { CMTimeGetSeconds($0) } ?? 0
         }
@@ -332,7 +332,7 @@ enum VideoDeploymentService {
             CFNotificationName("glass.kagerou.phosphene.libraryChanged" as CFString),
             nil,
             nil,
-            true
+            true,
         )
         // Also post in-process so app-side views can observe
         NotificationCenter.default.post(name: libraryChangedNotification, object: nil)

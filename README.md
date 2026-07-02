@@ -107,6 +107,46 @@ cp -R ~/Library/Developer/Xcode/DerivedData/Phosphene-*/Build/Products/Debug/Pho
 - **Mirror-based XPC parsing.** Apple's request types (`WallpaperCreationRequestXPC` etc.) aren't part of any public SDK header. The extension reads them via `Mirror` reflection. If Apple renames fields, expect surgical breakage.
 - **Variants are advisory.** A "1080p@30" variant won't be selected if Power-Monitor thinks we're on AC and idle — `PlaybackPolicy` always picks the highest tier that's still allowed.
 
+## Troubleshooting
+
+The extension writes a rotating log (1 MB × 3) to:
+
+```
+~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/extension.log
+```
+
+By default it records only the meaningful events — wallpaper switches, presentation/state
+changes, teardowns, spiral-of-death recovery, and errors. The high-volume internals
+(per-frame feed ticks, renderer restart steps, per-connection XPC churn, snapshots) are
+gated behind **verbose logging**.
+
+### Enable verbose logging
+
+Create a marker file in the extension's container, then restart the wallpaper agent so the
+extension relaunches and picks it up:
+
+```sh
+touch ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG
+killall WallpaperAgent
+```
+
+Disable it again by removing the marker and restarting the agent:
+
+```sh
+trash ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG   # or rm
+killall WallpaperAgent
+```
+
+Attach the (verbose) log to a bug report — see `.github/ISSUE_TEMPLATE`.
+
+### Wallpaper stuck, grey, or showing the wrong video
+
+Rapidly switching video wallpapers in System Settings can wedge the system `WallpaperAgent`
+(an Apple-side state desync, not Phosphene's renderer). Phosphene detects this and auto-heals
+by restarting the agent, but if a wallpaper is ever stuck, grey, or showing the wrong clip,
+use the menu bar → **Restart Wallpaper Agent** to recover immediately (equivalent to
+`killall WallpaperAgent`).
+
 ## License
 
 [MIT](LICENSE). Do whatever you want, no warranty.

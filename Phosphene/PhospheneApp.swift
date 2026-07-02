@@ -66,7 +66,7 @@ struct PhospheneApp: App {
         DispatchQueue.main.async {
             NSApplication.shared.activate()
             for window in NSApplication.shared.windows
-            where window.identifier?.rawValue == "library" {
+                where window.identifier?.rawValue == "library" {
                 window.orderFrontRegardless()
                 window.makeKey()
             }
@@ -78,7 +78,7 @@ struct PhospheneApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    nonisolated func application(_ application: NSApplication, open urls: [URL]) {
+    nonisolated func application(_: NSApplication, open urls: [URL]) {
         Task { @MainActor in
             for url in urls {
                 guard url.scheme == "phosphene", url.host == "add-video" else { continue }
@@ -86,5 +86,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
-
 }

@@ -26,7 +26,8 @@ final class UpdateCheckService {
     let releasesPageURL = URL(string: "https://github.com/kageroumado/phosphene/releases/latest")!
 
     @ObservationIgnored private let latestAPI = URL(
-        string: "https://api.github.com/repos/kageroumado/phosphene/releases/latest")!
+        string: "https://api.github.com/repos/kageroumado/phosphene/releases/latest",
+    )!
     @ObservationIgnored private let lastCheckKey = "UpdateCheck.lastCheck"
     @ObservationIgnored private let minInterval: TimeInterval = 60 * 60 * 24 // once/day
 

@@ -1,22 +1,15 @@
-// Manages a folder-based video library in the extension's Documents container.
-//
-// Videos are stored in `Documents/videos/<uuid>/` with metadata.json alongside
-// the video file. A top-level `library.json` serves as a quick-access index.
-//
-// The library is the source of truth for what videos are available in System Settings.
-
 import AVFoundation
 import Foundation
 import ImageIO
 import os
 
-struct VideoVariant: Codable, Sendable {
+struct VideoVariant: Codable {
     let filename: String
     let fps: Int
     let resolution: CGSize
 }
 
-struct VideoEntry: Codable, Sendable {
+struct VideoEntry: Codable {
     let id: String
     var name: String
     var filename: String
@@ -190,7 +183,7 @@ final class VideoLibrary: Sendable {
         let sorted = discovered
         lock.withLock { $0 = sorted }
         saveIndex(sorted)
-        extensionLog("[VideoLibrary] Scanned: \(sorted.count) video(s)")
+        traceLog("[VideoLibrary] Scanned: \(sorted.count) video(s)")
     }
 
     /// Add a video file to the library, copying it into the managed directory.

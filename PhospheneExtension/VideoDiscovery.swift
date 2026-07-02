@@ -1,8 +1,3 @@
-// Video file discovery backed by VideoLibrary.
-//
-// Provides backward-compatible `findVideoURL()` that returns the currently
-// selected video (or first available), plus library-aware alternatives.
-
 import AVFoundation
 import ImageIO
 

@@ -1,14 +1,3 @@
-// Validation helpers that keep deployment file operations inside the managed
-// videos directory.
-//
-// Entry identifiers and filenames flow from the extension's `metadata.json`
-// files and from UI callers. A corrupted library or an unexpected caller must
-// never be able to steer a read/copy/remove outside the extension's `videos/`
-// tree, so every untrusted component is validated before it is appended to a
-// path, and the final URL is range-checked against its base.
-//
-// Kept in sync with `PhospheneExtension/PathSafety.swift` (separate targets).
-
 import Foundation
 
 enum PathSafety {

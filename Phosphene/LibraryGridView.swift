@@ -21,7 +21,7 @@ struct LibraryGridView: View {
                                 entry: entry,
                                 isSelected: selectedEntryID == entry.id,
                                 onSelect: { selectedEntryID = entry.id },
-                                onDelete: { confirmingDelete = entry }
+                                onDelete: { confirmingDelete = entry },
                             )
                         }
                     }
@@ -58,13 +58,13 @@ struct LibraryGridView: View {
         }
         .onAppear { loadEntries() }
         .onReceive(
-            NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification)
+            NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification),
         ) { _ in
             loadEntries()
         }
         .alert("Delete Video", isPresented: .init(
             get: { confirmingDelete != nil },
-            set: { if !$0 { confirmingDelete = nil } }
+            set: { if !$0 { confirmingDelete = nil } },
         )) {
             Button("Delete", role: .destructive) {
                 if let entry = confirmingDelete {
@@ -98,7 +98,7 @@ struct LibraryGridView: View {
 
             Button {
                 NSWorkspace.shared.open(
-                    URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!
+                    URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!,
                 )
             } label: {
                 Label("Open Wallpaper Settings", systemImage: "gearshape")

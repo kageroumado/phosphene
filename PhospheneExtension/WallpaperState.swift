@@ -1,8 +1,3 @@
-// Thread-safe shared state for the wallpaper extension.
-//
-// All access goes through `OSAllocatedUnfairLock`-protected accessors
-// so concurrent XPC callbacks don't race.
-
 import Foundation
 import os
 import QuartzCore
@@ -25,15 +20,22 @@ struct ActiveWallpaper: @unchecked Sendable {
     var rendererPending: Bool = false
 }
 
-/// Identifies one persistent rendering slot. There is exactly ONE context per
-/// display, `isPreview`-agnostic: whichever acquire wins the queue first (desktop
-/// or Settings preview) creates it, and every other consumer — the live desktop,
-/// the Settings preview, and the app's own menu-bar panel — hosts that SAME
-/// `contextId`/surface. The WindowServer tracks one context per display and
-/// multiple `CALayerHost`s on it render identical content (RE Q3), so there is no
-/// desktop-vs-preview distinction to track.
+/// Identifies one hosted wallpaper SURFACE — a distinct `CAContext`/layer tree that
+/// WallpaperAgent hosts in one `CALayerHost`. There is one per **WallpaperID UUID**,
+/// i.e. one per Space, per lock-screen surface, and per Settings preview.
+///
+/// This used to be keyed by `displayID` alone (one shared context per display), on the
+/// assumption that every consumer of a display hosts the same surface. That's wrong:
+/// macOS keeps multiple Spaces' wallpaper surfaces (plus the lock screen) *live at once*,
+/// each a separate WallpaperID with its own `acquire`, and a `CAContext` can only be
+/// hosted in ONE `CALayerHost` at a time. Handing the same `contextId` to two Spaces made
+/// the second steal the surface and the first go black (permanent on a space switch, a
+/// transient flash during the desktop↔lock reveal). Keying by the WallpaperID UUID gives
+/// each surface its own context, so none can steal another's. `displayID` is retained for
+/// display-level fan-out (policy, per-display switch).
 struct DisplayKey: Hashable {
     let displayID: UInt32
+    let surfaceUUID: UUID
 }
 
 final class WallpaperState: Sendable {
@@ -44,6 +46,10 @@ final class WallpaperState: Sendable {
     private struct State: @unchecked Sendable {
         /// Persistent contexts keyed by display slot. Reused across acquires.
         var contexts: [DisplayKey: ActiveWallpaper] = [:]
+        /// WallpaperID UUID → its surface key, learned at acquire. Lets `invalidate(UUID)`
+        /// resolve which surface context to tear down. Each surface owns its context, so an
+        /// invalidate tears down only that surface — no cross-surface interference.
+        var keyForWallpaperUUID: [UUID: DisplayKey] = [:]
         var cachedThumbnailURL: URL?
         var cacheDirectoryURL: URL?
         var currentVideoID: String? = UserDefaults.standard.string(forKey: WallpaperState.selectedVideoKey)
@@ -68,7 +74,7 @@ final class WallpaperState: Sendable {
             },
             "glass.kagerou.phosphene.libraryChanged" as CFString,
             nil,
-            .deliverImmediately
+            .deliverImmediately,
         )
     }
 
@@ -104,7 +110,7 @@ final class WallpaperState: Sendable {
             state.contexts[key] = context
             return true
         }
-        extensionLog("  [claimRendererCreate] display=\(key.displayID) → \(claimed ? "CLAIMED (will create)" : "denied (renderer exists or create pending)")")
+        traceLog("  [claimRendererCreate] display=\(key.displayID) → \(claimed ? "CLAIMED (will create)" : "denied (renderer exists or create pending)")")
         return claimed
     }
 
@@ -130,7 +136,7 @@ final class WallpaperState: Sendable {
             state.contexts[key] = context
             return previous
         }
-        extensionLog("  [setRenderer] display=\(key.displayID) new=\(renderer.map { "#\($0.debugID)" } ?? "nil") replacing=\(previous.map { "#\($0.debugID)" } ?? "nil") videoID=\(videoID ?? "nil")")
+        traceLog("  [setRenderer] display=\(key.displayID) new=\(renderer.map { "#\($0.debugID)" } ?? "nil") replacing=\(previous.map { "#\($0.debugID)" } ?? "nil") videoID=\(videoID ?? "nil")")
         return previous
     }
 
@@ -173,14 +179,49 @@ final class WallpaperState: Sendable {
     func removeContexts(forVideoID videoID: String) -> [UInt32?] {
         let removed = lock.withLock { state -> [ActiveWallpaper] in
             let matches = state.contexts.filter { $0.value.videoID == videoID }
-            for (key, _) in matches { state.contexts.removeValue(forKey: key) }
+            for (key, _) in matches {
+                state.contexts.removeValue(forKey: key)
+            }
             return Array(matches.values)
         }
         for context in removed {
             context.renderer?.stop()
             invalidateRemoteContext(context.caContext)
         }
-        return removed.map { $0.displayID }
+        return removed.map(\.displayID)
+    }
+
+    // MARK: - WallpaperID ↔ display bridge (for per-display invalidate/teardown)
+
+    /// Learned at acquire: this WallpaperID UUID maps to this surface `key`, so a later
+    /// `invalidate(UUID)` can resolve which surface context to tear down.
+    func registerWallpaperID(_ uuid: UUID, key: DisplayKey) {
+        lock.withLock { $0.keyForWallpaperUUID[uuid] = key }
+    }
+
+    /// The surface key an invalidate's WallpaperID targets, if we know it.
+    func resolveWallpaperKey(_ uuid: UUID) -> DisplayKey? {
+        lock.withLock { $0.keyForWallpaperUUID[uuid] }
+    }
+
+    /// Drop a WallpaperID mapping once its instance is invalidated.
+    func forgetWallpaperID(_ uuid: UUID) {
+        lock.withLock { _ = $0.keyForWallpaperUUID.removeValue(forKey: uuid) }
+    }
+
+    /// Per-surface teardown (the invalidate grace timer fired with no re-acquire — the Space
+    /// closed, the preview dismissed, or the display slept): stop ONLY this surface's renderer
+    /// and `-[CAContext invalidate]` its context, leaving other surfaces playing. Returns
+    /// whether it tore down.
+    @discardableResult
+    func tearDownContext(for key: DisplayKey) -> Bool {
+        let removed = lock.withLock { state -> ActiveWallpaper? in
+            state.contexts.removeValue(forKey: key)
+        }
+        guard let removed else { return false }
+        removed.renderer?.stop()
+        invalidateRemoteContext(removed.caContext)
+        return true
     }
 
     /// All unique display IDs from active contexts.
@@ -210,7 +251,7 @@ final class WallpaperState: Sendable {
     /// Count of display slots with a running renderer.
     var liveContextCount: Int {
         lock.withLock { state in
-            state.contexts.values.lazy.filter { $0.renderer != nil }.count
+            state.contexts.values.lazy.count(where: { $0.renderer != nil })
         }
     }
 

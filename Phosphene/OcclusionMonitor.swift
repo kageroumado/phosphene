@@ -37,7 +37,7 @@ final class OcclusionMonitor {
 
         activateObserver = center.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
-            object: nil, queue: .main
+            object: nil, queue: .main,
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.checkOcclusion()
@@ -46,7 +46,7 @@ final class OcclusionMonitor {
 
         deactivateObserver = center.addObserver(
             forName: NSWorkspace.didDeactivateApplicationNotification,
-            object: nil, queue: .main
+            object: nil, queue: .main,
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.checkOcclusion()
@@ -55,7 +55,7 @@ final class OcclusionMonitor {
 
         spaceObserver = center.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil, queue: .main
+            object: nil, queue: .main,
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.checkOcclusion()
@@ -119,7 +119,7 @@ final class OcclusionMonitor {
 
     private func computeDesktopOcclusion() -> Bool {
         guard let windowList = CGWindowListCopyWindowInfo(
-            [.excludeDesktopElements, .optionOnScreenOnly], kCGNullWindowID
+            [.excludeDesktopElements, .optionOnScreenOnly], kCGNullWindowID,
         ) as? [[CFString: Any]] else {
             return false
         }
@@ -142,7 +142,7 @@ final class OcclusionMonitor {
                 x: visibleFrame.origin.x,
                 y: mainHeight - visibleFrame.origin.y - visibleFrame.height,
                 width: visibleFrame.width,
-                height: visibleFrame.height
+                height: visibleFrame.height,
             )
 
             if !isScreenOccluded(cgVisible, by: normalWindows) {
@@ -186,9 +186,9 @@ final class OcclusionMonitor {
 
             guard minCol <= maxCol, minRow <= maxRow else { continue }
 
-            for row in minRow...maxRow {
+            for row in minRow ... maxRow {
                 let base = row * cols
-                for col in minCol...maxCol {
+                for col in minCol ... maxCol {
                     let idx = base + col
                     if !grid[idx] {
                         grid[idx] = true

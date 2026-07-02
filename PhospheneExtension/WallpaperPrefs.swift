@@ -101,7 +101,7 @@ final class WallpaperPrefs: @unchecked Sendable {
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: Self.stateURL, options: .atomic)
         postStateNotification()
-        extensionLog("[WallpaperPrefs] updateCurrentVideo(\(videoName ?? "nil"))")
+        traceLog("[WallpaperPrefs] updateCurrentVideo(\(videoName ?? "nil"))")
     }
 
     private func buildContextStates() -> [ContextState] {
@@ -125,7 +125,7 @@ final class WallpaperPrefs: @unchecked Sendable {
             lock.withLock { state in
                 state = prefs
             }
-            extensionLog("[WallpaperPrefs] Loaded: userPaused=\(prefs.userPaused), alwaysPauseDesktop=\(prefs.alwaysPauseDesktop), pauseWhenOccluded=\(prefs.pauseWhenOccluded), desktopOccluded=\(prefs.desktopOccluded)")
+            traceLog("[WallpaperPrefs] Loaded: userPaused=\(prefs.userPaused), alwaysPauseDesktop=\(prefs.alwaysPauseDesktop), pauseWhenOccluded=\(prefs.pauseWhenOccluded), desktopOccluded=\(prefs.desktopOccluded)")
         } catch {
             extensionLog("[WallpaperPrefs] Failed to decode prefs: \(error)")
         }
@@ -150,7 +150,7 @@ final class WallpaperPrefs: @unchecked Sendable {
             },
             "glass.kagerou.phosphene.prefsChanged" as CFString,
             nil,
-            .deliverImmediately
+            .deliverImmediately,
         )
     }
 
@@ -164,7 +164,7 @@ final class WallpaperPrefs: @unchecked Sendable {
             center,
             observer,
             CFNotificationName("glass.kagerou.phosphene.prefsChanged" as CFString),
-            nil
+            nil,
         )
     }
 
@@ -223,7 +223,7 @@ final class WallpaperPrefs: @unchecked Sendable {
             CFNotificationName("glass.kagerou.phosphene.stateChanged" as CFString),
             nil,
             nil,
-            true
+            true,
         )
     }
 }

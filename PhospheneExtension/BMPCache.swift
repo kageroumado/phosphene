@@ -1,12 +1,3 @@
-// BMP snapshot cache for zero-gray transitions.
-//
-// WallpaperExtensionKit's built-in VideoPlayer writes BMP cache files automatically,
-// but since we use raw AVSampleBufferDisplayLayer, we bypass it. Without this cache,
-// the desktop shows gray for ~1 minute on each wallpaper switch while the extension starts.
-//
-// Format matches Apple's own cache files: BITMAPINFOHEADER, 24bpp BGR, top-down.
-// The cacheDirectory URL is security-scoped (passed via XPC from WallpaperAgent).
-
 import AVFoundation
 import CryptoKit
 import Foundation
@@ -43,11 +34,11 @@ func loadCachedSnapshotImage(forChoice videoID: String?) -> CGImage? {
 
     guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
           let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
-        extensionLog("  [InitContent] Failed to decode cached BMP: \(url.lastPathComponent)")
+        traceLog("  [InitContent] Failed to decode cached BMP: \(url.lastPathComponent)")
         return nil
     }
 
-    extensionLog("  [InitContent] Loaded cached snapshot: \(url.lastPathComponent) (\(cgImage.width)x\(cgImage.height))")
+    traceLog("  [InitContent] Loaded cached snapshot: \(url.lastPathComponent) (\(cgImage.width)x\(cgImage.height))")
     return cgImage
 }
 
@@ -56,7 +47,7 @@ func loadCachedSnapshotImage(forChoice videoID: String?) -> CGImage? {
 /// the correct cached frame during transitions between videos.
 func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: Int, displayPixelHeight: Int) async {
     guard let cacheDir = WallpaperState.shared.cacheDirectoryURL else {
-        extensionLog("  [BMPCache] No cacheDirectoryURL, skipping")
+        traceLog("  [BMPCache] No cacheDirectoryURL, skipping")
         return
     }
 
@@ -64,7 +55,7 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
     defer { if gained { cacheDir.stopAccessingSecurityScopedResource() } }
 
     guard gained else {
-        extensionLog("  [BMPCache] Failed to acquire security-scoped access")
+        traceLog("  [BMPCache] Failed to acquire security-scoped access")
         return
     }
 
@@ -80,7 +71,7 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
                let existingH = Int(components[2]),
                existingW == displayPixelWidth,
                existingH == displayPixelHeight {
-                extensionLog("  [BMPCache] Existing BMP matches \(displayPixelWidth)x\(displayPixelHeight) for \(videoID ?? "?"), skipping")
+                traceLog("  [BMPCache] Existing BMP matches \(displayPixelWidth)x\(displayPixelHeight) for \(videoID ?? "?"), skipping")
                 return
             }
         }
@@ -94,7 +85,7 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
     do {
         cgImage = try await generator.image(at: .zero).image
     } catch {
-        extensionLog("  [BMPCache] Failed to get video frame: \(error)")
+        traceLog("  [BMPCache] Failed to get video frame: \(error)")
         return
     }
 
@@ -105,7 +96,7 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
     let paddedRowBytes = (rawRowBytes + 3) & ~3
     let pixelDataSize = paddedRowBytes * height
 
-    extensionLog("  [BMPCache] Rendering \(width)x\(height) BGR24 (\(pixelDataSize) bytes, row=\(paddedRowBytes))")
+    traceLog("  [BMPCache] Rendering \(width)x\(height) BGR24 (\(pixelDataSize) bytes, row=\(paddedRowBytes))")
 
     let bgraRowBytes = width * 4
     var bgraData = Data(count: bgraRowBytes * height)
@@ -126,7 +117,7 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
     }
 
     guard rendered else {
-        extensionLog("  [BMPCache] CGContext render failed")
+        traceLog("  [BMPCache] CGContext render failed")
         return
     }
 
@@ -185,9 +176,9 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
     let bmpURL = cacheDir.appendingPathComponent(filename)
     do {
         try bmp.write(to: bmpURL, options: .atomic)
-        extensionLog("  [BMPCache] Wrote \(bmp.count) bytes → \(filename)")
+        traceLog("  [BMPCache] Wrote \(bmp.count) bytes → \(filename)")
     } catch {
-        extensionLog("  [BMPCache] Write failed: \(error)")
+        traceLog("  [BMPCache] Write failed: \(error)")
     }
 
     // Write cacheVersion.db
@@ -195,7 +186,7 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
     do {
         try Data("{\"version\":2}".utf8).write(to: versionURL, options: .atomic)
     } catch {
-        extensionLog("  [BMPCache] cacheVersion.db failed: \(error)")
+        traceLog("  [BMPCache] cacheVersion.db failed: \(error)")
     }
 }
 

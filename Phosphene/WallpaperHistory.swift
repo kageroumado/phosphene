@@ -13,7 +13,7 @@ final class WallpaperHistory {
     private let maxItems = 10
 
     private init() {
-        items = HistoryStorageService.loadHistory()
+        self.items = HistoryStorageService.loadHistory()
     }
 
     // MARK: - Public Methods
@@ -24,7 +24,7 @@ final class WallpaperHistory {
         bookmarkData: Data?,
         thumbnail: NSImage?,
         showAsScreenSaver: Bool,
-        showOnAllSpaces: Bool
+        showOnAllSpaces: Bool,
     ) {
         let thumbnailData = compressThumbnail(thumbnail)
 
@@ -34,7 +34,7 @@ final class WallpaperHistory {
             bookmarkData: bookmarkData,
             thumbnailData: thumbnailData,
             showAsScreenSaver: showAsScreenSaver,
-            showOnAllSpaces: showOnAllSpaces
+            showOnAllSpaces: showOnAllSpaces,
         )
 
         // Remove any existing item with the same URL, then insert at front
@@ -70,7 +70,7 @@ final class WallpaperHistory {
                 resolvingBookmarkData: bookmarkData,
                 options: .withSecurityScope,
                 relativeTo: nil,
-                bookmarkDataIsStale: &isStale
+                bookmarkDataIsStale: &isStale,
             )
 
             if isStale {
@@ -93,7 +93,7 @@ final class WallpaperHistory {
 
     // MARK: - Thumbnail
 
-    private func compressThumbnail(_ image: NSImage?, maxBytes: Int = 100 * 1024) -> Data? {
+    private func compressThumbnail(_ image: NSImage?, maxBytes: Int = 100 * 1_024) -> Data? {
         guard let image,
               let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData) else {

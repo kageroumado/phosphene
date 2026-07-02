@@ -7,7 +7,9 @@ struct MenuBarPopoverView: View {
     @State private var showingOptions = false
     @State private var selectedIndex = 0
 
-    private var prefsService: WallpaperPrefsService { manager.prefsService }
+    private var prefsService: WallpaperPrefsService {
+        manager.prefsService
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -89,7 +91,7 @@ struct MenuBarPopoverView: View {
 
     private var pageDots: some View {
         HStack(spacing: 6) {
-            ForEach(0..<prefsService.selections.count, id: \.self) { index in
+            ForEach(0 ..< prefsService.selections.count, id: \.self) { index in
                 Circle()
                     .fill(index == selectedIndex ? Color.primary : Color.primary.opacity(0.3))
                     .frame(width: 6, height: 6)
@@ -232,6 +234,24 @@ struct MenuBarPopoverView: View {
             .padding(4)
 
             Button {
+                WallpaperPrefsService.shared.restartWallpaperAgent()
+            } label: {
+                HStack {
+                    Text("Restart Wallpaper Agent")
+                        .font(.system(size: 13))
+                    Spacer()
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(PopoverMenuItemStyle())
+            .help("Force-restart the system WallpaperAgent if the wallpaper is stuck or wrong.")
+            .padding(4)
+
+            Button {
                 if manager.updateCheck.availableVersion != nil {
                     NSWorkspace.shared.open(manager.updateCheck.releasesPageURL)
                 } else {
@@ -240,8 +260,10 @@ struct MenuBarPopoverView: View {
             } label: {
                 HStack {
                     Text(updateRowTitle)
-                        .font(.system(size: 13,
-                                      weight: manager.updateCheck.availableVersion != nil ? .medium : .regular))
+                        .font(.system(
+                            size: 13,
+                            weight: manager.updateCheck.availableVersion != nil ? .medium : .regular,
+                        ))
                         .foregroundStyle(manager.updateCheck.availableVersion != nil ? Color.accentColor : Color.primary)
                     Spacer()
                     updateRowIcon
@@ -316,7 +338,7 @@ struct MenuBarPopoverView: View {
                             } else {
                                 manager.occlusionMonitor.stopMonitoring()
                             }
-                        }
+                        },
                     ))
                     .help("Pause playback when all screens are covered by windows")
                     toggle("Launch at Login", isOn: $manager.launchAtLogin)

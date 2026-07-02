@@ -1,15 +1,3 @@
-// Monitors system power state to control video playback.
-//
-// Pauses video when thermals are critical or battery is low.
-// Works within the extension sandbox using ProcessInfo notifications
-// and IOKit power source APIs.
-//
-// Battery state is polled via `NSBackgroundActivityScheduler`, which lets
-// the OS defer checks when system resources are constrained.
-// Thermal state is event-driven via `ProcessInfo.thermalStateDidChangeNotification`.
-//
-// Consumers observe state changes via `stateChanges()` AsyncStream.
-
 import Foundation
 import IOKit.ps
 import os
@@ -19,9 +7,9 @@ final class PowerMonitor: Sendable {
 
     private let state = OSAllocatedUnfairLock(initialState: PowerState())
     private let continuations = OSAllocatedUnfairLock(initialState: [UUID: AsyncStream<PowerState>.Continuation]())
-    nonisolated(unsafe) private var _batteryScheduler: NSBackgroundActivityScheduler?
+    private nonisolated(unsafe) var _batteryScheduler: NSBackgroundActivityScheduler?
 
-    struct PowerState: Sendable, Equatable {
+    struct PowerState: Equatable {
         var thermalState: ProcessInfo.ThermalState = .nominal
         var isOnBattery = false
         var batteryLevel: Int = 100

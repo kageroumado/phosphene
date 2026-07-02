@@ -1,8 +1,3 @@
-// Extension entry point.
-//
-// Loads WallpaperExtensionKit via dlopen to register real XPC type classes,
-// then swizzles WallpaperSnapshotXPC's encode to bypass the exact NSXPCCoder check.
-
 import AppKit
 import ExtensionFoundation
 import Foundation
@@ -70,14 +65,13 @@ final class PhospheneExtension: NSObject, AppExtension {
         }
     }
 
-
     /// Observe display sleep/wake to stop rendering when no display is awake
     /// and resume on wake with correct policy.
     private func observeDisplaySleepWake() {
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(
             forName: NSWorkspace.screensDidSleepNotification,
-            object: nil, queue: .main
+            object: nil, queue: .main,
         ) { _ in
             WallpaperState.shared.isDisplayAsleep = true
             WallpaperState.shared.forEachRenderer { renderer in
@@ -87,7 +81,7 @@ final class PhospheneExtension: NSObject, AppExtension {
         }
         center.addObserver(
             forName: NSWorkspace.screensDidWakeNotification,
-            object: nil, queue: .main
+            object: nil, queue: .main,
         ) { _ in
             WallpaperState.shared.isDisplayAsleep = false
             Self.recomputeAndApplyPolicy()
@@ -109,14 +103,14 @@ final class PhospheneExtension: NSObject, AppExtension {
         let dnc = DistributedNotificationCenter.default()
         dnc.addObserver(
             forName: .init("com.apple.screenIsLocked"),
-            object: nil, queue: .main
+            object: nil, queue: .main,
         ) { _ in
             WallpaperState.shared.isScreenLocked = true
             extensionLog("[Extension] Screen locked")
         }
         dnc.addObserver(
             forName: .init("com.apple.screenIsUnlocked"),
-            object: nil, queue: .main
+            object: nil, queue: .main,
         ) { _ in
             WallpaperState.shared.isScreenLocked = false
             Self.recomputeAndApplyPolicy()
@@ -145,7 +139,7 @@ final class PhospheneExtension: NSObject, AppExtension {
             alwaysPauseDesktop: prefs.alwaysPauseDesktop,
             pauseWhenOccluded: prefs.pauseWhenOccluded,
             desktopOccluded: prefs.desktopOccluded,
-            powerState: power
+            powerState: power,
         )
         state.forEachRenderer { renderer in
             renderer.applyPolicy(policy)

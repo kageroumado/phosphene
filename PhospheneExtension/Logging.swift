@@ -110,6 +110,24 @@ func dumpMirror(_ obj: Any, label: String = "root", depth: Int = 3, indent: Int 
     }
 }
 
+/// When true, high-volume per-switch/per-frame diagnostics (`traceLog`) are written too.
+/// OFF by default so normal logs stay focused on switches, state changes, and errors.
+/// Enable for deep debugging by creating a `VERBOSE_LOG` marker file in the container
+/// Documents dir and relaunching (`killall WallpaperAgent`). Evaluated once at launch.
+let verboseLoggingEnabled: Bool = {
+    let url = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Documents/VERBOSE_LOG")
+    return FileManager.default.fileExists(atPath: url.path)
+}()
+
+/// Trace-level log — only written when `verboseLoggingEnabled`. Use for the noisy internal
+/// diagnostics (renderer restart steps, feed ticks, per-connection churn, snapshots). The
+/// `@autoclosure` means the string isn't even built when tracing is off.
+func traceLog(_ message: @autoclosure () -> String) {
+    guard verboseLoggingEnabled else { return }
+    extensionLog(message())
+}
+
 func extensionLog(_ message: String) {
     let ts = logDateFormatter.string(from: Date())
     let line = "[\(ts)] \(message)\n"

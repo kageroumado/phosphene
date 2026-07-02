@@ -2,7 +2,7 @@ import AVFoundation
 import CoreMedia
 
 /// Video variant descriptor matching the extension's VideoVariant type.
-struct VideoVariant: Codable, Sendable {
+struct VideoVariant: Codable {
     let filename: String
     let fps: Int
     let resolution: CGSize
@@ -13,7 +13,9 @@ enum OptimizationPreset: String, CaseIterable, Identifiable {
     case balanced = "Balanced"
     case quality = "Quality"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     /// Short description shown in the inspector below the preset picker.
     var description: String {
@@ -30,9 +32,9 @@ enum OptimizationPreset: String, CaseIterable, Identifiable {
     func targetResolution(source: CGSize) -> CGSize {
         switch self {
         case .batterySaver:
-            guard source.width > 1920 else { return source }
-            let scale = 1920.0 / source.width
-            return CGSize(width: 1920, height: (source.height * scale).rounded())
+            guard source.width > 1_920 else { return source }
+            let scale = 1_920.0 / source.width
+            return CGSize(width: 1_920, height: (source.height * scale).rounded())
         case .balanced, .quality:
             return source
         }
@@ -75,7 +77,7 @@ enum VideoOptimizationService {
     static func createVariants(
         sourceURL: URL,
         targetResolution: CGSize,
-        progress: @escaping @MainActor @Sendable (Double) -> Void
+        progress: @escaping @MainActor @Sendable (Double) -> Void,
     ) async throws -> [(url: URL, variant: VideoVariant)] {
         let asset = AVURLAsset(url: sourceURL)
 
@@ -107,8 +109,8 @@ enum VideoOptimizationService {
         for (tierIndex, tierFPS) in tiers.enumerated() {
             try Task.checkCancellation()
 
-            let tierProgress: Double = Double(tierIndex) / Double(tiers.count)
-            let tierWeight: Double = 1.0 / Double(tiers.count)
+            let tierProgress = Double(tierIndex) / Double(tiers.count)
+            let tierWeight = 1.0 / Double(tiers.count)
 
             let filename = "variant_\(tierFPS)fps.mp4"
             let outputURL = FileManager.default.temporaryDirectory
@@ -127,13 +129,13 @@ enum VideoOptimizationService {
                 outputURL: outputURL,
                 tierProgress: tierProgress,
                 tierWeight: tierWeight,
-                progress: progress
+                progress: progress,
             )
 
             let variant = VideoVariant(
                 filename: filename,
                 fps: tierFPS,
-                resolution: targetResolution
+                resolution: targetResolution,
             )
             results.append((url: outputURL, variant: variant))
         }
@@ -144,7 +146,7 @@ enum VideoOptimizationService {
 
     // MARK: - Private
 
-    nonisolated private static func computeBitrate(resolution: CGSize, fps: Int) -> Int {
+    private nonisolated static func computeBitrate(resolution: CGSize, fps: Int) -> Int {
         let pixels = Int(resolution.width) * Int(resolution.height)
         let baseBitrate = Double(pixels) * 2.0 // ~2 bits per pixel — H.264 High Profile
         let fpsScale = Double(fps) / 30.0
@@ -153,17 +155,17 @@ enum VideoOptimizationService {
 
     /// Encode a single FPS tier using synchronous pull-based reading on a background queue.
     /// This avoids `requestMediaDataWhenReady` Sendability issues with non-Sendable AVFoundation types.
-    nonisolated private static func encodeTier(
+    private nonisolated static func encodeTier(
         asset: AVURLAsset,
         videoTrack: AVAssetTrack,
         tierFPS: Int,
-        sourceRate: Float,
+        sourceRate _: Float,
         targetResolution: CGSize,
         totalSeconds: Double,
         outputURL: URL,
         tierProgress: Double,
         tierWeight: Double,
-        progress: @escaping @MainActor @Sendable (Double) -> Void
+        progress: @escaping @MainActor @Sendable (Double) -> Void,
     ) async throws {
         // All AVFoundation work happens on a single dedicated queue.
         // We use nonisolated(unsafe) + withCheckedThrowingContinuation to bridge.
@@ -171,8 +173,8 @@ enum VideoOptimizationService {
         let readerOutput = AVAssetReaderTrackOutput(
             track: videoTrack,
             outputSettings: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-            ]
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            ],
         )
         reader.add(readerOutput)
 
@@ -189,19 +191,19 @@ enum VideoOptimizationService {
                     AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
                     AVVideoExpectedSourceFrameRateKey: tierFPS,
                 ],
-            ]
+            ],
         )
         writerInput.expectsMediaDataInRealTime = false
         writer.add(writerInput)
 
         guard reader.startReading() else {
             throw OptimizationError.encodingFailed(
-                reader.error?.localizedDescription ?? "Failed to start reading"
+                reader.error?.localizedDescription ?? "Failed to start reading",
             )
         }
         guard writer.startWriting() else {
             throw OptimizationError.encodingFailed(
-                writer.error?.localizedDescription ?? "Failed to start writing"
+                writer.error?.localizedDescription ?? "Failed to start writing",
             )
         }
         writer.startSession(atSourceTime: .zero)
@@ -260,7 +262,7 @@ enum VideoOptimizationService {
                         continuation.resume()
                     } else {
                         continuation.resume(throwing: OptimizationError.encodingFailed(
-                            unsafe w.error?.localizedDescription ?? "Unknown write error"
+                            unsafe w.error?.localizedDescription ?? "Unknown write error",
                         ))
                     }
                 }
@@ -269,7 +271,7 @@ enum VideoOptimizationService {
 
         if reader.status == .failed {
             throw OptimizationError.encodingFailed(
-                reader.error?.localizedDescription ?? "Reader failed"
+                reader.error?.localizedDescription ?? "Reader failed",
             )
         }
     }

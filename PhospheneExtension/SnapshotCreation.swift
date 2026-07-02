@@ -1,8 +1,3 @@
-// IOSurface snapshot creation for WallpaperAgent.
-//
-// Creates WallpaperSnapshotXPC containing an IOSurface with a video frame.
-// Used by the snapshot XPC callback to provide visual data to the Agent.
-
 import AVFoundation
 import CoreMedia
 @preconcurrency import IOSurface
@@ -52,7 +47,7 @@ func createSnapshotViaRuntime(currentTime: CMTime? = nil) async -> AnyObject? {
         return nil
     }
 
-    extensionLog("  [Snapshot] Created WallpaperSnapshotXPC \(image.width)x\(image.height)")
+    traceLog("  [Snapshot] Created WallpaperSnapshotXPC \(image.width)x\(image.height)")
     return snapshotXPC
 }
 

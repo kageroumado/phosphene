@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 @Observable
 final class PhospheneManager {
     /// Singleton reference for URL scheme handling from AppDelegate.
-    static private(set) weak var shared: PhospheneManager?
+    private(set) weak static var shared: PhospheneManager?
 
     // MARK: - Optimization State
 
@@ -144,12 +144,14 @@ final class PhospheneManager {
                 let variants = try await VideoOptimizationService.createVariants(
                     sourceURL: sourceURL,
                     targetResolution: target,
-                    progress: { @MainActor in self.optimizationProgress = $0 }
+                    progress: { @MainActor in self.optimizationProgress = $0 },
                 )
                 await MainActor.run {
                     VideoDeploymentService.deployVariants(entryID: entryID, variants: variants)
                 }
-                for (url, _) in variants { try? FileManager.default.removeItem(at: url) }
+                for (url, _) in variants {
+                    try? FileManager.default.removeItem(at: url)
+                }
             } catch is CancellationError {
                 // user cancelled
             } catch {
