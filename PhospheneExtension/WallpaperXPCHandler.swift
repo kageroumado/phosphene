@@ -337,13 +337,22 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             ActiveWallpaper(caContext: caContext, contextId: contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration),
             for: key,
         )
-        reply(replyObj, nil)
         extensionLog("  Created context \(contextId) for display \(key.displayID)")
 
-        if ColorDiag.enabled { colorDiagInstall(rootLayer: rootLayer, for: key); return }
+        // NB: the XPC reply is DEFERRED until the new context is actually displaying
+        // video (in the render Task below). WallpaperAgent hosts a context only after it
+        // receives this reply, and keeps compositing the OLD wallpaper's context until
+        // then. Replying immediately (as before) made the agent swap to a not-yet-
+        // rendering context — the blink / still-flash / zoom on every switch. Gating the
+        // reply on the first composited frame makes the host swap land directly on live
+        // video, matching Apple's own extensions (which likewise don't reply until ready).
+        // Every branch below still replies exactly once so the acquire can never hang.
+
+        if ColorDiag.enabled { reply(replyObj, nil); colorDiagInstall(rootLayer: rootLayer, for: key); return }
 
         guard let videoURL else {
-            // No video file — solid gradient fallback.
+            // No video file — solid gradient fallback. Static content, so it's ready as
+            // soon as it's installed; reply immediately.
             let gradientLayer = CAGradientLayer()
             gradientLayer.colors = [
                 CGColor(red: 0.2, green: 0.0, blue: 0.5, alpha: 1.0),
@@ -357,6 +366,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             CATransaction.begin(); CATransaction.setDisableActions(true)
             rootLayer.addSublayer(gradientLayer)
             CATransaction.commit(); CATransaction.flush()
+            reply(replyObj, nil)
             extensionLog("  No video file found — solid color fallback")
             return
         }
@@ -366,24 +376,32 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         if WallpaperState.shared.claimRendererCreate(for: key) {
             traceLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent)")
             let boxedRoot = SendableBox(value: rootLayer)
+            // The reply object is non-Sendable; box it to cross into the render Task.
+            let boxedReply = SendableBox(value: replyObj)
             let selector = makeVariantSelector(choice: choiceConfiguration, fallback: videoURL)
-            Task { [boxedRoot, videoURL, cachedStill, selector, key, choiceConfiguration] in
+            Task { [boxedRoot, boxedReply, videoURL, cachedStill, selector, key, choiceConfiguration] in
                 let renderer: VideoRenderer
                 do {
                     renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill)
                 } catch {
                     extensionLog("  [Renderer] Failed to create: \(error)")
                     WallpaperState.shared.clearRendererPending(for: key)
+                    reply(boxedReply.value, nil)  // context still has the cached still — let the swap proceed
                     return
                 }
                 renderer.variantSelector = selector
                 let old = WallpaperState.shared.setRenderer(renderer, videoID: choiceConfiguration, for: key)
-                old?.stop()
                 WallpaperPrefs.shared.setActive(true)
-                renderer.start()
+                // Reply only once the first video frame is composited into this context,
+                // then stop the old renderer (the agent has been told to swap off it).
+                renderer.start(onFirstFrameReady: {
+                    reply(boxedReply.value, nil)
+                    old?.stop()
+                })
             }
         } else {
             traceLog("  [acquire] renderer create already in flight for display \(key.displayID) — skipping duplicate (create path)")
+            reply(replyObj, nil)
         }
         let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
         Task { await writeBMPSnapshot(videoURL: videoURL, videoID: choiceConfiguration, displayPixelWidth: w, displayPixelHeight: h) }

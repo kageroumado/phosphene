@@ -144,12 +144,20 @@ final class VideoRenderer: @unchecked Sendable {
     /// first-frame `copyNextSampleBuffer` is a blocking decode, and the caller is a
     /// Swift-concurrency (cooperative) task; blocking a cooperative thread violates
     /// forward progress and starves the extension's tiny executor.
-    func start() {
+    ///
+    /// `onFirstFrameReady`, if provided, is invoked AFTER the first frame is enqueued and
+    /// flushed to the render server — i.e. once this renderer's CAContext is actually
+    /// displaying video. The acquire path uses it to defer its XPC reply until the new
+    /// context is live, so WallpaperAgent keeps compositing the OLD wallpaper until then
+    /// and the host swap lands directly on playing video (no blink / still-flash / zoom),
+    /// mirroring Apple's own extensions. It is called exactly once on every path,
+    /// including early exits, so a gated reply can never hang.
+    func start(onFirstFrameReady: (@Sendable () -> Void)? = nil) {
         traceLog("  [start #\(debugID)] asset=\(asset.url.lastPathComponent)")
         queue.async { [weak self] in
-            guard let self else { return }
-            guard isRunning else { traceLog("  [start #\(debugID)] aborted — already stopped"); return }
-            guard let reader = try? AVAssetReader(asset: asset) else { return }
+            guard let self else { onFirstFrameReady?(); return }
+            guard isRunning else { traceLog("  [start #\(debugID)] aborted — already stopped"); onFirstFrameReady?(); return }
+            guard let reader = try? AVAssetReader(asset: asset) else { onFirstFrameReady?(); return }
             let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
             output.alwaysCopiesSampleData = false
             reader.add(output)
@@ -158,8 +166,15 @@ final class VideoRenderer: @unchecked Sendable {
             // Reset timebase BEFORE first enqueue so the frame isn't seen as late.
             CMTimebaseSetTime(timebase, time: .zero)
 
+            // Enqueue the first frame and flush it to the render server inside an
+            // action-free transaction, so the context is genuinely displaying video
+            // before onFirstFrameReady fires (the deferred acquire reply gates on this).
             if let firstSample = output.copyNextSampleBuffer() {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
                 renderer.enqueue(firstSample)
+                CATransaction.commit()
+                CATransaction.flush()
             }
 
             currentReader = reader
@@ -169,6 +184,10 @@ final class VideoRenderer: @unchecked Sendable {
 
             // Begin advancing the timebase — playback starts.
             CMTimebaseSetRate(timebase, rate: 1.0)
+
+            // The context now holds a live, composited video frame — release the gate so
+            // the acquire can reply and the agent can swap to us.
+            onFirstFrameReady?()
 
             prepareNextReader()
             feedFromCurrentReader()
