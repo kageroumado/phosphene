@@ -13,6 +13,12 @@ struct ActiveWallpaper: @unchecked Sendable {
     var renderer: VideoRenderer?
     let displayID: UInt32?
     var videoID: String?
+    /// Whether this context serves a preview surface (Settings picker / lock-screen
+    /// prewarm) or the live desktop. Set from the acquire's `isPreview` flag and
+    /// used by `hasLiveRenderer(onDisplay:isPreview:)` so a preview-first / desktop-
+    /// second boot doesn't misclassify the desktop acquire as a switch (which would
+    /// defer its reply and leave the desktop CALayerHost black).
+    let isPreview: Bool
     /// True while a `VideoRenderer.create` is in flight for this slot. Prevents a
     /// second (e.g. preview) acquire from spinning up a *duplicate* renderer on the
     /// same rootLayer while the first acquire's async create hasn't populated
@@ -255,16 +261,23 @@ final class WallpaperState: Sendable {
         }
     }
 
-    /// Whether this display already has a slot with a running renderer — i.e. an
-    /// existing Phosphene surface WallpaperAgent can keep compositing while a new
-    /// acquire's context comes up. False on a cold start (first activation / nothing to
-    /// hold). The acquire path uses this to decide reply timing: on a cold start it
-    /// replies as soon as the poster still is up (the agent shows the still, no black
-    /// gap); on a real switch it defers the reply until the new context is rendering
+    /// Whether this display already has a live renderer for the same surface *role*
+    /// (preview vs. live desktop) — i.e. an existing Phosphene surface WallpaperAgent
+    /// is already hosting in the SAME CALayerHost this new acquire targets. Only such a
+    /// same-role renderer is something the agent can keep compositing while the new
+    /// context comes up: a live-desktop CALayerHost isn't held by a preview renderer, and
+    /// vice versa. The acquire path uses this to decide reply timing: on a cold start
+    /// (nothing to hold for THIS role) it replies as soon as the poster still is up; on
+    /// a real same-role switch it defers the reply until the new context is rendering
     /// video, so the host swap lands directly on video with no still-flash.
-    func hasLiveRenderer(onDisplay displayID: UInt32) -> Bool {
+    ///
+    /// Splitting by role fixes the preview-first / desktop-second boot ordering: without
+    /// this filter, the preview renderer would trip `hasLiveRenderer` for the incoming
+    /// desktop acquire, the desktop reply would defer with nothing held in the desktop
+    /// CALayerHost, and the desktop would show black until we finally replied.
+    func hasLiveRenderer(onDisplay displayID: UInt32, isPreview: Bool) -> Bool {
         lock.withLock { state in
-            state.contexts.values.contains { $0.displayID == displayID && $0.renderer != nil }
+            state.contexts.values.contains { $0.displayID == displayID && $0.renderer != nil && $0.isPreview == isPreview }
         }
     }
 

@@ -334,7 +334,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // Install the persistent slot now (renderer added async) so a concurrent
         // acquire for the same display reuses this context instead of creating another.
         WallpaperState.shared.installContext(
-            ActiveWallpaper(caContext: caContext, contextId: contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration),
+            ActiveWallpaper(caContext: caContext, contextId: contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration, isPreview: isPreview),
             for: key,
         )
         extensionLog("  Created context \(contextId) for display \(key.displayID)")
@@ -371,18 +371,24 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             return
         }
 
-        // Cold start = no existing Phosphene surface on this display for the agent to keep
-        // compositing during the swap. Unlike a switch (where the outgoing context is OURS
-        // and stays hosted, via the teardown grace, until we reply), here the agent has
-        // nothing of ours to hold — the instant it hosts our context it shows whatever the
-        // context contains. `rootLayer.contents` is BLACK cross-process (only IOSurface-
+        // Cold start = no existing Phosphene surface on this display for the SAME surface
+        // role (preview vs. live desktop) that the agent could keep compositing during the
+        // swap. Unlike a switch (where the outgoing context is OURS and stays hosted, via
+        // the teardown grace, until we reply), here the agent has nothing of ours to hold
+        // in THIS role's CALayerHost — the instant it hosts our context it shows whatever
+        // the context contains. `rootLayer.contents` is BLACK cross-process (only IOSurface-
         // backed AVSampleBufferDisplayLayer content composites remotely — see
         // Research/wallpaper-extension-issue13-and-rendering-findings.md), so replying
         // before the renderer exists paints black. Instead, on a cold start we reply the
         // instant VideoRenderer.create() has seeded + flushed the IOSurface still into the
         // display layer: the agent then hosts a context already showing the still, and the
         // video plays over it in place. A switch keeps deferring until the first video frame.
-        let coldStart = !WallpaperState.shared.hasLiveRenderer(onDisplay: displayID0)
+        //
+        // Filtering by `isPreview` is what fixes the WallpaperAgent-restart ordering bug:
+        // a preview-first / desktop-second boot must NOT let the preview renderer trip this
+        // check for the incoming desktop acquire, because the desktop CALayerHost has never
+        // hosted anything of ours — deferring there paints black.
+        let coldStart = !WallpaperState.shared.hasLiveRenderer(onDisplay: displayID0, isPreview: isPreview)
 
         // Claim the single create slot for this display. If a racing (preview)
         // acquire beat us to it, skip — exactly one renderer per display.
@@ -466,7 +472,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
         }
         WallpaperState.shared.installContext(
-            ActiveWallpaper(caContext: caContext, contextId: caContext.contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choice),
+            ActiveWallpaper(caContext: caContext, contextId: caContext.contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choice, isPreview: acquiredAsPreview),
             for: key,
         )
         reply(replyObj, nil)
