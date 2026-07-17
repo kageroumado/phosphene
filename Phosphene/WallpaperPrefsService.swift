@@ -49,6 +49,15 @@ final class WallpaperPrefsService {
         !selections.isEmpty
     }
 
+    #if DEBUG
+        /// Injects a fabricated selection so the popover renders its full "playing" state on a
+        /// machine where Phosphene isn't the active system wallpaper (see ScreenshotGallery).
+        func stageGallerySelection(_ selection: WallpaperSelection) {
+            selections = [selection]
+            isActive = true
+        }
+    #endif
+
     var pausedDisplays: Set<UInt32> = [] {
         didSet { guard pausedDisplays != oldValue else { return }; savePrefs() }
     }

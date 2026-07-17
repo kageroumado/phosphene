@@ -3,9 +3,25 @@ import SwiftUI
 @main
 struct PhospheneApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
-    @State private var manager = PhospheneManager()
+    @State private var manager: PhospheneManager
 
     @Environment(\.openWindow) private var openWindow
+
+    init() {
+        let manager = PhospheneManager()
+        _manager = State(initialValue: manager)
+
+        #if DEBUG
+            // Chrome-less popover stage for clean screenshot captures (see ScreenshotGallery).
+            // A menu-bar app never auto-presents SwiftUI windows, so the stage is presented via
+            // AppKit once launch settles.
+            if UserDefaults.standard.bool(forKey: "PHOSPHENE_GALLERY") {
+                DispatchQueue.main.async {
+                    ScreenshotGallery.present(manager: manager)
+                }
+            }
+        #endif
+    }
 
     var body: some Scene {
         MenuBarExtra {

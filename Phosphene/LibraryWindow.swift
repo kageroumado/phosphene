@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LibraryWindow: View {
     @Bindable var manager: PhospheneManager
+    var initialSelectionID: String?
     @State private var selectedEntryID: String?
     @State private var showInspector = true
     @State private var entries: [VideoDeploymentService.EntryInfo] = []
@@ -52,6 +53,10 @@ struct LibraryWindow: View {
         entries = VideoDeploymentService.listEntries()
         if let selectedEntryID, !entries.contains(where: { $0.id == selectedEntryID }) {
             self.selectedEntryID = nil
+        }
+        if selectedEntryID == nil, let initialSelectionID,
+           entries.contains(where: { $0.id == initialSelectionID }) {
+            selectedEntryID = initialSelectionID
         }
     }
 }

@@ -1,4 +1,23 @@
+<div align="center">
+
+<img src=".github/phosphene-icon.png" alt="Phosphene icon" width="128" height="128">
+
 # Phosphene
+
+**a video wallpaper engine for macOS ・ your own clips, playing as the desktop and lock screen ♡**
+
+[![kagerou.glass](https://img.shields.io/badge/kagerou.glass-ff5fa6?style=for-the-badge&logo=safari&logoColor=white)](https://kagerou.glass/phosphene/)
+[![@kageroumado](https://img.shields.io/badge/@kageroumado-76e6e0?style=for-the-badge&logo=x&logoColor=0d0a10)](https://x.com/kageroumado)
+[![macOS Tahoe](https://img.shields.io/badge/macOS-Tahoe_26%2B-0d0a10?style=for-the-badge&logo=apple&logoColor=white)](#requirements)
+
+<table>
+  <tr>
+    <td align="center" width="40%"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/phosphene-popover-dark.png"><img src=".github/phosphene-popover.png" alt="The menu bar popover — the current wallpaper previewing live, its name and Playing status, and rows for Manage Library, Wallpaper Settings, Restart Wallpaper Agent, and Check for Updates" width="270"></picture><br><sub><b>the menu bar</b> ・ preview, pause, switch displays</sub></td>
+    <td align="center" width="60%"><img src=".github/phosphene-library.png" alt="The Library window — a grid of imported videos with the active one selected, and an inspector showing resolution, frame rate, duration, file size, codec, and pre-rendered variants" width="600"><br><sub><b>your library</b> ・ import, inspect, and optimize your videos</sub></td>
+  </tr>
+</table>
+
+</div>
 
 A video wallpaper engine for macOS Tahoe and later.
 
