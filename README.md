@@ -4,7 +4,7 @@
 
 # Phosphene
 
-**a video wallpaper engine for macOS ・ your own clips, playing as the desktop and lock screen ♡**
+**any video, as your real macOS wallpaper ・ on the desktop and the lock screen ♡**
 
 [![kagerou.glass](https://img.shields.io/badge/kagerou.glass-ff5fa6?style=for-the-badge&logo=safari&logoColor=white)](https://kagerou.glass/phosphene/)
 [![@kageroumado](https://img.shields.io/badge/@kageroumado-76e6e0?style=for-the-badge&logo=x&logoColor=0d0a10)](https://x.com/kageroumado)
@@ -19,11 +19,9 @@
 
 </div>
 
-A video wallpaper engine for macOS Tahoe and later.
+macOS doesn't let you use your own videos as wallpaper. The desktop only takes stills, and the lock screen only plays Apple's approved Aerials. Phosphene removes that limit: it's a menu bar app + wallpaper extension that adds **any video you like** to **System Settings → Wallpaper** — as its own collection, selectable for the desktop and the lock screen exactly like a built-in.
 
-Phosphene is a menu bar app + wallpaper extension that plays your own video files as the macOS desktop and lock-screen wallpaper. It plugs into the system's native wallpaper picker, so videos appear alongside Apple's built-in Aerials in **System Settings → Wallpaper**.
-
-It is built on top of Apple's private `WallpaperExtensionKit` framework — the same one Apple's own Aerials use — which means playback runs out-of-process, survives app quits, and integrates with the OS-level lock-screen / idle / sleep lifecycle.
+There's no floating window pretending to be a wallpaper. Phosphene plugs into Apple's private `WallpaperExtensionKit` framework — the same wallpaper pipeline Apple's own Aerials use — which means playback runs out-of-process, survives app quits, works on the real lock screen, and integrates with the OS-level lock / idle / sleep lifecycle.
 
 > ⚠️ **Private framework.** Phosphene loads `WallpaperExtensionKit` via `dlopen` and uses Mirror-based runtime introspection to talk to its XPC types. Apple could change this at any major OS release. Validated on macOS 26 (Tahoe) and macOS 27 (beta).
 
@@ -43,6 +41,18 @@ It is built on top of Apple's private `WallpaperExtensionKit` framework — the 
 - **macOS Tahoe (26.0+).** Phosphene depends on the Wallpaper extension point introduced in macOS 14 but uses Tahoe-only SwiftUI and `glassEffect()` APIs. Tested on macOS 26 and macOS 27 (beta).
 - **Apple Silicon.** Targets `arm64-apple-macos26.0`.
 - **Xcode 17+** to build, with Swift 6 strict concurrency enabled.
+
+## Install
+
+Grab the signed, notarized DMG from **[GitHub Releases](https://github.com/kageroumado/phosphene/releases/latest)** — open it, drag **Phosphene** to Applications, and launch.
+
+Or via Homebrew:
+
+```sh
+brew install --cask kageroumado/tap/phosphene
+```
+
+The fully qualified name auto-trusts the cask under Homebrew 6's tap-trust system — see [the tap](https://github.com/kageroumado/homebrew-tap) for what's in it.
 
 ## Building
 
