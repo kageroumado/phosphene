@@ -39,7 +39,7 @@ There's no floating window pretending to be a wallpaper. Phosphene plugs into Ap
 ## Requirements
 
 - **macOS Tahoe (26.0+).** Phosphene depends on the Wallpaper extension point introduced in macOS 14 but uses Tahoe-only SwiftUI and `glassEffect()` APIs. Tested on macOS 26 and macOS 27 (beta).
-- **Apple Silicon.** Targets `arm64-apple-macos26.0`.
+- **Apple Silicon or Intel.** Releases ship as a universal binary (`arm64` + `x86_64`).
 - **Xcode 17+** to build, with Swift 6 strict concurrency enabled.
 
 ## Install
