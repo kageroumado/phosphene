@@ -19,6 +19,13 @@ struct ActiveWallpaper: @unchecked Sendable {
     /// second boot doesn't misclassify the desktop acquire as a switch (which would
     /// defer its reply and leave the desktop CALayerHost black).
     let isPreview: Bool
+    /// The destination geometry (in points) and backing scale this surface's layer
+    /// tree was last laid out for. Tracked so a re-`acquire` for the SAME surface can
+    /// detect a resolution/scale change (disconnect→reconnect a display, or a plain
+    /// mode change) and re-frame the root + renderer layers — the REUSE path otherwise
+    /// keeps the original size and the wallpaper renders into a sub-region of the panel.
+    var destSize: CGSize
+    var scaleFactor: CGFloat
     /// True while a `VideoRenderer.create` is in flight for this slot. Prevents a
     /// second (e.g. preview) acquire from spinning up a *duplicate* renderer on the
     /// same rootLayer while the first acquire's async create hasn't populated
@@ -144,6 +151,23 @@ final class WallpaperState: Sendable {
         }
         traceLog("  [setRenderer] display=\(key.displayID) new=\(renderer.map { "#\($0.debugID)" } ?? "nil") replacing=\(previous.map { "#\($0.debugID)" } ?? "nil") videoID=\(videoID ?? "nil")")
         return previous
+    }
+
+    /// Record the destination geometry for a slot, returning the slot (with its live
+    /// `rootLayer`/`renderer`) only if the geometry actually changed since it was last
+    /// laid out. The common re-acquire (display wake, quick Space revisit, a switch that
+    /// reuses the id) carries the same size and returns nil — no relayout. A
+    /// disconnect→reconnect at a different resolution, or a bare mode change, returns the
+    /// slot so the caller can re-frame the layer tree.
+    func updateGeometryIfChanged(destSize: CGSize, scaleFactor: CGFloat, for key: DisplayKey) -> ActiveWallpaper? {
+        lock.withLock { state -> ActiveWallpaper? in
+            guard var context = state.contexts[key] else { return nil }
+            if context.destSize == destSize, context.scaleFactor == scaleFactor { return nil }
+            context.destSize = destSize
+            context.scaleFactor = scaleFactor
+            state.contexts[key] = context
+            return context
+        }
     }
 
     /// Update the videoID a slot is tracking after an in-place `switchVideo`

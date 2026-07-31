@@ -228,6 +228,26 @@ final class VideoRenderer: @unchecked Sendable {
     /// runs to completion in FIFO order on one thread, rapid switching is naturally
     /// last-*requested*-wins with no cancellation bookkeeping — the only async hop is
     /// the renderer's `flush`, which is serialized and coalesces rapid switches.
+    /// Re-frame the video + still layers to a new destination geometry (points) and
+    /// backing scale — used when a display reconnects at, or switches to, a different
+    /// resolution. Both layers fill the root and are `resizeAspectFill`, so re-framing
+    /// them to the full bounds is all that's needed; the AVSampleBufferDisplayLayer
+    /// re-fits the decoded frames to the new size on the next composite. Synchronous,
+    /// inside an action-free flushed transaction, to match the acquire path's own layer
+    /// mutations (which run on the same Lifecycle queue, off the main thread).
+    func resize(to destSize: CGSize, scale: CGFloat) {
+        let bounds = CGRect(origin: .zero, size: destSize)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        displayLayer.frame = bounds
+        displayLayer.contentsScale = scale
+        stillFrameLayer.frame = bounds
+        stillFrameLayer.contentsScale = scale
+        CATransaction.commit()
+        CATransaction.flush()
+        traceLog("  [resize #\(debugID)] → \(destSize) @\(scale)x")
+    }
+
     func switchVideo(to url: URL) {
         traceLog("  [switchVideo #\(debugID)] REQUEST target=\(url.lastPathComponent)")
         queue.async { [weak self] in

@@ -251,6 +251,24 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // changed; re-selecting the same wallpaper is a no-op.
         if let existing = WallpaperState.shared.context(for: key) {
             traceLog("  [acquire] REUSE ctx=\(existing.contextId) display=\(key.displayID) storedVideoID=\(existing.videoID ?? "nil") newChoice=\(choiceConfiguration ?? "nil") renderer=\(existing.renderer.map { "#\($0.debugID)" } ?? "nil") videoURL=\(findVideoURL(forChoice: choiceConfiguration)?.lastPathComponent ?? "nil")")
+
+            // Geometry may have changed since this surface was created — a bigger/smaller
+            // display reconnected, or the same display switched resolution. The REUSE path
+            // otherwise keeps the original frame, so the wallpaper renders into a sub-region
+            // of the now-larger panel (issue #21). Re-frame the root + renderer layers to the
+            // new destination before re-hosting. Unchanged geometry (the common wake/revisit
+            // re-acquire) returns nil and skips the relayout.
+            if let resized = WallpaperState.shared.updateGeometryIfChanged(destSize: destSize, scaleFactor: scaleFactor, for: key) {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                resized.rootLayer.frame = CGRect(origin: .zero, size: destSize)
+                resized.rootLayer.contentsScale = scaleFactor
+                CATransaction.commit()
+                CATransaction.flush()
+                resized.renderer?.resize(to: destSize, scale: scaleFactor)
+                extensionLog("  [acquire] REUSE geometry changed → resized surface on display \(key.displayID) to \(destSize) @\(scaleFactor)x")
+            }
+
             guard let replyObj = createRemoteContextXPC(contextId: existing.contextId) else {
                 reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
             }
@@ -334,7 +352,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // Install the persistent slot now (renderer added async) so a concurrent
         // acquire for the same display reuses this context instead of creating another.
         WallpaperState.shared.installContext(
-            ActiveWallpaper(caContext: caContext, contextId: contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration, isPreview: isPreview),
+            ActiveWallpaper(caContext: caContext, contextId: contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration, isPreview: isPreview, destSize: destSize, scaleFactor: scaleFactor),
             for: key,
         )
         extensionLog("  Created context \(contextId) for display \(key.displayID)")
@@ -472,7 +490,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
         }
         WallpaperState.shared.installContext(
-            ActiveWallpaper(caContext: caContext, contextId: caContext.contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choice, isPreview: acquiredAsPreview),
+            ActiveWallpaper(caContext: caContext, contextId: caContext.contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choice, isPreview: acquiredAsPreview, destSize: destSize, scaleFactor: scaleFactor),
             for: key,
         )
         reply(replyObj, nil)
