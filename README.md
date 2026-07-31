@@ -52,8 +52,6 @@ Or via Homebrew — Phosphene is in the official [homebrew/cask](https://formula
 brew install --cask phosphene
 ```
 
-(It also remains available from [my tap](https://github.com/kageroumado/homebrew-tap) as `kageroumado/tap/phosphene`.)
-
 ## Building
 
 ```sh
