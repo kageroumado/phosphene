@@ -46,13 +46,13 @@ There's no floating window pretending to be a wallpaper. Phosphene plugs into Ap
 
 Grab the signed, notarized DMG from **[GitHub Releases](https://github.com/kageroumado/phosphene/releases/latest)** — open it, drag **Phosphene** to Applications, and launch.
 
-Or via Homebrew:
+Or via Homebrew — Phosphene is in the official [homebrew/cask](https://formulae.brew.sh/cask/phosphene) repository:
 
 ```sh
-brew install --cask kageroumado/tap/phosphene
+brew install --cask phosphene
 ```
 
-The fully qualified name auto-trusts the cask under Homebrew 6's tap-trust system — see [the tap](https://github.com/kageroumado/homebrew-tap) for what's in it.
+(It also remains available from [my tap](https://github.com/kageroumado/homebrew-tap) as `kageroumado/tap/phosphene`.)
 
 ## Building
 
