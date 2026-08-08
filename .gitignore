@@ -73,3 +73,9 @@ Secrets.plist
 # Xcode build output
 DerivedData/
 build/
+
+# Local wallpaper imports and generated video variants
+*.m4v
+*.mov
+*.mp4
+*.webm
