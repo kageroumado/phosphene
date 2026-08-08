@@ -38,7 +38,13 @@ enum PlaybackPolicy: Int, Comparable {
         if thermalState == .critical { worst = max(worst, .paused) }
         if batteryLevel < 10 { worst = max(worst, .paused) }
         if activityState.contains("suspended") { worst = max(worst, .paused) }
-        if presentationMode == "idle" { worst = max(worst, .paused) }
+        // WallpaperAgent can report an `idle` presentation mode while the surface is
+        // still actively hosted (for example, during Settings preview and the
+        // desktop-to-lock transition). Treat only an inactive idle surface as a
+        // pause signal; otherwise the first frame is immediately frozen black.
+        if presentationMode == "idle", !activityState.contains("active") {
+            worst = max(worst, .paused)
+        }
         if isGameModeActive { worst = max(worst, .paused) }
         // User dimmed the backlight to ~zero. The display is technically still
         // "awake" so `screensDidSleep` doesn't fire and the WallpaperAgent never
