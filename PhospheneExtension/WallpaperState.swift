@@ -180,6 +180,19 @@ final class WallpaperState: Sendable {
         }
     }
 
+    func retargetAllRenderers(toVideoID videoID: String?) -> [VideoRenderer] {
+        lock.withLock { state in
+            var renderers: [VideoRenderer] = []
+            for (key, context) in state.contexts {
+                var updated = context
+                updated.videoID = videoID
+                state.contexts[key] = updated
+                if let renderer = context.renderer { renderers.append(renderer) }
+            }
+            return renderers
+        }
+    }
+
     /// Execute a closure for each active renderer (snapshot copy under lock, iteration outside).
     func forEachRenderer(_ body: (VideoRenderer) -> Void) {
         let renderers = lock.withLock { state in

@@ -47,6 +47,18 @@ final class PhospheneManager {
         }
     }
 
+    var hideDockIcon: Bool {
+        didSet {
+            guard hideDockIcon != oldValue else { return }
+            UserDefaults.standard.set(hideDockIcon, forKey: Keys.hideDockIcon)
+            applyActivationPolicy()
+        }
+    }
+
+    func applyActivationPolicy() {
+        NSApplication.shared.setActivationPolicy(hideDockIcon ? .accessory : .regular)
+    }
+
     // MARK: - Services
 
     let prefsService = WallpaperPrefsService.shared
@@ -60,6 +72,7 @@ final class PhospheneManager {
     private enum Keys {
         static let launchAtLogin = "launchAtLogin"
         static let resumeLastWallpaper = "resumeLastWallpaper"
+        static let hideDockIcon = "hideDockIcon"
     }
 
     // MARK: - Init
@@ -72,9 +85,11 @@ final class PhospheneManager {
         ])
         self.launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
         self.resumeLastWallpaper = defaults.bool(forKey: Keys.resumeLastWallpaper)
+        self.hideDockIcon = defaults.bool(forKey: Keys.hideDockIcon)
 
         Self.shared = self
         syncLaunchAtLogin()
+        applyActivationPolicy()
 
         // Clear legacy bookmark if present
         defaults.removeObject(forKey: "videoBookmarkKey")

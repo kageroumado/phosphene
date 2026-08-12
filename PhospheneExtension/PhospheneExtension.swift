@@ -18,6 +18,7 @@ final class PhospheneExtension: NSObject, AppExtension {
             observeDisplaySleepWake()
             observeScreenLockState()
             WallpaperPrefs.shared.observeChanges()
+            ShuffleScheduler.shared.startObserving()
             PowerMonitor.shared.startMonitoring()
             Task {
                 for await powerState in PowerMonitor.shared.stateChanges() {

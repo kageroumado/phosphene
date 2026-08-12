@@ -77,7 +77,9 @@ struct PhospheneApp: App {
     }()
 
     private func showLibraryWindow() {
-        NSApplication.shared.setActivationPolicy(.regular)
+        if !manager.hideDockIcon {
+            NSApplication.shared.setActivationPolicy(.regular)
+        }
         openWindow(id: "library")
         DispatchQueue.main.async {
             NSApplication.shared.activate()

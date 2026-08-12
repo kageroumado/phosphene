@@ -234,6 +234,9 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // A re-acquire of THIS surface (display woke / preview refresh / switch) cancels its
         // pending teardown so a brief invalidate→re-acquire flicker doesn't drop it.
         cancelTeardown(for: key)
+        if let shufflePick = ShuffleScheduler.shared.activeOverride() {
+            choiceConfiguration = shufflePick
+        }
         let videoURL = findVideoURL(forChoice: choiceConfiguration)
         let cachedStill = loadCachedSnapshotImage(forChoice: choiceConfiguration)
 

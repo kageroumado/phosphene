@@ -42,6 +42,14 @@ final class WallpaperPrefsService {
         didSet { guard desktopOccluded != oldValue else { return }; savePrefs() }
     }
 
+    var shuffleEnabled = false {
+        didSet { guard shuffleEnabled != oldValue else { return }; savePrefs() }
+    }
+
+    var shuffleIntervalSeconds = 900 {
+        didSet { guard shuffleIntervalSeconds != oldValue else { return }; savePrefs() }
+    }
+
     // MARK: - Selections (parsed from wallpaper plist)
 
     private(set) var selections: [WallpaperSelection] = []
@@ -100,13 +108,19 @@ final class WallpaperPrefsService {
         var pauseWhenOccluded: Bool
         var desktopOccluded: Bool
         var pausedDisplays: Set<UInt32>?
+        var shuffleEnabled: Bool?
+        var shuffleIntervalSeconds: Int?
+        var shuffleVideoIDs: [String]?
 
-        init(userPaused: Bool, alwaysPauseDesktop: Bool, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, pausedDisplays: Set<UInt32>? = nil) {
+        init(userPaused: Bool, alwaysPauseDesktop: Bool, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, pausedDisplays: Set<UInt32>? = nil, shuffleEnabled: Bool? = nil, shuffleIntervalSeconds: Int? = nil, shuffleVideoIDs: [String]? = nil) {
             self.userPaused = userPaused
             self.alwaysPauseDesktop = alwaysPauseDesktop
             self.pauseWhenOccluded = pauseWhenOccluded
             self.desktopOccluded = desktopOccluded
             self.pausedDisplays = pausedDisplays
+            self.shuffleEnabled = shuffleEnabled
+            self.shuffleIntervalSeconds = shuffleIntervalSeconds
+            self.shuffleVideoIDs = shuffleVideoIDs
         }
     }
 
@@ -212,6 +226,8 @@ final class WallpaperPrefsService {
             pauseWhenOccluded = prefs.pauseWhenOccluded
             desktopOccluded = prefs.desktopOccluded
             pausedDisplays = prefs.pausedDisplays ?? []
+            shuffleEnabled = prefs.shuffleEnabled ?? false
+            shuffleIntervalSeconds = prefs.shuffleIntervalSeconds ?? 900
         } catch {
             Log.general.error("Failed to decode prefs file: \(error)")
         }
@@ -224,6 +240,8 @@ final class WallpaperPrefsService {
             pauseWhenOccluded: pauseWhenOccluded,
             desktopOccluded: desktopOccluded,
             pausedDisplays: pausedDisplays.isEmpty ? nil : pausedDisplays,
+            shuffleEnabled: shuffleEnabled,
+            shuffleIntervalSeconds: shuffleIntervalSeconds,
         )
         guard let data = try? JSONEncoder().encode(prefs) else { return }
         try? data.write(to: Self.prefsURL, options: .atomic)

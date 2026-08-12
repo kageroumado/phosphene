@@ -341,6 +341,26 @@ struct MenuBarPopoverView: View {
                         },
                     ))
                     .help("Pause playback when all screens are covered by windows")
+                    toggle("Shuffle Wallpapers", isOn: Bindable(prefsService).shuffleEnabled)
+                        .help("Rotate through your whole library on a timer, even after you quit Phosphene")
+                    if prefsService.shuffleEnabled {
+                        HStack {
+                            Text("Change Every")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Picker("", selection: Bindable(prefsService).shuffleIntervalSeconds) {
+                                Text("5 min").tag(300)
+                                Text("15 min").tag(900)
+                                Text("30 min").tag(1800)
+                                Text("1 hour").tag(3600)
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .fixedSize()
+                        }
+                    }
+                    toggle("Hide Dock Icon", isOn: $manager.hideDockIcon)
                     toggle("Launch at Login", isOn: $manager.launchAtLogin)
                 }
                 .padding(.horizontal, 14)

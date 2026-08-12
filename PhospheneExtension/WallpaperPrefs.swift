@@ -15,13 +15,19 @@ final class WallpaperPrefs: @unchecked Sendable {
         var pauseWhenOccluded: Bool
         var desktopOccluded: Bool
         var pausedDisplays: Set<UInt32>?
+        var shuffleEnabled: Bool?
+        var shuffleIntervalSeconds: Int?
+        var shuffleVideoIDs: [String]?
 
-        init(userPaused: Bool = false, alwaysPauseDesktop: Bool = false, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, pausedDisplays: Set<UInt32>? = nil) {
+        init(userPaused: Bool = false, alwaysPauseDesktop: Bool = false, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, pausedDisplays: Set<UInt32>? = nil, shuffleEnabled: Bool? = nil, shuffleIntervalSeconds: Int? = nil, shuffleVideoIDs: [String]? = nil) {
             self.userPaused = userPaused
             self.alwaysPauseDesktop = alwaysPauseDesktop
             self.pauseWhenOccluded = pauseWhenOccluded
             self.desktopOccluded = desktopOccluded
             self.pausedDisplays = pausedDisplays
+            self.shuffleEnabled = shuffleEnabled
+            self.shuffleIntervalSeconds = shuffleIntervalSeconds
+            self.shuffleVideoIDs = shuffleVideoIDs
         }
     }
 
@@ -76,6 +82,18 @@ final class WallpaperPrefs: @unchecked Sendable {
 
     var pausedDisplays: Set<UInt32> {
         lock.withLock { $0.pausedDisplays ?? [] }
+    }
+
+    var shuffleEnabled: Bool {
+        lock.withLock { $0.shuffleEnabled ?? false }
+    }
+
+    var shuffleIntervalSeconds: Int {
+        lock.withLock { max(30, $0.shuffleIntervalSeconds ?? 900) }
+    }
+
+    var shuffleVideoIDs: [String]? {
+        lock.withLock { $0.shuffleVideoIDs }
     }
 
     // MARK: - Public (State — extension → app)
