@@ -190,6 +190,16 @@ final class WallpaperState: Sendable {
         }
     }
 
+    /// Live renderers whose context tracks the given choice id (e.g. the shuffle
+    /// sentinel). Snapshot copy under lock, safe to use outside.
+    func renderers(forVideoID videoID: String) -> [VideoRenderer] {
+        lock.withLock { state in
+            state.contexts.values
+                .filter { $0.videoID == videoID }
+                .compactMap(\.renderer)
+        }
+    }
+
     /// Execute a closure for renderers on a specific display.
     func forRenderers(displayID: UInt32, _ body: (VideoRenderer) -> Void) {
         let renderers = lock.withLock { state in
