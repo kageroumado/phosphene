@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct LibraryWindow: View {
@@ -27,6 +28,16 @@ struct LibraryWindow: View {
             }
             .navigationTitle("Phosphene")
             .toolbar {
+                ToolbarItem {
+                    Button {
+                        let folder = VideoDeploymentService.videosFolderURL
+                        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        NSWorkspace.shared.open(folder)
+                    } label: {
+                        Label("Open in Finder", systemImage: "folder")
+                    }
+                    .help("Open the library folder in Finder")
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showInspector.toggle()
@@ -41,11 +52,6 @@ struct LibraryWindow: View {
                 NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification),
             ) { _ in
                 loadEntries()
-            }
-            .onDisappear {
-                if NSApplication.shared.windows.filter({ $0.isVisible && $0.level == .normal }).isEmpty {
-                    NSApplication.shared.setActivationPolicy(.accessory)
-                }
             }
     }
 

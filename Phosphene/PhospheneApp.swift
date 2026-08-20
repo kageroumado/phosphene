@@ -90,10 +90,32 @@ struct PhospheneApp: App {
     }
 }
 
-// MARK: - URL Scheme Handling
+// MARK: - App Delegate
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_: Notification) {
+        // The app is a menu-bar accessory; opening the Library promotes it to a regular
+        // app so the window gets a Dock icon and menu bar. Demote it back when the last
+        // regular-level window closes. The check is deferred one runloop turn because
+        // during willClose the closing window still reports isVisible == true — checking
+        // synchronously (or in the view's onDisappear) always finds "a visible window"
+        // and leaves the Dock icon behind.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: nil, queue: .main,
+        ) { _ in
+            DispatchQueue.main.async {
+                let app = NSApplication.shared
+                guard app.activationPolicy() == .regular else { return }
+                let anyVisible = app.windows.contains { $0.isVisible && $0.level == .normal }
+                if !anyVisible {
+                    app.setActivationPolicy(.accessory)
+                }
+            }
+        }
+    }
+
     nonisolated func application(_: NSApplication, open urls: [URL]) {
         Task { @MainActor in
             for url in urls {

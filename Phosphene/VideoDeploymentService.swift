@@ -22,6 +22,11 @@ enum VideoDeploymentService {
             .appendingPathComponent("Library/Containers/glass.kagerou.phosphene.extension/Data/Documents")
     }
 
+    /// The library folder holding one subfolder per video (media + metadata + thumbnail).
+    static var videosFolderURL: URL {
+        extensionDocsURL.appendingPathComponent("videos")
+    }
+
     /// Copy a video file into the extension's VideoLibrary folder structure.
     /// Creates `Documents/videos/<uuid>/video.<ext>` + metadata.json.
     /// Probes the video with AVFoundation to populate resolution, fps, and duration.
@@ -30,7 +35,7 @@ enum VideoDeploymentService {
     @MainActor
     static func deployVideo(url: URL, name: String? = nil) async {
         let fileManager = FileManager.default
-        let videosDir = extensionDocsURL.appendingPathComponent("videos")
+        let videosDir = videosFolderURL
         try? fileManager.createDirectory(at: videosDir, withIntermediateDirectories: true)
 
         // Dedup: skip if a video with the same filename already exists in the library
@@ -194,7 +199,7 @@ enum VideoDeploymentService {
     /// gate every entry-id-derived filesystem mutation passes through, so a
     /// malformed id can never reach removeItem/copyItem with an escaped path.
     private static func validatedEntryDir(_ entryID: String) -> URL? {
-        let videosDir = extensionDocsURL.appendingPathComponent("videos")
+        let videosDir = videosFolderURL
         let dir = videosDir.appendingPathComponent(entryID)
         guard PathSafety.isValidEntryID(entryID), PathSafety.contained(dir, in: videosDir) else {
             Log.video.error("Rejecting unsafe entry id: \(entryID)")
@@ -218,7 +223,7 @@ enum VideoDeploymentService {
     /// List all valid video entries in the extension container.
     /// Validates that the video file exists, skipping orphaned entries.
     static func listEntries() -> [EntryInfo] {
-        let videosDir = extensionDocsURL.appendingPathComponent("videos")
+        let videosDir = videosFolderURL
         let fm = FileManager.default
 
         guard let subdirs = try? fm.contentsOfDirectory(
@@ -242,8 +247,7 @@ enum VideoDeploymentService {
 
     /// URL to the thumbnail for an entry, if it exists.
     static func thumbnailURL(for entryID: String) -> URL? {
-        let url = extensionDocsURL
-            .appendingPathComponent("videos")
+        let url = videosFolderURL
             .appendingPathComponent(entryID)
             .appendingPathComponent("thumbnail.jpg")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
@@ -251,8 +255,7 @@ enum VideoDeploymentService {
 
     /// URL to the video file for an entry.
     static func videoURL(for entry: EntryInfo) -> URL {
-        extensionDocsURL
-            .appendingPathComponent("videos")
+        videosFolderURL
             .appendingPathComponent(entry.id)
             .appendingPathComponent(entry.filename)
     }

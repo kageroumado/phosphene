@@ -373,9 +373,12 @@ final class VideoRenderer: @unchecked Sendable {
 
     // MARK: - Ramp (Apple-like lock screen transition)
 
-    /// Ramp duration in seconds and step interval aligned to display refresh rate.
-    /// At 120Hz (8.3ms) this gives 240 steps; at 60Hz it's 120 steps.
-    private static let rampDuration: TimeInterval = 2.0
+    /// Ramp durations in seconds and step interval aligned to display refresh rate.
+    /// Ramp-down (unlock → desktop pause) matches the ~6 s deceleration of Apple's
+    /// built-in wallpapers after unlock; ramp-up (→ lock screen) stays short so
+    /// playback reaches full speed while the lock reveal is still on screen.
+    private static let rampUpDuration: TimeInterval = 2.0
+    private static let rampDownDuration: TimeInterval = 6.0
     private static let rampStepInterval: TimeInterval = 1.0 / 120.0
 
     /// Ease-in-out cubic: smooth acceleration then deceleration.
@@ -390,7 +393,7 @@ final class VideoRenderer: @unchecked Sendable {
     /// Uses a smooth ease-in curve so the deceleration looks natural.
     private func rampDown() {
         guard !isPaused else { return }
-        let totalSteps = Int(Self.rampDuration / Self.rampStepInterval)
+        let totalSteps = Int(Self.rampDownDuration / Self.rampStepInterval)
         var step = 0
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -429,7 +432,7 @@ final class VideoRenderer: @unchecked Sendable {
 
         if currentReader == nil {
             // Deep-paused: no frames to ramp into. Wake instantly (continuing from the paused
-            // position, seamless) instead of running a 2-second ramp against an empty pipeline.
+            // position, seamless) instead of running a ramp against an empty pipeline.
             queue.async { [weak self] in
                 guard let self, isRunning else { return }
                 recreatePlayback(seamlessResume: true)
@@ -438,7 +441,7 @@ final class VideoRenderer: @unchecked Sendable {
             return
         }
 
-        let totalSteps = Int(Self.rampDuration / Self.rampStepInterval)
+        let totalSteps = Int(Self.rampUpDuration / Self.rampStepInterval)
         var step = 0
 
         // Kick off immediately so there's no dead frame at rate 0
