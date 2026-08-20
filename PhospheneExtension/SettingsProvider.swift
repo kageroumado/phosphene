@@ -1,58 +1,28 @@
 import AppKit
 import Foundation
 
-/// Knobs for the Settings add-video exploration, read from
-/// `Documents/settings-experiment.json` in the extension container so variants can be
-/// toggled without a rebuild (reopening the Wallpaper pane re-queries the view models).
-/// An absent file disables every experimental affordance.
-struct SettingsExperiment: Codable {
-    /// "image" or "imageFolder" — declares a choiceRequest on the whole group.
-    var groupChoiceRequest: String?
-    /// "image" or "imageFolder" — adds an "Add Video" tile item carrying a choiceRequest.
-    var addTile: String?
-    /// Adds a context menu with an "Add Video…" item (identifier "add-video").
-    var contextMenu: Bool?
-    /// Payload URL for the declared choiceRequest (semantics under investigation —
-    /// likely the panel's starting location).
-    var payloadPath: String?
-
-    static func load() -> SettingsExperiment {
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/settings-experiment.json")
-        guard let data = try? Data(contentsOf: url),
-              let experiment = try? JSONDecoder().decode(SettingsExperiment.self, from: data)
-        else {
-            return SettingsExperiment()
-        }
-        extensionLog("  [Settings] Experiment config loaded: \(experiment)")
-        return experiment
-    }
-
-    var payloadURL: URL {
-        URL(fileURLWithPath: payloadPath ?? NSHomeDirectory() + "/Documents/videos")
-    }
-
-    func choiceRequest(for kind: String?) -> ChoiceRequest? {
-        switch kind {
-        case "image": .image(payloadURL)
-        case "imageFolder": .imageFolder(payloadURL)
-        default: nil
-        }
-    }
-}
-
 /// Build a fully-populated WallpaperSettingsViewModelsXPC using Codable shims.
 /// Creates one SettingsItem per video in the library.
 func buildSettingsViewModelsXPC() async -> AnyObject? {
     let bundleID = Bundle.main.bundleIdentifier ?? "glass.kagerou.phosphene.extension"
     let library = VideoLibrary.shared
     let groupID = GroupID(id: "video-wallpapers")
-    let experiment = SettingsExperiment.load()
 
     // Always re-scan to pick up changes (deletions, new deployments)
     library.scan()
 
     let entries = library.entries
+
+    // Right-click menu on the group and every tile. Settings routes the press to
+    // invokeContextMenuAction with this identifier; the handler opens
+    // phosphene://add-video, which launches the app's video chooser.
+    let addVideoMenu = ContextMenu(items: [
+        ContextMenuItem(
+            id: ContextMenuItemID(id: "add-video"),
+            localizedTitle: "Add Video\u{2026}",
+            isDestructive: false,
+        ),
+    ])
 
     var items = [SettingsItem]()
 
@@ -93,23 +63,10 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
             showInTopLevel: true,
             sortOrder: 0,
             disposability: .removable,
+            contextMenu: addVideoMenu,
         )
         items.append(item)
     }
-
-    if let tileRequest = experiment.choiceRequest(for: experiment.addTile) {
-        items.append(makeAddVideoTile(bundleID: bundleID, request: tileRequest))
-    }
-
-    let contextMenu: ContextMenu? = experiment.contextMenu == true
-        ? ContextMenu(items: [
-            ContextMenuItem(
-                id: ContextMenuItemID(id: "add-video"),
-                localizedTitle: "Add Video\u{2026}",
-                isDestructive: false,
-            ),
-        ])
-        : nil
 
     let group = SettingsGroup(
         id: groupID,
@@ -120,9 +77,8 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
         sortID: GroupSortID(id: "com.apple.wallpaper.aerials"),
         allChoiceID: nil,
         shouldHideItemLabels: false,
-        contextMenu: contextMenu,
+        contextMenu: addVideoMenu,
         thumbnail: nil,
-        choiceRequest: experiment.choiceRequest(for: experiment.groupChoiceRequest),
     )
 
     let viewModel = SettingsViewModel(
@@ -137,41 +93,6 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     )
 
     return remapToRealXPC(viewModels)
-}
-
-/// An "Add Video" tile modeled on Apple's Photos add tile: a customButton thumbnail plus
-/// an item-level choiceRequest. Uses a sentinel choice id — never selectable as a wallpaper.
-private func makeAddVideoTile(bundleID: String, request: ChoiceRequest) -> SettingsItem {
-    let sentinel = "add-video-request"
-    let choiceID = ChoiceID(
-        id: sentinel,
-        descriptor: ChoiceIDDescriptor(
-            provider: ChoiceProviderID(rawValue: bundleID),
-            identifier: sentinel,
-            files: [],
-            configuration: Data(sentinel.utf8),
-        ),
-    )
-    return SettingsItem(
-        id: choiceID,
-        localizedName: "Add Video",
-        thumbnail: .customButton(.addPhotoButton),
-        choice: ChoiceDescriptor(
-            id: choiceID,
-            provider: ChoiceProviderID(rawValue: bundleID),
-            identifier: sentinel,
-            name: "Add Video",
-            localizedDescription: "Add a video to Phosphene",
-            thumbnail: .customButton(.addPhotoButton),
-            isDownloaded: true,
-            options: [],
-        ),
-        contentBadge: .none,
-        showInTopLevel: true,
-        sortOrder: 1_000,
-        disposability: .none,
-        choiceRequest: request,
-    )
 }
 
 /// Fallback: create a WallpaperSettingsViewModelsXPC with empty groups.

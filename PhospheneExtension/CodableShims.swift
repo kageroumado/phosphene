@@ -22,7 +22,6 @@ struct SettingsGroup: Codable {
     var shouldHideItemLabels: Bool?
     var contextMenu: ContextMenu?
     var thumbnail: Data?
-    var choiceRequest: ChoiceRequest?
 }
 
 /// Real type: WallpaperTypes.WallpaperDisposability with cases: none, removable, purgeable
@@ -86,7 +85,6 @@ struct SettingsItem: Codable {
     var showInTopLevel: Bool
     var sortOrder: Int
     var disposability: Disposability
-    var choiceRequest: ChoiceRequest?
     var contextMenu: ContextMenu?
 }
 
@@ -269,53 +267,6 @@ struct ContextMenuItem: Codable {
 
 struct ContextMenuItemID: Codable {
     var id: String
-}
-
-/// Real type: WallpaperTypes.WallpaperChoiceRequest — the declaration Settings turns into an
-/// "add" affordance (picker/panel), fulfilled back to the extension via addChoiceRequest.
-/// Full case list: color(CGColor), image(URL), imageFolder(URL), screenSaver(ScreenSaverParameters),
-/// photoLibraryCollection(String), photoLibraryPerson(String), photoLibraryAsset(String).
-///
-/// Hand-written coding on Apple's side (recovered from WallpaperTypes CodingKeys):
-/// a `type` discriminator (EnumType) plus per-case payload keys — `url` for
-/// image/imageFolder, `color`, `module`, `identifier` — and optional `placement`,
-/// `randomize`, `securityScopedURL`. Only the file-based cases are modeled here.
-enum ChoiceRequest: Codable {
-    case image(URL)
-    case imageFolder(URL)
-
-    private enum CodingKeys: String, CodingKey {
-        case type
-        case url
-    }
-
-    /// WallpaperChoiceRequest.EnumType — encodes as the case name string.
-    enum EnumType: String, Codable {
-        case image
-        case imageFolder
-    }
-
-    func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        switch self {
-        case let .image(url):
-            try container.encode(EnumType.image, forKey: .type)
-            try container.encode(url, forKey: .url)
-        case let .imageFolder(url):
-            try container.encode(EnumType.imageFolder, forKey: .type)
-            try container.encode(url, forKey: .url)
-        }
-    }
-
-    init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decode(EnumType.self, forKey: .type)
-        let url = try container.decode(URL.self, forKey: .url)
-        switch type {
-        case .image: self = .image(url)
-        case .imageFolder: self = .imageFolder(url)
-        }
-    }
 }
 
 enum EmptyCodingKeys: CodingKey {}
