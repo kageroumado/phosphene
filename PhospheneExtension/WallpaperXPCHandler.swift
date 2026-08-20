@@ -216,6 +216,12 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // descriptor; absent until the user touches the picker), then resolve the
         // sentinel to the concrete video this surface should render. Contexts keep
         // the RAW choice so re-acquires and switch decisions compare correctly.
+        // Exploration aid: log the optionValues subtree on shuffle acquires until
+        // the frequency round-trip is verified live.
+        if choiceConfiguration == shuffleChoiceID, let request,
+           let optionValues = mirrorFindProperty("optionValues", in: request) {
+            dumpMirror(of: optionValues, label: "shuffle-optionValues")
+        }
         let shuffleFrequency = extractPickerOptionValue("shuffleFrequency", fromRequest: request)
         ShuffleController.shared.noteAcquire(choice: choiceConfiguration, frequencyID: shuffleFrequency)
         let renderChoice = ShuffleController.shared.resolveChoice(choiceConfiguration)
