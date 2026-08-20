@@ -631,9 +631,19 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
 
     // MARK: - Choices
 
-    func addChoiceRequest(withChoiceRequest _: Any?, onBehalfOfProcess _: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
+    func addChoiceRequest(withChoiceRequest request: Any?, onBehalfOfProcess process: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
         markServed()
-        traceLog("=== ADD CHOICE REQUEST ===")
+        extensionLog("=== ADD CHOICE REQUEST ===")
+        if let request {
+            extensionLog("  class: \(String(describing: type(of: request)))")
+            extensionLog("  description: \(String(describing: request))")
+            dumpMirror(of: request, label: "request")
+        } else {
+            extensionLog("  request: nil")
+        }
+        if let process {
+            extensionLog("  process: \(String(describing: process))")
+        }
         reply(nil, nil)
     }
 
@@ -836,6 +846,20 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     func handleNotification(withNamed name: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
         traceLog("handleNotification(\(name ?? "nil"))")
         reply(nil)
+    }
+}
+
+/// Log a value's full `Mirror` tree, depth-limited. Exploration aid for XPC payloads
+/// whose Swift structure is otherwise opaque (private WallpaperTypes values).
+private func dumpMirror(of value: Any, label: String, depth: Int = 0) {
+    guard depth < 8 else { return }
+    let indent = String(repeating: "  ", count: depth + 1)
+    let mirror = Mirror(reflecting: value)
+    let type = String(describing: mirror.subjectType)
+    let style = mirror.displayStyle.map { String(describing: $0) } ?? "-"
+    extensionLog("\(indent)\(label): \(type) [\(style)] = \(String(describing: value))")
+    for child in mirror.children {
+        dumpMirror(of: child.value, label: child.label ?? "_", depth: depth + 1)
     }
 }
 
