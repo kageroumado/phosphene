@@ -13,6 +13,17 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
 
     let entries = library.entries
 
+    // Right-click menu on the group and every tile. Settings routes the press to
+    // invokeContextMenuAction with this identifier; the handler opens
+    // phosphene://add-video, which launches the app's video chooser.
+    let addVideoMenu = ContextMenu(items: [
+        ContextMenuItem(
+            id: ContextMenuItemID(id: "add-video"),
+            localizedTitle: "Add Video\u{2026}",
+            isDestructive: false,
+        ),
+    ])
+
     var items = [SettingsItem]()
 
     for entry in entries {
@@ -52,6 +63,7 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
             showInTopLevel: true,
             sortOrder: 0,
             disposability: .removable,
+            contextMenu: addVideoMenu,
         )
         items.append(item)
     }
@@ -65,7 +77,7 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
         sortID: GroupSortID(id: "com.apple.wallpaper.aerials"),
         allChoiceID: nil,
         shouldHideItemLabels: false,
-        contextMenu: nil,
+        contextMenu: addVideoMenu,
         thumbnail: nil,
     )
 

@@ -85,6 +85,7 @@ struct SettingsItem: Codable {
     var showInTopLevel: Bool
     var sortOrder: Int
     var disposability: Disposability
+    var contextMenu: ContextMenu?
 }
 
 /// WallpaperSettingsItem.ContentBadge — cases: none, video, dynamic
@@ -252,13 +253,20 @@ enum RefreshPolicy: Codable {
     }
 }
 
+/// Real type: WallpaperTypes.ContextMenu { items: [ContextMenuItem] }
 struct ContextMenu: Codable {
     var items: [ContextMenuItem]
 }
 
+/// Real type: WallpaperTypes.ContextMenuItem { id: ContextMenuItem.ID, localizedTitle: String, isDestructive: Bool }
 struct ContextMenuItem: Codable {
-    var identifier: String
-    var name: String
+    var id: ContextMenuItemID
+    var localizedTitle: String
+    var isDestructive: Bool
+}
+
+struct ContextMenuItemID: Codable {
+    var id: String
 }
 
 enum EmptyCodingKeys: CodingKey {}
