@@ -216,12 +216,6 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // descriptor; absent until the user touches the picker), then resolve the
         // sentinel to the concrete video this surface should render. Contexts keep
         // the RAW choice so re-acquires and switch decisions compare correctly.
-        // Exploration aid: log the optionValues subtree on shuffle acquires until
-        // the frequency round-trip is verified live.
-        if choiceConfiguration == shuffleChoiceID, let request,
-           let optionValues = mirrorFindProperty("optionValues", in: request) {
-            dumpMirror(of: optionValues, label: "shuffle-optionValues")
-        }
         let shuffleFrequency = extractPickerOptionValue("shuffleFrequency", fromRequest: request)
         ShuffleController.shared.noteAcquire(choice: choiceConfiguration, frequencyID: shuffleFrequency)
         let renderChoice = ShuffleController.shared.resolveChoice(choiceConfiguration)
@@ -908,20 +902,6 @@ func extractPickerOptionValue(_ optionID: String, fromRequest request: Any?) -> 
         return mirrorFindProperty("id", in: payload.value) as? String
     }
     return nil
-}
-
-/// Log a value's full `Mirror` tree, depth-limited. Exploration aid for XPC payloads
-/// whose Swift structure is otherwise opaque (private WallpaperTypes values).
-func dumpMirror(of value: Any, label: String, depth: Int = 0) {
-    guard depth < 8 else { return }
-    let indent = String(repeating: "  ", count: depth + 1)
-    let mirror = Mirror(reflecting: value)
-    let type = String(describing: mirror.subjectType)
-    let style = mirror.displayStyle.map { String(describing: $0) } ?? "-"
-    extensionLog("\(indent)\(label): \(type) [\(style)] = \(String(describing: value))")
-    for child in mirror.children {
-        dumpMirror(of: child.value, label: child.label ?? "_", depth: depth + 1)
-    }
 }
 
 /// Recursively search a value's `Mirror` for a stored property with the given
