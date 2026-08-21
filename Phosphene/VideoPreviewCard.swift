@@ -64,31 +64,39 @@ struct VideoPreviewCard: View {
 
     // MARK: - Play Overlay
 
-    @ViewBuilder
+    /// Always resident in the hierarchy — visibility is opacity-only, so state flips
+    /// (scope changes, hover) cross-fade instead of removing and reinserting the button,
+    /// which drops a frame and restarts the transition from nothing.
     private var playOverlay: some View {
-        if !isAutoPaused {
-            Button(action: {
-                if let displayID {
-                    prefsService.togglePause(displayID: displayID)
-                } else {
-                    prefsService.togglePause()
-                }
-            }) {
-                ZStack {
-                    Circle()
-                        .frame(width: 56, height: 56)
-                        .glassEffect(.clear)
-
-                    Image(systemName: isEffectivelyPaused ? "play.fill" : "pause.fill")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
+        Button(action: {
+            // A global user pause (the popover's "Paused" scope) outranks per-display
+            // pause, so while it is set the play button resumes globally — toggling a
+            // display underneath it would visibly do nothing.
+            if prefsService.userPaused {
+                prefsService.userPaused = false
+            } else if let displayID {
+                prefsService.togglePause(displayID: displayID)
+            } else {
+                prefsService.togglePause()
             }
-            .buttonStyle(.plain)
-            .opacity(shouldShowOverlay ? 1 : 0)
-            .scaleEffect(shouldShowOverlay ? 1 : 0.8)
-            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: shouldShowOverlay)
+        }) {
+            ZStack {
+                Circle()
+                    .frame(width: 56, height: 56)
+                    .glassEffect(.clear)
+
+                Image(systemName: isEffectivelyPaused ? "play.fill" : "pause.fill")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.symbolEffect(.replace))
+            }
         }
+        .buttonStyle(.plain)
+        .opacity(shouldShowOverlay ? 1 : 0)
+        .scaleEffect(shouldShowOverlay ? 1 : 0.8)
+        .allowsHitTesting(shouldShowOverlay)
+        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: shouldShowOverlay)
+        .animation(.default, value: isEffectivelyPaused)
     }
 
     /// The wallpaper is effectively paused for any reason: user, lock-screen-only, occlusion, or inactive.
@@ -107,7 +115,7 @@ struct VideoPreviewCard: View {
     }
 
     private var shouldShowOverlay: Bool {
-        videoURL != nil && (isHovering || isEffectivelyPaused)
+        videoURL != nil && !isAutoPaused && (isHovering || isEffectivelyPaused)
     }
 
     // MARK: - Playback

@@ -91,22 +91,10 @@
                 displayID: displayID,
                 spaceUUID: nil,
                 spaceName: nil,
-                videoName: prettyName(for: entry.name),
+                videoName: entry.name,
                 videoURL: VideoDeploymentService.videoURL(for: entry),
             )
             prefs.stageGallerySelection(selection)
-        }
-
-        /// The library stores raw source-file slugs ("…-moewalls-com"); tidy one for display.
-        private static func prettyName(for raw: String) -> String {
-            var name = raw
-            for suffix in ["-moewalls-com", "-moewalls"] where name.hasSuffix(suffix) {
-                name.removeLast(suffix.count)
-            }
-            let words = name
-                .split(whereSeparator: { $0 == "-" || $0 == "_" })
-                .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-            return words.joined(separator: " ")
         }
 
         // MARK: - Stage window

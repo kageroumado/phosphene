@@ -28,16 +28,6 @@ struct LibraryWindow: View {
             }
             .navigationTitle("Phosphene")
             .toolbar {
-                ToolbarItem {
-                    Button {
-                        let folder = VideoDeploymentService.videosFolderURL
-                        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                        NSWorkspace.shared.open(folder)
-                    } label: {
-                        Label("Open in Finder", systemImage: "folder")
-                    }
-                    .help("Open the library folder in Finder")
-                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showInspector.toggle()
@@ -70,6 +60,11 @@ struct LibraryWindow: View {
         if selectedEntryID == nil, let initialSelectionID,
            entries.contains(where: { $0.id == initialSelectionID }) {
             selectedEntryID = initialSelectionID
+        }
+        // Open with something useful in the inspector: the wallpaper in use, else the first video.
+        if selectedEntryID == nil {
+            let inUse = Set(manager.prefsService.selections.map(\.videoID))
+            selectedEntryID = (entries.first(where: { inUse.contains($0.id) }) ?? entries.first)?.id
         }
     }
 }

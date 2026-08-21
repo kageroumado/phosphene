@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phosphene Library Redesign</title>
+<style>
+  :root {
+    --page-bg: #ececee;
+    --page-text: #1d1d1f;
+    --page-text-2: #5c5c61;
+    --page-muted: #8e8e93;
+    --panel: #ffffff;
+    --panel-border: rgba(0, 0, 0, 0.08);
+
+    /* window mockup surfaces */
+    --win-bg: #f8f8f9;
+    --win-toolbar: #f1f1f2;
+    --win-card: #ffffff;
+    --win-inset: #ededee;
+    --win-text: #1d1d1f;
+    --win-text-2: #58585d;
+    --win-muted: #98989d;
+    --win-border: rgba(0, 0, 0, 0.08);
+    --win-shadow: 0 22px 60px rgba(0, 0, 0, 0.2), 0 3px 10px rgba(0, 0, 0, 0.08);
+
+    --accent: #e2694c;
+    --accent-tint: #fbeae4;
+    --accent-on-tint: #a13c24;
+    --accent-text-on: #fff6f3;
+
+    --ok: #34a853;
+    --ok-tint: #e7f4ea;
+    --ok-on-tint: #1e7038;
+  }
+
+  :root:not([data-theme="light"]) { color-scheme: light dark; }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page-bg: #161618;
+      --page-text: #f2f2f4;
+      --page-text-2: #b3b3b8;
+      --page-muted: #7c7c82;
+      --panel: #222226;
+      --panel-border: rgba(255, 255, 255, 0.09);
+
+      --win-bg: #28282c;
+      --win-toolbar: #313136;
+      --win-card: #37373c;
+      --win-inset: #202024;
+      --win-text: #f2f2f4;
+      --win-text-2: #c0c0c6;
+      --win-muted: #86868c;
+      --win-border: rgba(255, 255, 255, 0.08);
+      --win-shadow: 0 22px 60px rgba(0, 0, 0, 0.6), 0 3px 10px rgba(0, 0, 0, 0.4);
+
+      --accent: #ef7d5f;
+      --accent-tint: #4a2c22;
+      --accent-on-tint: #f4a58c;
+      --accent-text-on: #33150c;
+
+      --ok: #4fc06a;
+      --ok-tint: #21382a;
+      --ok-on-tint: #7fd694;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --page-bg: #161618;
+    --page-text: #f2f2f4;
+    --page-text-2: #b3b3b8;
+    --page-muted: #7c7c82;
+    --panel: #222226;
+    --panel-border: rgba(255, 255, 255, 0.09);
+
+    --win-bg: #28282c;
+    --win-toolbar: #313136;
+    --win-card: #37373c;
+    --win-inset: #202024;
+    --win-text: #f2f2f4;
+    --win-text-2: #c0c0c6;
+    --win-muted: #86868c;
+    --win-border: rgba(255, 255, 255, 0.08);
+    --win-shadow: 0 22px 60px rgba(0, 0, 0, 0.6), 0 3px 10px rgba(0, 0, 0, 0.4);
+
+    --accent: #ef7d5f;
+    --accent-tint: #4a2c22;
+    --accent-on-tint: #f4a58c;
+    --accent-text-on: #33150c;
+
+    --ok: #4fc06a;
+    --ok-tint: #21382a;
+    --ok-on-tint: #7fd694;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    background: var(--page-bg);
+    color: var(--page-text);
+    padding: 48px 40px 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 1120px; margin: 0 auto; }
+
+  header.top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+  header.top h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .theme-btn {
+    font: inherit; font-size: 12px; color: var(--page-text-2);
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 99px; padding: 5px 14px; cursor: pointer;
+  }
+  .lede { font-size: 13px; color: var(--page-text-2); max-width: 78ch; line-height: 1.5; }
+
+  h2.sect {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--page-muted);
+    margin: 44px 0 18px;
+  }
+
+  /* principles */
+  .principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .principle { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px; padding: 14px 16px; }
+  .principle h4 { font-size: 12.5px; font-weight: 650; margin-bottom: 4px; }
+  .principle p { font-size: 11.5px; color: var(--page-text-2); line-height: 1.5; }
+  .principle .was { text-decoration: line-through; color: var(--page-muted); }
+
+  /* candidate block */
+  .candidate { margin-bottom: 56px; }
+  .candidate h3 { font-size: 15px; font-weight: 650; margin-bottom: 4px; }
+  .candidate h3 span { color: var(--page-muted); font-weight: 500; }
+  .candidate p.note { font-size: 12.5px; color: var(--page-text-2); line-height: 1.55; max-width: 78ch; margin-bottom: 18px; }
+
+  /* ============ window chrome ============ */
+  .window {
+    background: var(--win-bg);
+    border-radius: 14px;
+    border: 1px solid var(--win-border);
+    box-shadow: var(--win-shadow);
+    overflow: hidden;
+    color: var(--win-text);
+    font-size: 13px;
+  }
+  .toolbar {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--win-toolbar);
+    border-bottom: 1px solid var(--win-border);
+    padding: 10px 14px;
+  }
+  .lights { display: flex; gap: 7px; margin-right: 6px; }
+  .lights i { width: 11px; height: 11px; border-radius: 50%; }
+  .lights i:nth-child(1) { background: #ff5f57; }
+  .lights i:nth-child(2) { background: #febc2e; }
+  .lights i:nth-child(3) { background: #28c840; }
+  .toolbar .title { font-size: 13px; font-weight: 650; }
+  .toolbar .spacer { flex: 1; }
+  .tbtn {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 550; color: var(--win-text-2);
+    background: var(--win-card); border: 1px solid var(--win-border);
+    border-radius: 7px; padding: 5px 10px;
+  }
+  .tbtn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text-on); font-weight: 620; }
+  .tbtn svg { width: 12px; height: 12px; }
+
+  svg.gl { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* video art — freestyle (art exception) */
+  .art-galaxy {
+    background:
+      radial-gradient(1.5px 1.5px at 22% 30%, #fff 50%, transparent 55%),
+      radial-gradient(1px 1px at 66% 22%, #e8e2ff 50%, transparent 55%),
+      radial-gradient(1.5px 1.5px at 84% 55%, #fff 50%, transparent 55%),
+      radial-gradient(1px 1px at 38% 70%, #cfc4ff 50%, transparent 55%),
+      radial-gradient(120% 90% at 72% 8%, rgba(124, 96, 220, 0.55) 0%, transparent 60%),
+      radial-gradient(110% 110% at 22% 92%, rgba(64, 46, 130, 0.7) 0%, transparent 65%),
+      linear-gradient(158deg, #1c1440 0%, #120d2c 55%, #0b081c 100%);
+  }
+  .art-classroom {
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.35) 1.5px, transparent 1.5px) 0 0 / 100% 33%,
+      linear-gradient(90deg, rgba(255, 255, 255, 0.35) 1.5px, transparent 1.5px) 0 0 / 25% 100%,
+      radial-gradient(90% 80% at 70% 90%, rgba(151, 128, 205, 0.5) 0%, transparent 55%),
+      linear-gradient(165deg, #8fc3ea 0%, #b5d9f2 45%, #e6eff7 100%);
+  }
+  .art-neon {
+    background:
+      radial-gradient(60% 70% at 70% 30%, rgba(255, 60, 172, 0.55) 0%, transparent 60%),
+      radial-gradient(70% 80% at 25% 75%, rgba(90, 40, 200, 0.7) 0%, transparent 65%),
+      linear-gradient(150deg, #3a1060 0%, #22093f 60%, #150627 100%);
+  }
+
+  /* cards in a grid */
+  .vcard { display: flex; flex-direction: column; gap: 7px; width: 100%; }
+  .vcard .thumb {
+    aspect-ratio: 16 / 9; border-radius: 10px; position: relative;
+  }
+  .vcard .name { font-size: 12px; font-weight: 550; color: var(--win-text); text-align: center; line-height: 1.3; }
+  .vcard .sub { font-size: 10.5px; color: var(--win-muted); text-align: center; margin-top: -4px; }
+
+  .vcard.inuse .thumb {
+    outline: 2.5px solid var(--accent); outline-offset: 2px;
+  }
+  .badge-check {
+    position: absolute; right: 7px; bottom: 7px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-text-on);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .badge-check svg { width: 10px; height: 10px; stroke-width: 2.4; }
+  .badge-progress {
+    position: absolute; left: 7px; bottom: 7px;
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(10, 8, 20, 0.55); color: #fff;
+    font-size: 10px; font-weight: 550;
+    border-radius: 99px; padding: 3px 8px;
+    backdrop-filter: blur(6px);
+  }
+  .ring { width: 11px; height: 11px; border-radius: 50%;
+    background: conic-gradient(#fff 0 62%, rgba(255, 255, 255, 0.25) 62% 100%);
+    -webkit-mask: radial-gradient(circle at center, transparent 2.6px, black 2.9px);
+    mask: radial-gradient(circle at center, transparent 2.6px, black 2.9px);
+  }
+
+  /* hover affordance demo */
+  .vcard .hoverbar {
+    position: absolute; inset: auto 6px 6px auto;
+    display: flex; gap: 4px;
+  }
+  .hoverbar .hb {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(10, 8, 20, 0.5); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(6px);
+  }
+  .hoverbar .hb svg { width: 10px; height: 10px; }
+
+  /* ============ Candidate A ============ */
+  .a-body { padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 18px; }
+  .a-sect-label {
+    font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--win-muted); display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .a-sect-label .link { text-transform: none; letter-spacing: 0; font-size: 11.5px; font-weight: 550; color: var(--win-text-2); }
+  .a-inuse { display: flex; gap: 14px; }
+  .a-display {
+    display: flex; flex-direction: column; gap: 6px; width: 190px;
+  }
+  .a-display .thumb { aspect-ratio: 16 / 10; border-radius: 9px; position: relative; }
+  .a-display .dname { font-size: 11.5px; font-weight: 600; text-align: center; }
+  .a-display .dspace { font-size: 10.5px; color: var(--win-muted); text-align: center; margin-top: -3px; }
+  .a-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+  /* info popover mock */
+  .a-pop-anchor { position: relative; }
+  .a-pop {
+    position: absolute; left: 100%; top: -8px; margin-left: 14px; width: 210px; z-index: 3;
+    background: var(--win-card); border: 1px solid var(--win-border);
+    border-radius: 12px; padding: 12px 13px;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+  }
+  .a-pop .t { font-size: 12px; font-weight: 650; margin-bottom: 6px; }
+  .a-pop .meta { font-size: 11px; color: var(--win-text-2); line-height: 1.7; }
+  .a-pop .actions { display: flex; gap: 6px; margin-top: 10px; }
+  .a-pop .actions .tbtn { font-size: 11px; padding: 4px 9px; }
+
+  /* ============ Candidate B ============ */
+  .b-body { display: flex; }
+  .b-main { flex: 1; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .b-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .b-footer {
+    border-top: 1px solid var(--win-border);
+    padding: 7px 20px; display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--win-muted);
+  }
+  .b-inspector {
+    width: 264px; flex: none;
+    border-left: 1px solid var(--win-border);
+    background: var(--win-toolbar);
+    padding: 16px 16px 18px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .b-inspector .hero { aspect-ratio: 16 / 9; border-radius: 9px; }
+  .b-inspector .iname {
+    font-size: 13px; font-weight: 650; text-align: center;
+    border-radius: 6px; padding: 2px 6px;
+  }
+  .b-inspector .iname span { border-bottom: 1px dashed var(--win-muted); }
+  .chiprow { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+  .mchip {
+    font-size: 10.5px; font-weight: 550; color: var(--win-text-2);
+    background: var(--win-inset); border-radius: 99px; padding: 3px 8px;
+  }
+  .mchip.ok { background: var(--ok-tint); color: var(--ok-on-tint); }
+  .istatus {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--accent-tint); color: var(--accent-on-tint);
+    border-radius: 10px; padding: 9px 11px;
+    font-size: 11.5px; font-weight: 600;
+  }
+  .istatus svg { width: 13px; height: 13px; flex: none; }
+  .icardsec {
+    background: var(--win-card); border: 1px solid var(--win-border);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .icardsec .h { font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--win-muted); margin-bottom: 7px; }
+  .icardsec .row { display: flex; justify-content: space-between; font-size: 11.5px; padding: 3px 0; color: var(--win-text-2); }
+  .icardsec .row b { color: var(--win-text); font-weight: 550; }
+  .ibtn {
+    display: block; text-align: center; font-size: 12px; font-weight: 620;
+    background: var(--accent); color: var(--accent-text-on);
+    border-radius: 8px; padding: 8px 10px;
+  }
+  .ibtn.quiet { background: var(--win-card); border: 1px solid var(--win-border); color: var(--win-text-2); font-weight: 550; }
+  .irow2 { display: flex; gap: 8px; }
+  .irow2 .ibtn { flex: 1; }
+
+  /* ============ Candidate C ============ */
+  .c-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .c-stage { aspect-ratio: 21 / 9; border-radius: 12px; position: relative; overflow: hidden; }
+  .c-stage .scrim {
+    position: absolute; inset: auto 0 0 0;
+    padding: 40px 16px 12px;
+    background: linear-gradient(transparent, rgba(8, 5, 20, 0.8));
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+  .c-stage .t { color: #fff; font-size: 15px; font-weight: 650; }
+  .c-stage .m { color: rgba(255, 255, 255, 0.7); font-size: 11.5px; margin-top: 2px; }
+  .c-actions { display: flex; gap: 8px; }
+  .c-actions .tbtn { backdrop-filter: blur(8px); background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.25); color: #fff; }
+  .c-actions .tbtn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text-on); }
+  .c-strip { display: flex; gap: 12px; }
+  .c-strip .vcard { width: 148px; }
+
+  .verdict {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 14px; padding: 18px 22px;
+    font-size: 13px; line-height: 1.6; color: var(--page-text-2);
+    max-width: 82ch;
+  }
+  .verdict strong { color: var(--page-text); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="top">
+    <h1>Phosphene — library candidates</h1>
+    <button class="theme-btn" onclick="toggleTheme()">Toggle theme</button>
+  </header>
+  <p class="lede">
+    Three shapes for the Library window. All three share the same five decisions below —
+    the candidates differ only in where the detail and the hand-off to System Settings live.
+  </p>
+
+  <h2 class="sect">Decisions shared by every candidate</h2>
+  <div class="principles">
+    <div class="principle">
+      <h4>Names, not slugs</h4>
+      <p><span class="was">mornye-galaxy-…s-moewalls-com</span> → <b>Mornye Galaxy Stars</b>.
+      Title-cased at import, site suffixes stripped, renamable inline. The slug never appears in UI.</p>
+    </div>
+    <div class="principle">
+      <h4>In Use is the one state that matters</h4>
+      <p>Accent ring + corner checkmark, exactly like the system Wallpaper pane marks the active
+      wallpaper. Everything else on the card is just the picture and the name.</p>
+    </div>
+    <div class="principle">
+      <h4>Metadata demoted</h4>
+      <p>Every card saying "3,840×2,160 60fps" distinguishes nothing. Specs move to the
+      detail surface; the grid carries name only. Optimization shows as a small progress
+      pill on the card only while running.</p>
+    </div>
+    <div class="principle">
+      <h4>The hand-off happens at the moment of intent</h4>
+      <p>"Use as Wallpaper…" on the selected video opens Wallpaper Settings. The floating
+      "To set a wallpaper, choose one in System Settings" footer disappears.</p>
+    </div>
+    <div class="principle">
+      <h4>Cards play on hover</h4>
+      <p>Hovering a card starts its loop, like the system wallpaper thumbnails — the looping
+      preview player already exists. A library of live wallpapers should feel alive.</p>
+    </div>
+  </div>
+
+  <!-- ============ A ============ -->
+  <h2 class="sect">Candidates</h2>
+  <div class="candidate">
+    <h3>A · Wallpaper pane <span>— what Settings would do</span></h3>
+    <p class="note">
+      Two sections, no chrome: <b>In Use</b> maps each display to its wallpaper (with the
+      Wallpaper Settings link where it belongs), <b>Library</b> is a clean grid. Detail and
+      actions live in a per-card ⓘ popover — shown open on the second card.
+    </p>
+    <div class="window">
+      <div class="toolbar">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <span class="title">Phosphene</span>
+        <span class="spacer"></span>
+        <span class="tbtn primary"><svg class="gl" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8"/></svg>Add Video</span>
+      </div>
+      <div class="a-body">
+        <div>
+          <div class="a-sect-label" style="margin-bottom: 10px;">
+            <span>In Use</span>
+            <span class="link">Open Wallpaper Settings ↗</span>
+          </div>
+          <div class="a-inuse">
+            <div class="a-display">
+              <div class="thumb art-galaxy"><span class="badge-check"><svg class="gl" viewBox="0 0 10 10"><path d="M1.8 5.2l2.3 2.3 4-4.8"/></svg></span></div>
+              <div class="dname">Built-in Display</div>
+              <div class="dspace">Mornye Galaxy Stars</div>
+            </div>
+            <div class="a-display">
+              <div class="thumb art-classroom"><span class="badge-check"><svg class="gl" viewBox="0 0 10 10"><path d="M1.8 5.2l2.3 2.3 4-4.8"/></svg></span></div>
+              <div class="dname">Studio Display</div>
+              <div class="dspace">Takanashi Hoshino Sky</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="a-sect-label" style="margin-bottom: 10px;"><span>Library</span></div>
+          <div class="a-grid">
+            <div class="vcard inuse">
+              <div class="thumb art-galaxy"><span class="badge-check"><svg class="gl" viewBox="0 0 10 10"><path d="M1.8 5.2l2.3 2.3 4-4.8"/></svg></span></div>
+              <div class="name">Mornye Galaxy Stars</div>
+            </div>
+            <div class="vcard a-pop-anchor">
+              <div class="thumb art-classroom">
+                <div class="hoverbar"><span class="hb"><svg class="gl" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.8"/><path d="M5 4.6v2M5 3.2v.1"/></svg></span></div>
+              </div>
+              <div class="name">Takanashi Hoshino Sky</div>
+              <div class="a-pop">
+                <div class="t">Takanashi Hoshino Sky</div>
+                <div class="meta">4K · 60 fps · 0:15 · 74 MB · H.264<br>Optimized ✓ (30/15 fps variants)</div>
+                <div class="actions">
+                  <span class="tbtn primary">Use as Wallpaper…</span>
+                </div>
+              </div>
+            </div>
+            <div class="vcard">
+              <div class="thumb art-neon"><span class="badge-progress"><span class="ring"></span>Optimizing</span></div>
+              <div class="name">Samurai Neon</div>
+            </div>
+            <div class="vcard" style="visibility: hidden;"><div class="thumb"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ B ============ -->
+  <div class="candidate">
+    <h3>B · Browser <span>— grid plus a real inspector</span></h3>
+    <p class="note">
+      The current window's skeleton, redesigned: clean cards, and an inspector that earns its
+      column — editable name, an In-Use status card, one compact spec row, optimization as a
+      tidy section, and the primary action at the bottom. Footer carries the library totals.
+    </p>
+    <div class="window">
+      <div class="toolbar">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <span class="title">Phosphene</span>
+        <span class="spacer"></span>
+        <span class="tbtn primary"><svg class="gl" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8"/></svg>Add Video</span>
+        <span class="tbtn"><svg class="gl" viewBox="0 0 12 12"><rect x="1.5" y="2" width="9" height="8" rx="1.5"/><path d="M7.4 2v8"/></svg></span>
+      </div>
+      <div class="b-body">
+        <div class="b-main">
+          <div class="b-grid">
+            <div class="vcard inuse">
+              <div class="thumb art-galaxy"><span class="badge-check"><svg class="gl" viewBox="0 0 10 10"><path d="M1.8 5.2l2.3 2.3 4-4.8"/></svg></span></div>
+              <div class="name">Mornye Galaxy Stars</div>
+            </div>
+            <div class="vcard">
+              <div class="thumb art-classroom" style="outline: 2.5px solid var(--win-muted); outline-offset: 2px;"></div>
+              <div class="name">Takanashi Hoshino Sky</div>
+            </div>
+            <div class="vcard">
+              <div class="thumb art-neon"><span class="badge-progress"><span class="ring"></span>Optimizing</span></div>
+              <div class="name">Samurai Neon</div>
+            </div>
+          </div>
+        </div>
+        <div class="b-inspector">
+          <div class="hero art-classroom"></div>
+          <div class="iname"><span>Takanashi Hoshino Sky</span></div>
+          <div class="chiprow">
+            <span class="mchip">4K</span><span class="mchip">60 fps</span><span class="mchip">0:15</span><span class="mchip">74 MB</span><span class="mchip">H.264</span>
+          </div>
+          <div class="icardsec">
+            <div class="h">Optimization</div>
+            <div class="row"><span>30 fps</span><b>3,840 × 2,160</b></div>
+            <div class="row"><span>15 fps</span><b>3,840 × 2,160</b></div>
+            <div class="row" style="padding-top: 6px;"><span class="mchip ok">Optimized ✓</span><span></span></div>
+          </div>
+          <span class="ibtn">Use as Wallpaper…</span>
+          <div class="irow2">
+            <span class="ibtn quiet">Show in Finder</span>
+            <span class="ibtn quiet">Delete…</span>
+          </div>
+        </div>
+      </div>
+      <div class="b-footer">
+        <span>3 videos · 210 MB</span>
+        <span>Wallpapers apply in System Settings ↗</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ C ============ -->
+  <div class="candidate">
+    <h3>C · Theater <span>— the video is the window</span></h3>
+    <p class="note">
+      Finder's gallery view: the selected wallpaper plays big on a stage with its actions on
+      glass, and the library is a filmstrip underneath. The most cinematic — and the least
+      scalable: past a dozen videos the strip needs scrolling and scanning suffers.
+    </p>
+    <div class="window">
+      <div class="toolbar">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <span class="title">Phosphene</span>
+        <span class="spacer"></span>
+        <span class="tbtn primary"><svg class="gl" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8"/></svg>Add Video</span>
+      </div>
+      <div class="c-body">
+        <div class="c-stage art-galaxy">
+          <div class="scrim">
+            <div>
+              <div class="t">Mornye Galaxy Stars</div>
+              <div class="m">In use on Built-in Display · 4K · 60 fps · 0:15 · 74 MB</div>
+            </div>
+            <div class="c-actions">
+              <span class="tbtn">Optimize</span>
+              <span class="tbtn primary">Use as Wallpaper…</span>
+            </div>
+          </div>
+        </div>
+        <div class="c-strip">
+          <div class="vcard inuse">
+            <div class="thumb art-galaxy"><span class="badge-check"><svg class="gl" viewBox="0 0 10 10"><path d="M1.8 5.2l2.3 2.3 4-4.8"/></svg></span></div>
+            <div class="name">Mornye Galaxy Stars</div>
+          </div>
+          <div class="vcard">
+            <div class="thumb art-classroom"></div>
+            <div class="name">Takanashi Hoshino Sky</div>
+          </div>
+          <div class="vcard">
+            <div class="thumb art-neon"><span class="badge-progress"><span class="ring"></span>Optimizing</span></div>
+            <div class="name">Samurai Neon</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sect">Recommendation</h2>
+  <div class="verdict">
+    <strong>B, wearing A's In-Use treatment.</strong> B keeps the inspector — which the
+    optimize workflow genuinely needs (progress, presets, variants) and which A's popover
+    would cramp — while fixing everything that made the current one heavy: slugs become
+    names, the spec table becomes one chip row, the System-Settings hint becomes the
+    "Use as Wallpaper…" button and a footer whisper. From A it takes the accent-ring +
+    checkmark in-use language (and A's In-Use display mapping slots into the inspector as
+    the status card: "In use on Built-in Display").
+    <br><br>
+    C is the demo-reel version — worth stealing its stage idea later as the inspector's
+    hover-to-play hero, but as the whole window it fights growth and hides the grid.
+    <br><br>
+    Implementation note: display names need a home — a <code>displayName</code> field in the
+    library entry metadata, set at import by the prettifier (the gallery's
+    <code>prettyName(for:)</code> already does this), editable via the inspector. The popover
+    scrim then shows the same clean name.
+  </div>
+
+</div>
+<script>
+  function toggleTheme() {
+    const root = document.documentElement;
+    const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const cur = root.dataset.theme || (dark ? "dark" : "light");
+    root.dataset.theme = cur === "dark" ? "light" : "dark";
+  }
+</script>
+</body>
+</html>

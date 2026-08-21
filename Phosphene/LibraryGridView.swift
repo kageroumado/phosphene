@@ -9,6 +9,10 @@ struct LibraryGridView: View {
 
     private static let columns = [GridItem(.adaptive(minimum: 220, maximum: 220), spacing: 16)]
 
+    private var inUseVideoIDs: Set<String> {
+        Set(manager.prefsService.selections.map(\.videoID))
+    }
+
     var body: some View {
         Group {
             if entries.isEmpty {
@@ -20,6 +24,9 @@ struct LibraryGridView: View {
                             VideoCardView(
                                 entry: entry,
                                 isSelected: selectedEntryID == entry.id,
+                                isInUse: inUseVideoIDs.contains(entry.id),
+                                isOptimizing: manager.isOptimizing && manager.optimizingEntryID == entry.id,
+                                optimizationProgress: manager.optimizationProgress,
                                 onSelect: { selectedEntryID = entry.id },
                                 onDelete: { confirmingDelete = entry },
                             )
@@ -27,9 +34,8 @@ struct LibraryGridView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 20)
-
-                    wallpaperSettingsFooter
                 }
+                .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
             }
         }
         .toolbar {
@@ -90,24 +96,37 @@ struct LibraryGridView: View {
         }
     }
 
-    private var wallpaperSettingsFooter: some View {
-        VStack(spacing: 8) {
-            Text("To set a wallpaper, choose one in System Settings.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+    // MARK: - Status Bar
 
+    private var statusBar: some View {
+        HStack {
+            Text(librarySummary)
+            Spacer()
             Button {
                 NSWorkspace.shared.open(
                     URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!,
                 )
             } label: {
-                Label("Open Wallpaper Settings", systemImage: "gearshape")
+                Text("Wallpapers apply in System Settings \(Image(systemName: "arrow.up.right"))")
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonStyle(.plain)
+            .help("Open macOS Wallpaper Settings")
         }
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, 20)
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 7)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private var librarySummary: String {
+        let count = entries.count
+        let videos = count == 1 ? "1 video" : "\(count) videos"
+        let totalBytes = entries.compactMap { VideoDeploymentService.fileSize(for: $0) }.reduce(0, +)
+        guard totalBytes > 0 else { return videos }
+        let size = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
+        return "\(videos) · \(size)"
     }
 
     // MARK: - Data

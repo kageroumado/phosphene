@@ -29,7 +29,7 @@ struct PhospheneApp: App {
                 showLibraryWindow()
             })
         } label: {
-            Image(systemName: "play.rectangle.fill")
+            Image(nsImage: MenuBarIcon.image(updateBadge: manager.updateCheck.availableVersion != nil))
         }
         .menuBarExtraStyle(.window)
 
@@ -83,12 +83,16 @@ struct PhospheneApp: App {
     private func showLibraryWindow() {
         NSApplication.shared.setActivationPolicy(.regular)
         openWindow(id: "library")
-        DispatchQueue.main.async {
-            NSApplication.shared.activate()
-            for window in NSApplication.shared.windows
-                where window.identifier?.rawValue == "library" {
-                window.orderFrontRegardless()
-                window.makeKey()
+        // Two passes: cooperative activation can be declined while the popover is
+        // still dismissing, so a second attempt runs after it has settled.
+        for delay in [0.0, 0.25] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                NSApplication.shared.activate()
+                NSRunningApplication.current.activate(options: [.activateAllWindows])
+                for window in NSApplication.shared.windows
+                    where window.identifier?.rawValue == "library" {
+                    window.makeKeyAndOrderFront(nil)
+                }
             }
         }
     }

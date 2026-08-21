@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phosphene Popover Redesign</title>
+<style>
+  :root {
+    --page-bg: #ececee;
+    --page-text: #1d1d1f;
+    --page-text-2: #5c5c61;
+    --page-muted: #8e8e93;
+    --panel: #ffffff;
+    --panel-border: rgba(0, 0, 0, 0.08);
+
+    /* Popover mockup surfaces */
+    --pop-bg: #f9f9fa;
+    --pop-card: #ffffff;
+    --pop-inset: #eeeeef;
+    --pop-text: #1d1d1f;
+    --pop-text-2: #58585d;
+    --pop-muted: #98989d;
+    --pop-border: rgba(0, 0, 0, 0.07);
+    --pop-shadow: 0 18px 50px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+
+    /* Phosphene accent — coral from the app icon, amber core as secondary */
+    --accent: #e2694c;
+    --accent-strong: #d55a3e;
+    --accent-tint: #fbeae4;
+    --accent-on-tint: #a13c24;
+    --accent-text-on: #fff6f3;
+
+    --ok: #34a853;
+    --ok-tint: #e7f4ea;
+    --ok-on-tint: #1e7038;
+
+    --seg-on-bg: #f3c9bc;
+    --seg-on-text: #6b2412;
+
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  :root:not([data-theme="light"]) { color-scheme: light dark; }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page-bg: #161618;
+      --page-text: #f2f2f4;
+      --page-text-2: #b3b3b8;
+      --page-muted: #7c7c82;
+      --panel: #222226;
+      --panel-border: rgba(255, 255, 255, 0.09);
+
+      --pop-bg: #29292d;
+      --pop-card: #333338;
+      --pop-inset: #202024;
+      --pop-text: #f2f2f4;
+      --pop-text-2: #c0c0c6;
+      --pop-muted: #86868c;
+      --pop-border: rgba(255, 255, 255, 0.08);
+      --pop-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+
+      --accent: #ef7d5f;
+      --accent-strong: #f0906f;
+      --accent-tint: #4a2c22;
+      --accent-on-tint: #f4a58c;
+      --accent-text-on: #33150c;
+
+      --ok: #4fc06a;
+      --ok-tint: #21382a;
+      --ok-on-tint: #7fd694;
+
+      --seg-on-bg: #8a4630;
+      --seg-on-text: #ffd9cc;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --page-bg: #161618;
+    --page-text: #f2f2f4;
+    --page-text-2: #b3b3b8;
+    --page-muted: #7c7c82;
+    --panel: #222226;
+    --panel-border: rgba(255, 255, 255, 0.09);
+
+    --pop-bg: #29292d;
+    --pop-card: #333338;
+    --pop-inset: #202024;
+    --pop-text: #f2f2f4;
+    --pop-text-2: #c0c0c6;
+    --pop-muted: #86868c;
+    --pop-border: rgba(255, 255, 255, 0.08);
+    --pop-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+
+    --accent: #ef7d5f;
+    --accent-strong: #f0906f;
+    --accent-tint: #4a2c22;
+    --accent-on-tint: #f4a58c;
+    --accent-text-on: #33150c;
+
+    --ok: #4fc06a;
+    --ok-tint: #21382a;
+    --ok-on-tint: #7fd694;
+
+    --seg-on-bg: #8a4630;
+    --seg-on-text: #ffd9cc;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    background: var(--page-bg);
+    color: var(--page-text);
+    padding: 48px 40px 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 1240px; margin: 0 auto; }
+
+  header.top {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  header.top h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .theme-btn {
+    font: inherit; font-size: 12px; color: var(--page-text-2);
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 99px; padding: 5px 14px; cursor: pointer;
+  }
+  .lede { font-size: 13px; color: var(--page-text-2); max-width: 72ch; line-height: 1.5; }
+
+  h2.sect {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--page-muted);
+    margin: 44px 0 18px;
+  }
+
+  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 28px; align-items: start; }
+
+  .candidate { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .candidate .stage { padding: 8px 0 2px; }
+  .candidate h3 { font-size: 14px; font-weight: 650; }
+  .candidate h3 span { color: var(--page-muted); font-weight: 500; }
+  .candidate p.note {
+    font-size: 12px; color: var(--page-text-2); line-height: 1.55;
+    max-width: 340px; text-align: left;
+  }
+
+  /* ============ shared popover chrome ============ */
+  .pop {
+    width: 320px;
+    background: var(--pop-bg);
+    border-radius: 20px;
+    box-shadow: var(--pop-shadow);
+    border: 1px solid var(--pop-border);
+    overflow: hidden;
+    font-size: 13px;
+    color: var(--pop-text);
+  }
+  .pop-pad { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  .pop-head { display: flex; align-items: baseline; justify-content: space-between; padding: 2px 4px 0; }
+  .pop-head .name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .pop-head .by { font-size: 11.5px; color: var(--pop-muted); }
+  .pop-head .by .arr { font-size: 10px; }
+
+  /* video art (freestyle — art exception) */
+  .art {
+    position: relative;
+    background:
+      radial-gradient(1.5px 1.5px at 18% 28%, #fff 50%, transparent 55%),
+      radial-gradient(1px 1px at 62% 18%, #e8e2ff 50%, transparent 55%),
+      radial-gradient(1.5px 1.5px at 81% 42%, #fff 50%, transparent 55%),
+      radial-gradient(1px 1px at 35% 65%, #cfc4ff 50%, transparent 55%),
+      radial-gradient(1px 1px at 72% 78%, #fff 50%, transparent 55%),
+      radial-gradient(1.5px 1.5px at 8% 82%, #d9d0ff 50%, transparent 55%),
+      radial-gradient(1px 1px at 48% 40%, #fff 50%, transparent 55%),
+      radial-gradient(1px 1px at 90% 12%, #fff 50%, transparent 55%),
+      radial-gradient(120% 90% at 72% 8%, rgba(124, 96, 220, 0.55) 0%, transparent 60%),
+      radial-gradient(110% 110% at 22% 92%, rgba(64, 46, 130, 0.7) 0%, transparent 65%),
+      linear-gradient(158deg, #1c1440 0%, #120d2c 55%, #0b081c 100%);
+  }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 550;
+    background: var(--pop-inset); color: var(--pop-text-2);
+    border-radius: 99px; padding: 5px 10px;
+    white-space: nowrap;
+  }
+  .chip.accent { background: var(--accent-tint); color: var(--accent-on-tint); font-weight: 620; }
+  .chip.ok { background: var(--ok-tint); color: var(--ok-on-tint); }
+
+  .roundbtn {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--pop-inset); color: var(--pop-text-2);
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+  }
+  .roundbtn svg { width: 14px; height: 14px; }
+
+  .pop-foot { display: flex; align-items: center; gap: 6px; padding-top: 2px; }
+  .pop-foot .spacer { flex: 1; }
+
+  .seg {
+    display: flex; background: var(--pop-inset); border-radius: 99px; padding: 3px;
+  }
+  .seg .opt {
+    flex: 1; text-align: center; font-size: 12px; font-weight: 550;
+    color: var(--pop-text-2); padding: 7px 4px; border-radius: 99px;
+    position: relative;
+  }
+  .seg .opt.on { background: var(--seg-on-bg); color: var(--seg-on-text); font-weight: 650; }
+  .seg .opt:not(.on) + .opt:not(.on)::before {
+    content: ""; position: absolute; left: 0; top: 25%; bottom: 25%;
+    width: 1px; background: var(--pop-border);
+  }
+
+  .smallcaps {
+    font-size: 10.5px; font-weight: 650; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--pop-muted);
+    padding: 4px 4px 0;
+  }
+
+  svg.gl { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  svg.gl.filled { fill: currentColor; stroke: none; }
+
+  /* ============ Candidate A — status card ============ */
+  .a-hero {
+    border-radius: 14px; overflow: hidden; position: relative;
+    aspect-ratio: 16 / 9;
+  }
+  .a-hero .scrim {
+    position: absolute; inset: auto 0 0 0;
+    padding: 26px 12px 10px;
+    background: linear-gradient(transparent, rgba(8, 5, 20, 0.78));
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 8px;
+  }
+  .a-hero .title { color: #fff; font-size: 13px; font-weight: 650; }
+  .a-hero .sub { color: rgba(255, 255, 255, 0.72); font-size: 11px; margin-top: 1px; }
+  .a-hero .dots { display: flex; gap: 4px; padding-bottom: 3px; }
+  .a-hero .dots i { width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.35); }
+  .a-hero .dots i.on { background: #fff; }
+
+  .a-status {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--accent-tint); border-radius: 14px; padding: 12px 14px;
+  }
+  .a-status.quiet { background: var(--pop-card); border: 1px solid var(--pop-border); }
+  .a-status .glyph { color: var(--accent); flex: none; width: 30px; height: 30px; }
+  .a-status.quiet .glyph { color: var(--pop-muted); }
+  .a-status .l1 { font-size: 13px; font-weight: 650; }
+  .a-status .l2 { font-size: 11.5px; color: var(--pop-text-2); margin-top: 1px; }
+
+  /* ============ Candidate B — control panel ============ */
+  .b-now {
+    display: flex; align-items: center; gap: 11px;
+    background: var(--pop-card); border: 1px solid var(--pop-border);
+    border-radius: 14px; padding: 9px;
+  }
+  .b-now .thumb { width: 74px; aspect-ratio: 16/10; border-radius: 8px; flex: none; }
+  .b-now .meta { flex: 1; min-width: 0; }
+  .b-now .t { font-size: 12.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .b-now .s { font-size: 11px; color: var(--pop-text-2); margin-top: 2px; display: flex; align-items: center; gap: 5px; }
+  .b-now .s .live { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
+  .b-play {
+    width: 36px; height: 36px; border-radius: 50%; flex: none;
+    background: var(--accent); color: var(--accent-text-on);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .b-play svg { width: 13px; height: 13px; }
+
+  .b-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .b-tog {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--pop-inset); border-radius: 10px; padding: 8px 10px;
+    font-size: 11.5px; font-weight: 550; color: var(--pop-text-2);
+  }
+  .b-tog .pip {
+    width: 22px; height: 13px; border-radius: 99px; flex: none;
+    background: var(--pop-muted); position: relative;
+  }
+  .b-tog .pip::after {
+    content: ""; position: absolute; top: 1.5px; left: 2px;
+    width: 10px; height: 10px; border-radius: 50%; background: var(--pop-bg);
+  }
+  .b-tog.on { background: var(--accent-tint); color: var(--accent-on-tint); font-weight: 600; }
+  .b-tog.on .pip { background: var(--accent); }
+  .b-tog.on .pip::after { left: auto; right: 2px; }
+
+  /* ============ Candidate C — immersive ============ */
+  .pop.c { position: relative; aspect-ratio: 320 / 430; display: flex; flex-direction: column; justify-content: space-between; }
+  .pop.c .glass {
+    backdrop-filter: blur(14px);
+    background: rgba(20, 14, 40, 0.42);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 16px;
+    color: #fff;
+  }
+  .pop.c .c-head {
+    margin: 12px; padding: 9px 13px;
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .pop.c .c-head .name { font-weight: 700; font-size: 14px; }
+  .pop.c .c-head .by { font-size: 11px; color: rgba(255, 255, 255, 0.65); }
+  .pop.c .c-panel { margin: 12px; padding: 12px 13px 11px; }
+  .pop.c .c-title { font-size: 13.5px; font-weight: 650; }
+  .pop.c .c-sub { font-size: 11px; color: rgba(255, 255, 255, 0.65); margin-top: 2px; }
+  .pop.c .c-transport { display: flex; align-items: center; justify-content: center; gap: 26px; padding: 12px 0 10px; }
+  .pop.c .c-transport .side { color: rgba(255, 255, 255, 0.8); width: 16px; height: 16px; }
+  .pop.c .c-pp {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.92); color: #201736;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pop.c .c-pp svg { width: 15px; height: 15px; }
+  .pop.c .c-row {
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    padding-top: 9px; margin-top: 2px;
+  }
+  .pop.c .c-row .ic { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.85); }
+  .pop.c .c-row .ic svg { width: 14px; height: 14px; }
+
+  /* ============ menu bar strips ============ */
+  .bars { display: flex; flex-direction: column; gap: 18px; }
+  .bar-wrap { border-radius: 12px; overflow: hidden; border: 1px solid var(--panel-border); }
+  .menubar {
+    display: flex; align-items: center; justify-content: flex-end; gap: 22px;
+    height: 37px; padding: 0 16px; font-size: 13px; font-weight: 550;
+  }
+  .menubar.light { background: linear-gradient(#fbfbfc, #f1f1f3); color: #1c1c1e; }
+  .menubar.dark { background: linear-gradient(#2c2c30, #232327); color: #f4f4f6; }
+  .menubar .mi { display: flex; align-items: center; }
+  .menubar .mi svg { width: 17px; height: 17px; display: block; }
+  .menubar .clock { font-variant-numeric: tabular-nums; }
+  .menubar .gap { width: 10px; }
+
+  .icon-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-top: 18px; }
+  .icon-card {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 14px; padding: 16px;
+  }
+  .icon-card .zoom { display: flex; gap: 18px; align-items: center; margin-bottom: 12px; color: var(--page-text); }
+  .icon-card .zoom svg { width: 56px; height: 56px; }
+  .icon-card .zoom .badge-demo { color: var(--page-text); position: relative; }
+  .icon-card h4 { font-size: 13px; font-weight: 650; margin-bottom: 4px; }
+  .icon-card p { font-size: 11.5px; color: var(--page-text-2); line-height: 1.5; }
+  .upd-dot { fill: var(--accent); stroke: none; }
+
+  .verdict {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 14px; padding: 18px 22px; margin-top: 18px;
+    font-size: 13px; line-height: 1.6; color: var(--page-text-2);
+    max-width: 76ch;
+  }
+  .verdict strong { color: var(--page-text); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="top">
+    <h1>Phosphene — popover candidates</h1>
+    <button class="theme-btn" onclick="toggleTheme()">Toggle theme</button>
+  </header>
+  <p class="lede">
+    Three directions in the adrafinil/dantrolene language. All three keep the video preview
+    (it is the app), surface the playback mode that was buried in Options, and demote
+    Updates + Restart Agent from full-height menu rows to footer chrome.
+  </p>
+
+  <h2 class="sect">Popover candidates</h2>
+  <div class="row">
+
+    <!-- ============ A ============ -->
+    <div class="candidate">
+      <div class="stage">
+        <div class="pop">
+          <div class="pop-pad">
+            <div class="pop-head">
+              <span class="name">Phosphene</span>
+              <span class="by">made by kageroumado <span class="arr">↗</span></span>
+            </div>
+
+            <div class="a-hero art">
+              <div class="scrim">
+                <div>
+                  <div class="title">Galaxy Stars</div>
+                  <div class="sub">Built-in Display</div>
+                </div>
+                <div class="dots"><i class="on"></i><i></i><i></i></div>
+              </div>
+            </div>
+
+            <div class="a-status">
+              <svg class="gl glyph" viewBox="0 0 30 30">
+                <circle cx="15" cy="15" r="3.4" fill="currentColor" stroke="none"/>
+                <path d="M 15 6.7 A 8.3 8.3 0 0 1 22.9 12.4"/>
+                <path d="M 20.9 21.4 A 8.3 8.3 0 0 1 7.3 17.5"/>
+                <path d="M 3.9 12.5 A 11.6 11.6 0 0 1 12 4"/>
+                <path d="M 26.5 17 A 11.6 11.6 0 0 1 19 25.9"/>
+              </svg>
+              <div>
+                <div class="l1">Playing everywhere</div>
+                <div class="l2">3 displays · shuffles daily</div>
+              </div>
+            </div>
+
+            <div class="seg">
+              <div class="opt on">Everywhere</div>
+              <div class="opt">Lock Screen</div>
+              <div class="opt">Paused</div>
+            </div>
+
+            <div class="pop-foot">
+              <span class="chip">v1.2.1</span>
+              <span class="chip">⌘ Library</span>
+              <span class="spacer"></span>
+              <span class="roundbtn"><svg class="gl" viewBox="0 0 16 16"><path d="M2.5 4.7h11M2.5 8h11M2.5 11.3h11"/><circle cx="10.6" cy="4.7" r="1.8" fill="currentColor" stroke="none"/><circle cx="5.4" cy="8" r="1.8" fill="currentColor" stroke="none"/><circle cx="8.8" cy="11.3" r="1.8" fill="currentColor" stroke="none"/></svg></span>
+              <span class="roundbtn"><svg class="gl" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <h3>A · Status card <span>— the adrafinil twin</span></h3>
+      <p class="note">
+        Hero preview with name on a scrim (frees a whole text row), a tinted status card that
+        answers "what is it doing right now," and one segmented control that surfaces the
+        previously hidden Only-on-Lock-Screen mode. Toggles + Restart Agent move behind the
+        gear; version chip in the footer doubles as the update surface.
+      </p>
+    </div>
+
+    <!-- ============ B ============ -->
+    <div class="candidate">
+      <div class="stage">
+        <div class="pop">
+          <div class="pop-pad">
+            <div class="pop-head">
+              <span class="name">Phosphene</span>
+              <span class="by">made by kageroumado <span class="arr">↗</span></span>
+            </div>
+
+            <div class="b-now">
+              <div class="thumb art"></div>
+              <div class="meta">
+                <div class="t">Galaxy Stars</div>
+                <div class="s"><span class="live"></span> Playing · Built-in Display</div>
+              </div>
+              <div class="b-play"><svg class="gl filled" viewBox="0 0 12 12"><path d="M2.5 1.2 h2.4 v9.6 h-2.4 z M7.1 1.2 h2.4 v9.6 h-2.4 z"/></svg></div>
+            </div>
+
+            <div class="smallcaps">Play on</div>
+            <div class="seg">
+              <div class="opt on">Everywhere</div>
+              <div class="opt">Lock Screen</div>
+            </div>
+
+            <div class="smallcaps">Settings</div>
+            <div class="b-toggles">
+              <div class="b-tog on"><span class="pip"></span>Launch at Login</div>
+              <div class="b-tog on"><span class="pip"></span>Resume Wallpaper</div>
+              <div class="b-tog"><span class="pip"></span>Pause When Hidden</div>
+              <div class="b-tog"><span class="pip"></span>Shuffle All</div>
+            </div>
+
+            <div class="pop-foot">
+              <span class="chip accent">1.3 available ↓</span>
+              <span class="spacer"></span>
+              <span class="roundbtn" title="Manage Library"><svg class="gl" viewBox="0 0 16 16"><rect x="2" y="3.2" width="12" height="9.6" rx="1.6"/><path d="M5 3.2v9.6M11 3.2v9.6"/></svg></span>
+              <span class="roundbtn" title="Restart Wallpaper Agent"><svg class="gl" viewBox="0 0 16 16"><path d="M13.2 8a5.2 5.2 0 1 1-1.7-3.85M13.2 1.8v3h-3"/></svg></span>
+              <span class="roundbtn"><svg class="gl" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <h3>B · Control panel <span>— the dantrolene twin</span></h3>
+      <p class="note">
+        Everything on one surface, nothing behind a disclosure: compact now-playing row with a
+        real pause button, the playback scope, and the four toggles as tappable pills.
+        Restart Agent shrinks to a footer icon. Shown with the update state — the version chip
+        turns coral and names the version.
+      </p>
+    </div>
+
+    <!-- ============ C ============ -->
+    <div class="candidate">
+      <div class="stage">
+        <div class="pop c art">
+          <div class="glass c-head">
+            <span class="name">Phosphene</span>
+            <span class="by">kageroumado ↗</span>
+          </div>
+          <div class="glass c-panel">
+            <div style="display:flex; justify-content:space-between; align-items:baseline;">
+              <div>
+                <div class="c-title">Galaxy Stars</div>
+                <div class="c-sub">Playing · Built-in Display</div>
+              </div>
+              <div class="c-sub">1 / 3</div>
+            </div>
+            <div class="c-transport">
+              <svg class="gl side" viewBox="0 0 16 16"><path d="M3.6 3v10"/><path d="M12.6 3.4 6.4 8l6.2 4.6z" fill="currentColor" stroke="none"/></svg>
+              <div class="c-pp"><svg class="gl filled" viewBox="0 0 12 12"><path d="M2.5 1.2 h2.4 v9.6 h-2.4 z M7.1 1.2 h2.4 v9.6 h-2.4 z"/></svg></div>
+              <svg class="gl side" viewBox="0 0 16 16"><path d="M12.4 3v10"/><path d="M3.4 3.4 9.6 8l-6.2 4.6z" fill="currentColor" stroke="none"/></svg>
+            </div>
+            <div class="c-row">
+              <span class="ic"><svg class="gl" viewBox="0 0 16 16"><rect x="2" y="3.2" width="12" height="9.6" rx="1.6"/><path d="M5 3.2v9.6M11 3.2v9.6"/></svg></span>
+              <span class="ic"><svg class="gl" viewBox="0 0 16 16"><path d="M2.5 4.7h11M2.5 8h11M2.5 11.3h11"/><circle cx="10.6" cy="4.7" r="1.8" fill="currentColor" stroke="none"/><circle cx="5.4" cy="8" r="1.8" fill="currentColor" stroke="none"/><circle cx="8.8" cy="11.3" r="1.8" fill="currentColor" stroke="none"/></svg></span>
+              <span class="ic"><svg class="gl" viewBox="0 0 16 16"><path d="M13.2 8a5.2 5.2 0 1 1-1.7-3.85M13.2 1.8v3h-3"/></svg></span>
+              <span class="ic"><svg class="gl" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <h3>C · Immersive <span>— the wallpaper is the popover</span></h3>
+      <p class="note">
+        The live video fills the whole popover; controls float on glass. Transport arrows step
+        the shuffle (prev / next wallpaper). Prettiest of the three and the least
+        information-dense — settings still need a second page behind the gear, and legibility
+        depends on the wallpaper underneath.
+      </p>
+    </div>
+  </div>
+
+  <h2 class="sect">Menu bar icon — candidates in situ</h2>
+  <div class="bars">
+    <div class="bar-wrap">
+      <div class="menubar light">
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="1.9" fill="currentColor" stroke="none"/><path d="M 8.5 3.9 A 4.6 4.6 0 0 1 12.9 7.2"/><path d="M 11.8 12.1 A 4.6 4.6 0 0 1 4.2 9.9"/><path d="M 2.2 6.7 A 6.7 6.7 0 0 1 6.7 2"/><path d="M 15 9.6 A 6.7 6.7 0 0 1 10.7 14.9"/></svg></span>
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="1.9" fill="currentColor" stroke="none"/><path d="M 8.5 3.9 A 4.6 4.6 0 0 1 12.9 7.2"/><path d="M 11.8 12.1 A 4.6 4.6 0 0 1 4.2 9.9"/><path d="M 2.2 6.7 A 6.7 6.7 0 0 1 6.7 2"/><path d="M 15 9.6 A 6.7 6.7 0 0 1 10.7 14.9"/><circle class="upd-dot" cx="14.4" cy="2.6" r="2.2"/></svg></span>
+        <span class="gap"></span>
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="5.9"/><path d="M7.2 6.2l3.4 2.3-3.4 2.3z" fill="currentColor" stroke="none"/></svg></span>
+        <span class="gap"></span>
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><rect x="1.8" y="3.4" width="13.4" height="9" rx="1.8"/><path d="M8.5 5.6v1.3M8.5 9.4v1.3M6 8h1.3M9.7 8h1.3" stroke-width="1.4"/></svg></span>
+        <span class="gap"></span>
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><path d="M8.5 1.8v3.2M8.5 12v3.2M1.8 8.5h3.2M12 8.5h3.2" stroke-width="1.7"/><circle cx="8.5" cy="8.5" r="2" fill="currentColor" stroke="none"/></svg></span>
+        <span class="clock">Thu 21 Aug&nbsp;&nbsp;14:32</span>
+      </div>
+      <div class="menubar dark">
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="1.9" fill="currentColor" stroke="none"/><path d="M 8.5 3.9 A 4.6 4.6 0 0 1 12.9 7.2"/><path d="M 11.8 12.1 A 4.6 4.6 0 0 1 4.2 9.9"/><path d="M 2.2 6.7 A 6.7 6.7 0 0 1 6.7 2"/><path d="M 15 9.6 A 6.7 6.7 0 0 1 10.7 14.9"/></svg></span>
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="1.9" fill="currentColor" stroke="none"/><path d="M 8.5 3.9 A 4.6 4.6 0 0 1 12.9 7.2"/><path d="M 11.8 12.1 A 4.6 4.6 0 0 1 4.2 9.9"/><path d="M 2.2 6.7 A 6.7 6.7 0 0 1 6.7 2"/><path d="M 15 9.6 A 6.7 6.7 0 0 1 10.7 14.9"/><circle class="upd-dot" cx="14.4" cy="2.6" r="2.2"/></svg></span>
+        <span class="gap"></span>
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="5.9"/><path d="M7.2 6.2l3.4 2.3-3.4 2.3z" fill="currentColor" stroke="none"/></svg></span>
+        <span class="gap"></span>
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><rect x="1.8" y="3.4" width="13.4" height="9" rx="1.8"/><path d="M8.5 5.6v1.3M8.5 9.4v1.3M6 8h1.3M9.7 8h1.3" stroke-width="1.4"/></svg></span>
+        <span class="gap"></span>
+        <span class="mi"><svg class="gl" viewBox="0 0 17 17"><path d="M8.5 1.8v3.2M8.5 12v3.2M1.8 8.5h3.2M12 8.5h3.2" stroke-width="1.7"/><circle cx="8.5" cy="8.5" r="2" fill="currentColor" stroke="none"/></svg></span>
+        <span class="clock">Thu 21 Aug&nbsp;&nbsp;14:32</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="icon-cards">
+    <div class="icon-card">
+      <div class="zoom">
+        <svg class="gl" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="1.9" fill="currentColor" stroke="none"/><path d="M 8.5 3.9 A 4.6 4.6 0 0 1 12.9 7.2"/><path d="M 11.8 12.1 A 4.6 4.6 0 0 1 4.2 9.9"/><path d="M 2.2 6.7 A 6.7 6.7 0 0 1 6.7 2"/><path d="M 15 9.6 A 6.7 6.7 0 0 1 10.7 14.9"/></svg>
+        <svg class="gl" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="1.9" fill="currentColor" stroke="none"/><path d="M 8.5 3.9 A 4.6 4.6 0 0 1 12.9 7.2"/><path d="M 11.8 12.1 A 4.6 4.6 0 0 1 4.2 9.9"/><path d="M 2.2 6.7 A 6.7 6.7 0 0 1 6.7 2"/><path d="M 15 9.6 A 6.7 6.7 0 0 1 10.7 14.9"/><circle class="upd-dot" cx="14.4" cy="2.6" r="2.2"/></svg>
+      </div>
+      <h4>1 · Rings — the app icon itself</h4>
+      <p>Broken concentric arcs around a core dot, straight from the Icon Composer artwork.
+      Unmistakably Phosphene, reads at 17&nbsp;px, and the top-right gap already leaves room
+      for the update dot (right) without crowding.</p>
+    </div>
+    <div class="icon-card">
+      <div class="zoom">
+        <svg class="gl" viewBox="0 0 17 17"><circle cx="8.5" cy="8.5" r="5.9"/><path d="M7.2 6.2l3.4 2.3-3.4 2.3z" fill="currentColor" stroke="none"/></svg>
+      </div>
+      <h4>2 · Play ring</h4>
+      <p>Play triangle in a circle — communicates "video" instantly but is generic; a dozen
+      utilities use some version of it. The safe choice, not the memorable one.</p>
+    </div>
+    <div class="icon-card">
+      <div class="zoom">
+        <svg class="gl" viewBox="0 0 17 17"><rect x="1.8" y="3.4" width="13.4" height="9" rx="1.8"/><path d="M8.5 5.6v1.3M8.5 9.4v1.3M6 8h1.3M9.7 8h1.3" stroke-width="1.4"/></svg>
+      </div>
+      <h4>3 · Display + spark</h4>
+      <p>A display outline with a phosphene burst at its center — "light on your screen."
+      Honest about being a wallpaper app, but the inner detail gets muddy at menu bar size.</p>
+    </div>
+    <div class="icon-card">
+      <div class="zoom">
+        <svg class="gl" viewBox="0 0 17 17"><path d="M8.5 1.8v3.2M8.5 12v3.2M1.8 8.5h3.2M12 8.5h3.2" stroke-width="1.7"/><circle cx="8.5" cy="8.5" r="2" fill="currentColor" stroke="none"/></svg>
+      </div>
+      <h4>4 · Burst</h4>
+      <p>The phosphene flash reduced to four rays and a core. Cleanest silhouette of the set,
+      but loses the ring motif that ties it to the app icon.</p>
+    </div>
+  </div>
+
+  <h2 class="sect">Recommendation</h2>
+  <div class="verdict">
+    <strong>Popover: B's information architecture in A's clothes.</strong> A's hero-with-scrim
+    and status card look the most like a sibling of adrafinil, while B is the one that actually
+    fixes the complaint — nothing hidden, updates and agent-restart demoted to chrome. The
+    merge: A's hero preview and footer, B's toggle pills in place of A's status card (the
+    status card mostly restates what the segmented control and scrim already say).
+    C is the beautiful one; it could be the "compact" appearance later, but as the only UI it
+    buries settings again.
+    <br><br>
+    <strong>Icon: Rings (1), with the coral badge dot for updates.</strong> It's the only
+    candidate that's actually <em>Phosphene's</em>, the arcs survive 17&nbsp;px because each is
+    a single stroke, and the badge slots into the ring gap. NSStatusItem renders template
+    images, so the dot needs the icon swapped to a pre-badged variant — same pattern most
+    updaters use.
+  </div>
+
+</div>
+<script>
+  function toggleTheme() {
+    const root = document.documentElement;
+    const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const cur = root.dataset.theme || (dark ? "dark" : "light");
+    root.dataset.theme = cur === "dark" ? "light" : "dark";
+  }
+</script>
+</body>
+</html>

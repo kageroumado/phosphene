@@ -41,12 +41,6 @@ final class PhospheneManager {
         }
     }
 
-    var resumeLastWallpaper: Bool {
-        didSet {
-            UserDefaults.standard.set(resumeLastWallpaper, forKey: "resumeLastWallpaper")
-        }
-    }
-
     // MARK: - Services
 
     let prefsService = WallpaperPrefsService.shared
@@ -59,7 +53,6 @@ final class PhospheneManager {
 
     private enum Keys {
         static let launchAtLogin = "launchAtLogin"
-        static let resumeLastWallpaper = "resumeLastWallpaper"
     }
 
     // MARK: - Init
@@ -68,16 +61,18 @@ final class PhospheneManager {
         let defaults = UserDefaults.standard
         defaults.register(defaults: [
             Keys.launchAtLogin: true,
-            Keys.resumeLastWallpaper: true,
         ])
         self.launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
-        self.resumeLastWallpaper = defaults.bool(forKey: Keys.resumeLastWallpaper)
 
         Self.shared = self
         syncLaunchAtLogin()
 
         // Clear legacy bookmark if present
         defaults.removeObject(forKey: "videoBookmarkKey")
+
+        // Clear the retired resume-on-launch preference: the extension resumes on
+        // its own, so the setting was never read.
+        defaults.removeObject(forKey: "resumeLastWallpaper")
 
         // Migrate entries imported before metadata probing was added
         migrateEntryMetadata()
@@ -182,6 +177,7 @@ final class PhospheneManager {
     // MARK: - Private
 
     private func migrateEntryMetadata() {
+        _ = VideoDeploymentService.prettifyLegacyNames()
         let entries = VideoDeploymentService.listEntries()
         let needsProbing = entries.filter { $0.resolution == .zero && $0.fps == 0 }
         guard !needsProbing.isEmpty else { return }

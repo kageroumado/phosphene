@@ -67,7 +67,7 @@ enum VideoDeploymentService {
 
             let metadata = DeploymentMetadata(
                 id: id,
-                name: name ?? url.deletingPathExtension().lastPathComponent,
+                name: name ?? VideoDisplayName.pretty(from: url.deletingPathExtension().lastPathComponent),
                 filename: url.lastPathComponent,
                 duration: duration,
                 fps: fps,
@@ -267,6 +267,39 @@ enum VideoDeploymentService {
               let size = attrs[.size] as? Int64
         else { return nil }
         return size
+    }
+
+    /// Rename an entry. The stored `name` is the display name everywhere —
+    /// library, popover, and the System Settings wallpaper picker.
+    static func renameEntry(entryID: String, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let entryDir = validatedEntryDir(entryID) else { return }
+        let metadataURL = entryDir.appendingPathComponent("metadata.json")
+        guard let data = try? Data(contentsOf: metadataURL),
+              var metadata = try? JSONDecoder().decode(DeploymentMetadata.self, from: data),
+              metadata.name != trimmed
+        else { return }
+        metadata.name = trimmed
+        if let updated = try? JSONEncoder().encode(metadata) {
+            try? updated.write(to: metadataURL, options: .atomic)
+        }
+        notifyExtensionLibraryChanged()
+    }
+
+    /// One-shot cleanup for entries imported before names were prettified at import:
+    /// a name still equal to its file-name stem is a slug, not a choice, so it gets the
+    /// same treatment new imports get. Returns whether anything changed.
+    static func prettifyLegacyNames() -> Bool {
+        var changed = false
+        for entry in listEntries() {
+            let stem = (entry.filename as NSString).deletingPathExtension
+            guard entry.name == stem else { continue }
+            let pretty = VideoDisplayName.pretty(from: entry.name)
+            guard pretty != entry.name else { continue }
+            renameEntry(entryID: entry.id, to: pretty)
+            changed = true
+        }
+        return changed
     }
 
     /// Re-probe an existing entry's video and update its metadata.json.

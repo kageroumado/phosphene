@@ -1,44 +1,52 @@
+import AVFoundation
 import SwiftUI
 
 struct VideoCardView: View {
     let entry: VideoDeploymentService.EntryInfo
     var isSelected: Bool = false
+    var isInUse: Bool = false
+    var isOptimizing: Bool = false
+    var optimizationProgress: Double = 0
     let onSelect: () -> Void
     let onDelete: () -> Void
 
     @State private var isHovered = false
     @State private var thumbnail: NSImage?
+    @State private var previewPlayer: AVQueuePlayer?
+    @State private var playerLooper: AVPlayerLooper?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 7) {
             thumbnailView
-            infoBar
+            Text(entry.name)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .top)
         }
-        .background(.quinary)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.tint, lineWidth: 2.5)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+            if hovering {
+                startPreview()
+            } else {
+                stopPreview()
             }
         }
-        .scaleEffect(isHovered ? 1.02 : 1.0)
-        .shadow(color: .black.opacity(isHovered ? 0.2 : 0.1), radius: isHovered ? 8 : 4)
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
-        .onHover { isHovered = $0 }
         .onTapGesture { onSelect() }
         .contextMenu { contextMenuItems }
         .task { loadThumbnail() }
+        .onDisappear { stopPreview() }
     }
 
     // MARK: - Thumbnail
 
     private var thumbnailView: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
             Group {
                 if let thumbnail {
                     Color.clear
-                        .aspectRatio(16 / 9, contentMode: .fit)
                         .overlay {
                             Image(nsImage: thumbnail)
                                 .resizable()
@@ -47,7 +55,6 @@ struct VideoCardView: View {
                 } else {
                     Rectangle()
                         .fill(.quaternary)
-                        .aspectRatio(16 / 9, contentMode: .fit)
                         .overlay {
                             Image(systemName: "film")
                                 .font(.system(size: 24))
@@ -55,57 +62,78 @@ struct VideoCardView: View {
                         }
                 }
             }
-            .clipped()
 
-            if isHovered {
-                Button {
-                    onDelete()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .medium))
-                        .padding(6)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Delete")
-                .padding(6)
-                .transition(.opacity)
+            if let previewPlayer {
+                PlayerLayerView(player: previewPlayer)
             }
         }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(alignment: .bottomTrailing) {
+            if isInUse {
+                inUseBadge
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if isOptimizing {
+                optimizingPill
+            }
+        }
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.tint, lineWidth: 2.5)
+                    .padding(-3)
+            }
+        }
+        .shadow(color: .black.opacity(isHovered ? 0.18 : 0.08), radius: isHovered ? 8 : 4, y: 2)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
     }
 
-    // MARK: - Info Bar
+    private var inUseBadge: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 20, height: 20)
+            .background(.tint, in: Circle())
+            .padding(7)
+            .help("In use as wallpaper")
+    }
 
-    private var infoBar: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(entry.name)
-                .font(.system(size: 12, weight: .medium))
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            HStack(spacing: 6) {
-                if entry.resolution != .zero {
-                    Text("\(Int(entry.resolution.width))\u{00D7}\(Int(entry.resolution.height))")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-
-                if entry.fps > 0 {
-                    Text("\(Int(entry.fps))fps")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-
-                if entry.variants?.isEmpty == false {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.green)
-                        .help("Optimized")
-                }
-            }
+    private var optimizingPill: some View {
+        HStack(spacing: 5) {
+            ProgressView(value: optimizationProgress)
+                .progressViewStyle(.circular)
+                .controlSize(.mini)
+                .tint(.white)
+            Text("Optimizing")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(.black.opacity(0.55), in: Capsule())
+        .padding(7)
+    }
+
+    // MARK: - Hover Preview
+
+    private func startPreview() {
+        guard previewPlayer == nil else { return }
+        let url = VideoDeploymentService.videoURL(for: entry)
+        let playerItem = AVPlayerItem(url: url)
+        let queuePlayer = AVQueuePlayer(playerItem: playerItem)
+        queuePlayer.isMuted = true
+        playerLooper = AVPlayerLooper(player: queuePlayer, templateItem: playerItem)
+        previewPlayer = queuePlayer
+        queuePlayer.play()
+    }
+
+    private func stopPreview() {
+        playerLooper?.disableLooping()
+        previewPlayer?.pause()
+        previewPlayer = nil
+        playerLooper = nil
     }
 
     // MARK: - Context Menu
