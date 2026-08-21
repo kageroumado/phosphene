@@ -5,6 +5,7 @@ struct MenuBarPopoverView: View {
     @Bindable var manager: PhospheneManager
     var openLibrary: () -> Void = {}
     @State private var selectedIndex = 0
+    @State private var isHoveringVersion = false
     @Namespace private var scopeNamespace
 
     private var prefsService: WallpaperPrefsService {
@@ -28,6 +29,7 @@ struct MenuBarPopoverView: View {
         .padding(14)
         .frame(width: 320)
         .fixedSize(horizontal: false, vertical: true)
+        .onAppear { SilentUpdates.shared.refreshPending() }
         .onChange(of: prefsService.selections.count) {
             selectedIndex = min(selectedIndex, max(0, prefsService.selections.count - 1))
         }
@@ -306,25 +308,45 @@ struct MenuBarPopoverView: View {
     // MARK: - Footer
 
     private var footerSection: some View {
-        HStack(spacing: 6) {
-            updateChip
+        HStack(spacing: 5) {
+            switch SilentUpdates.shared.manualPhase {
+            case .working:
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Updating…")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            case .failed(let message):
+                Button {
+                    NSWorkspace.shared.open(manager.updateCheck.releasesPageURL)
+                    SilentUpdates.shared.dismissFailure()
+                } label: {
+                    Label("Update failed", systemImage: "exclamationmark.triangle.fill")
+                }
+                .buttonStyle(ChipButtonStyle(prominent: true))
+                .help(message)
+            case .idle:
+                updateChip
 
-            Button {
-                openLibrary()
-            } label: {
-                Label("Library", systemImage: "film.stack")
+                Button {
+                    openLibrary()
+                } label: {
+                    Label("Library", systemImage: "film.stack")
+                }
+                .buttonStyle(ChipButtonStyle())
+
+                Button {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!)
+                } label: {
+                    Label("Choose", systemImage: "photo.on.rectangle")
+                }
+                .buttonStyle(ChipButtonStyle())
+                .help("Choose the wallpaper in macOS Wallpaper Settings")
             }
-            .buttonStyle(ChipButtonStyle())
 
             Spacer(minLength: 0)
-
-            Button {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!)
-            } label: {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(RoundIconButtonStyle())
-            .help("Open macOS Wallpaper Settings")
 
             Button {
                 WallpaperPrefsService.shared.restartWallpaperAgent()
@@ -345,29 +367,45 @@ struct MenuBarPopoverView: View {
         }
     }
 
+    /// The version chip is the whole update UI: it announces an update (click installs),
+    /// confirms one just landed (click acknowledges), and at rest flips into the
+    /// Auto-Update switch on hover so the setting costs no footer space.
     @ViewBuilder
     private var updateChip: some View {
-        let updateCheck = manager.updateCheck
-        Button {
-            if updateCheck.availableVersion != nil {
-                NSWorkspace.shared.open(updateCheck.releasesPageURL)
-            } else {
-                Task { await updateCheck.check(manual: true) }
+        let updates = SilentUpdates.shared
+        if let justUpdated = updates.justUpdatedVersion {
+            Button {
+                updates.acknowledgeUpdate()
+            } label: {
+                Label("v\(justUpdated)", systemImage: "checkmark")
             }
-        } label: {
-            if let version = updateCheck.availableVersion {
-                Label("\(version) available", systemImage: "arrow.down.circle.fill")
-            } else if updateCheck.isChecking {
-                Text("Checking…")
-            } else if updateCheck.checkedUpToDate {
-                Label("Up to date", systemImage: "checkmark")
-            } else {
-                Text(versionString)
+            .buttonStyle(ChipButtonStyle(prominent: true))
+            .help("Updated to version \(justUpdated)")
+        } else if let available = manager.updateCheck.availableVersion ?? updates.pendingVersion {
+            Button {
+                Task { await updates.updateNow() }
+            } label: {
+                Label(available, systemImage: "arrow.down.circle.fill")
             }
+            .buttonStyle(ChipButtonStyle(prominent: true))
+            .help("Update to version \(available) and relaunch")
+        } else {
+            Button {
+                manager.autoUpdate.toggle()
+            } label: {
+                if isHoveringVersion {
+                    HStack(spacing: 5) {
+                        MiniSwitchPip(isOn: manager.autoUpdate)
+                        Text("Auto")
+                    }
+                } else {
+                    Text(versionString)
+                }
+            }
+            .buttonStyle(ChipButtonStyle())
+            .onHover { isHoveringVersion = $0 }
+            .help("Install updates automatically")
         }
-        .buttonStyle(ChipButtonStyle(prominent: updateCheck.availableVersion != nil))
-        .disabled(updateCheck.isChecking)
-        .help("Check for updates")
     }
 
     private var versionString: String {
@@ -377,6 +415,24 @@ struct MenuBarPopoverView: View {
 }
 
 // MARK: - Styles
+
+/// The miniature switch drawn inside chips and setting pills.
+private struct MiniSwitchPip: View {
+    var isOn: Bool
+
+    var body: some View {
+        Capsule()
+            .fill(isOn ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+            .frame(width: 18, height: 11)
+            .overlay(alignment: isOn ? .trailing : .leading) {
+                Circle()
+                    .fill(.white)
+                    .frame(width: 7, height: 7)
+                    .padding(2)
+            }
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isOn)
+    }
+}
 
 /// A capsule chip: quiet fill, brightens on hover, accent-tinted when prominent.
 private struct ChipButtonStyle: ButtonStyle {
@@ -396,7 +452,7 @@ private struct ChipButtonStyle: ButtonStyle {
                 .font(.system(size: 11, weight: prominent ? .semibold : .medium))
                 .labelStyle(ChipLabelStyle())
                 .foregroundStyle(prominent ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background {
                     Capsule().fill(

@@ -134,6 +134,9 @@
 				AA9B91CB2E900B9E008812A9 /* Phosphene */,
 			);
 			name = Phosphene;
+			packageProductDependencies = (
+				7A0000000000000000000002 /* TiptoeGitHub */,
+			);
 			productName = Phosphene;
 			productReference = AA9B91C92E900B9E008812A9 /* Phosphene.app */;
 			productType = "com.apple.product-type.application";
@@ -165,6 +168,9 @@
 			);
 			mainGroup = AA9B91C02E900B9E008812A9;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7A0000000000000000000001 /* XCRemoteSwiftPackageReference "Tiptoe" */,
+			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = AA9B91CA2E900B9E008812A9 /* Products */;
 			projectDirPath = "";
@@ -530,6 +536,28 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7A0000000000000000000001 /* XCRemoteSwiftPackageReference "Tiptoe" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/artginzburg/Tiptoe";
+			requirement = {
+				kind = exactVersion;
+				version = 1.0.0;
+			};
+			traits = (
+				GitHubSupport,
+			);
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7A0000000000000000000002 /* TiptoeGitHub */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A0000000000000000000001 /* XCRemoteSwiftPackageReference "Tiptoe" */;
+			productName = TiptoeGitHub;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AA9B91C12E900B9E008812A9 /* Project object */;
 }

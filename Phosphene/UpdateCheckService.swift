@@ -4,25 +4,17 @@ import os
 
 /// Notify-only update check against the public GitHub Releases of Phosphene.
 ///
-/// Phosphene distributes notarized DMGs through GitHub Releases (and Homebrew,
-/// where `brew upgrade` handles updates). Rather than bundle an in-app updater,
-/// this performs one lightweight request to GitHub's `releases/latest` endpoint
+/// This performs one lightweight request to GitHub's `releases/latest` endpoint
 /// and, when a newer version exists, exposes ``availableVersion`` so the menu
-/// bar can offer a link to the releases page. It never downloads or installs.
+/// bar can offer the update. It never downloads or installs — that is
+/// `SilentUpdates`' job, and this notifier keeps working when auto-update is off.
 @MainActor
 @Observable
 final class UpdateCheckService {
     /// The newer version (e.g. "1.1") when one is available, else `nil`.
     private(set) var availableVersion: String?
 
-    /// True while a manual check is in flight (drives the menu item's state).
-    private(set) var isChecking = false
-
-    /// Set true after a manual check that found no newer version, so the menu can
-    /// briefly confirm "You're up to date". Reset when a new check starts.
-    private(set) var checkedUpToDate = false
-
-    /// Where the "update available" affordance sends the user.
+    /// Where the update-failed affordance sends the user.
     let releasesPageURL = URL(string: "https://github.com/kageroumado/phosphene/releases/latest")!
 
     @ObservationIgnored private let latestAPI = URL(
@@ -45,15 +37,8 @@ final class UpdateCheckService {
         await check()
     }
 
-    /// Force a check now, ignoring the interval. `manual` drives UI feedback
-    /// (spinner / "up to date") so the auto check at launch stays silent.
-    func check(manual: Bool = false) async {
-        if manual {
-            isChecking = true
-            checkedUpToDate = false
-        }
-        defer { if manual { isChecking = false } }
-
+    /// Force a check now, ignoring the interval.
+    func check() async {
         var request = URLRequest(url: latestAPI)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 10
@@ -69,7 +54,6 @@ final class UpdateCheckService {
                 : release.tagName
             let newer = Self.isNewer(latest, than: currentVersion)
             availableVersion = newer ? latest : nil
-            if manual { checkedUpToDate = !newer }
             Log.update.debug("update check: \(release.tagName) vs \(self.currentVersion) → \(newer ? "update available" : "up to date")")
         } catch {
             // Offline, rate-limited, or shape changed — stay quiet and retry later.

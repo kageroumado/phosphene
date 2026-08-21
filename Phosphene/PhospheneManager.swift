@@ -41,6 +41,14 @@ final class PhospheneManager {
         }
     }
 
+    var autoUpdate: Bool {
+        didSet {
+            guard autoUpdate != oldValue else { return }
+            UserDefaults.standard.set(autoUpdate, forKey: Keys.autoUpdate)
+            SilentUpdates.shared.setAutoInstall(autoUpdate)
+        }
+    }
+
     // MARK: - Services
 
     let prefsService = WallpaperPrefsService.shared
@@ -53,6 +61,7 @@ final class PhospheneManager {
 
     private enum Keys {
         static let launchAtLogin = "launchAtLogin"
+        static let autoUpdate = "autoInstallUpdates"
     }
 
     // MARK: - Init
@@ -61,8 +70,10 @@ final class PhospheneManager {
         let defaults = UserDefaults.standard
         defaults.register(defaults: [
             Keys.launchAtLogin: true,
+            Keys.autoUpdate: true,
         ])
         self.launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin)
+        self.autoUpdate = defaults.bool(forKey: Keys.autoUpdate)
 
         Self.shared = self
         syncLaunchAtLogin()
@@ -82,6 +93,7 @@ final class PhospheneManager {
         }
 
         Task { await updateCheck.checkIfDue() }
+        SilentUpdates.shared.start(autoInstall: autoUpdate)
     }
 
     // MARK: - Library Actions
