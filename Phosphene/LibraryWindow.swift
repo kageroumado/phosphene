@@ -47,7 +47,14 @@ struct LibraryWindow: View {
                     .help(showInspector ? "Hide Inspector" : "Show Inspector")
                 }
             }
-            .onAppear { loadEntries() }
+            .onAppear {
+                loadEntries()
+                // Promote to a regular app for every open path (menu bar, URL scheme):
+                // the window needs a Dock icon and menu bar while visible. The
+                // AppDelegate's willClose observer demotes back to accessory.
+                NSApplication.shared.setActivationPolicy(.regular)
+                NSApplication.shared.activate()
+            }
             .onReceive(
                 NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification),
             ) { _ in
