@@ -30,6 +30,7 @@ final class PhospheneExtension: NSObject, AppExtension {
                         alwaysPauseDesktop: prefs.alwaysPauseDesktop,
                         pauseWhenOccluded: prefs.pauseWhenOccluded,
                         desktopOccluded: prefs.desktopOccluded,
+            screenSaverIsOurs: prefs.screenSaverIsOurs,
                         powerState: powerState,
                     )
                     WallpaperState.shared.forEachRenderer { renderer in
@@ -141,6 +142,7 @@ final class PhospheneExtension: NSObject, AppExtension {
             alwaysPauseDesktop: prefs.alwaysPauseDesktop,
             pauseWhenOccluded: prefs.pauseWhenOccluded,
             desktopOccluded: prefs.desktopOccluded,
+            screenSaverIsOurs: prefs.screenSaverIsOurs,
             powerState: power,
         )
         state.forEachRenderer { renderer in

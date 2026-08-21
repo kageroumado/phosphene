@@ -21,6 +21,7 @@ func makeVariantSelector(choice: String?, fallback: URL) -> @Sendable () -> URL 
             alwaysPauseDesktop: prefs.alwaysPauseDesktop,
             pauseWhenOccluded: prefs.pauseWhenOccluded,
             desktopOccluded: prefs.desktopOccluded,
+            screenSaverIsOurs: prefs.screenSaverIsOurs,
             powerState: PowerMonitor.shared.currentState,
         )
         return VideoLibrary.shared.bestVariantURL(for: videoID, policy: policy) ?? fallback
@@ -557,6 +558,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             alwaysPauseDesktop: prefs.alwaysPauseDesktop,
             pauseWhenOccluded: prefs.pauseWhenOccluded,
             desktopOccluded: prefs.desktopOccluded,
+            screenSaverIsOurs: prefs.screenSaverIsOurs,
             powerState: power,
         )
 

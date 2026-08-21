@@ -17,6 +17,10 @@ enum PlaybackPolicy: Int, Comparable {
     /// `alwaysPauseDesktop`: when true, wallpaper only plays on the lock screen.
     /// On the desktop (unlocked), it pauses with a ramp animation.
     ///
+    /// `screenSaverIsOurs`: a Phosphene choice is the active screensaver, so idle
+    /// presentation means WE are what's on screen — play full, like the lock screen.
+    /// Without it, idle means a foreign screensaver covers us — pause.
+    ///
     /// Lock screen never reduces FPS by itself — only power/thermal conditions do.
     static func compute(
         presentationMode: String,
@@ -25,6 +29,7 @@ enum PlaybackPolicy: Int, Comparable {
         alwaysPauseDesktop: Bool,
         pauseWhenOccluded: Bool,
         desktopOccluded: Bool,
+        screenSaverIsOurs: Bool,
         thermalState: ProcessInfo.ThermalState,
         isOnBattery: Bool,
         batteryLevel: Int,
@@ -33,12 +38,17 @@ enum PlaybackPolicy: Int, Comparable {
     ) -> PlaybackPolicy {
         var worst: PlaybackPolicy = .full
 
+        // Presentations where the wallpaper fills the screen with nothing over it:
+        // the lock screen, and the screensaver when the screensaver is ours.
+        let fullScreenPresentation = presentationMode == "locked"
+            || (presentationMode == "idle" && screenSaverIsOurs)
+
         // --- paused tier ---
         if userPaused { worst = max(worst, .paused) }
         if thermalState == .critical { worst = max(worst, .paused) }
         if batteryLevel < 10 { worst = max(worst, .paused) }
         if activityState.contains("suspended") { worst = max(worst, .paused) }
-        if presentationMode == "idle" { worst = max(worst, .paused) }
+        if presentationMode == "idle", !screenSaverIsOurs { worst = max(worst, .paused) }
         if isGameModeActive { worst = max(worst, .paused) }
         // User dimmed the backlight to ~zero. The display is technically still
         // "awake" so `screensDidSleep` doesn't fire and the WallpaperAgent never
@@ -46,10 +56,10 @@ enum PlaybackPolicy: Int, Comparable {
         if displayBrightness < PowerMonitor.PowerState.brightnessPauseThreshold {
             worst = max(worst, .paused)
         }
-        // Desktop occlusion is irrelevant on the lock screen — the wallpaper
-        // is always fully visible there regardless of desktop window state.
-        if pauseWhenOccluded, desktopOccluded, presentationMode != "locked" { worst = max(worst, .paused) }
-        if alwaysPauseDesktop, presentationMode != "locked" { worst = max(worst, .paused) }
+        // Desktop occlusion is irrelevant on full-screen presentations — the
+        // wallpaper is fully visible there regardless of desktop window state.
+        if pauseWhenOccluded, desktopOccluded, !fullScreenPresentation { worst = max(worst, .paused) }
+        if alwaysPauseDesktop, !fullScreenPresentation { worst = max(worst, .paused) }
 
         // --- minimal tier ---
         if thermalState == .serious { worst = max(worst, .minimal) }
@@ -88,6 +98,7 @@ enum PlaybackPolicy: Int, Comparable {
         alwaysPauseDesktop: Bool,
         pauseWhenOccluded: Bool,
         desktopOccluded: Bool,
+        screenSaverIsOurs: Bool,
         powerState: PowerMonitor.PowerState,
     ) -> PlaybackPolicy {
         compute(
@@ -97,6 +108,7 @@ enum PlaybackPolicy: Int, Comparable {
             alwaysPauseDesktop: alwaysPauseDesktop,
             pauseWhenOccluded: pauseWhenOccluded,
             desktopOccluded: desktopOccluded,
+            screenSaverIsOurs: screenSaverIsOurs,
             thermalState: powerState.thermalState,
             isOnBattery: powerState.isOnBattery,
             batteryLevel: powerState.batteryLevel,

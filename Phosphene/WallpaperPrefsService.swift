@@ -42,6 +42,13 @@ final class WallpaperPrefsService {
         didSet { guard desktopOccluded != oldValue else { return }; savePrefs() }
     }
 
+    /// Whether any display or Space has a Phosphene choice as its screensaver (the
+    /// store's Idle section). Derived from the wallpaper store, relayed to the
+    /// extension so idle presentation plays full-screen instead of pausing (#26).
+    private(set) var screenSaverIsOurs = false {
+        didSet { guard screenSaverIsOurs != oldValue else { return }; savePrefs() }
+    }
+
     // MARK: - Selections (parsed from wallpaper plist)
 
     private(set) var selections: [WallpaperSelection] = []
@@ -100,13 +107,15 @@ final class WallpaperPrefsService {
         var pauseWhenOccluded: Bool
         var desktopOccluded: Bool
         var pausedDisplays: Set<UInt32>?
+        var screenSaverIsOurs: Bool?
 
-        init(userPaused: Bool, alwaysPauseDesktop: Bool, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, pausedDisplays: Set<UInt32>? = nil) {
+        init(userPaused: Bool, alwaysPauseDesktop: Bool, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
             self.userPaused = userPaused
             self.alwaysPauseDesktop = alwaysPauseDesktop
             self.pauseWhenOccluded = pauseWhenOccluded
             self.desktopOccluded = desktopOccluded
             self.pausedDisplays = pausedDisplays
+            self.screenSaverIsOurs = screenSaverIsOurs
         }
     }
 
@@ -224,6 +233,7 @@ final class WallpaperPrefsService {
             pauseWhenOccluded: pauseWhenOccluded,
             desktopOccluded: desktopOccluded,
             pausedDisplays: pausedDisplays.isEmpty ? nil : pausedDisplays,
+            screenSaverIsOurs: screenSaverIsOurs,
         )
         guard let data = try? JSONEncoder().encode(prefs) else { return }
         try? data.write(to: Self.prefsURL, options: .atomic)
@@ -287,8 +297,11 @@ final class WallpaperPrefsService {
         guard let data = try? Data(contentsOf: Self.wallpaperStoreURL),
               let plist = try? unsafe PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
             selections = []
+            screenSaverIsOurs = false
             return
         }
+
+        screenSaverIsOurs = Self.idleSelectionIsOurs(plist)
 
         let displayMap = resolveDisplayMap()
         let spaceMap = resolveSpaceMap()
@@ -365,6 +378,36 @@ final class WallpaperPrefsService {
         }
 
         selections = result.sorted { $0.displayName < $1.displayName }
+    }
+
+    /// Whether any Idle (screensaver) selection in the store belongs to Phosphene —
+    /// checks the SystemDefault, per-display, per-Space, and per-Space-per-display
+    /// records.
+    private static func idleSelectionIsOurs(_ plist: [String: Any]) -> Bool {
+        func idleIsOurs(_ dict: [String: Any]) -> Bool {
+            guard let idle = dict["Idle"] as? [String: Any],
+                  let content = idle["Content"] as? [String: Any],
+                  let choices = content["Choices"] as? [[String: Any]] else { return false }
+            return choices.contains { ($0["Provider"] as? String) == extensionBundleID }
+        }
+        if let systemDefault = plist["SystemDefault"] as? [String: Any], idleIsOurs(systemDefault) {
+            return true
+        }
+        if let displays = plist["Displays"] as? [String: Any] {
+            for value in displays.values {
+                if let display = value as? [String: Any], idleIsOurs(display) { return true }
+            }
+        }
+        if let spaces = plist["Spaces"] as? [String: Any] {
+            for spaceValue in spaces.values {
+                guard let space = spaceValue as? [String: Any] else { continue }
+                if idleIsOurs(space) { return true }
+                for displayValue in (space["Displays"] as? [String: Any])?.values ?? [String: Any]().values {
+                    if let display = displayValue as? [String: Any], idleIsOurs(display) { return true }
+                }
+            }
+        }
+        return false
     }
 
     private func extractOurVideoID(from dict: [String: Any]) -> String? {

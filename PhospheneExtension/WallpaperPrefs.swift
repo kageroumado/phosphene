@@ -15,13 +15,15 @@ final class WallpaperPrefs: @unchecked Sendable {
         var pauseWhenOccluded: Bool
         var desktopOccluded: Bool
         var pausedDisplays: Set<UInt32>?
+        var screenSaverIsOurs: Bool?
 
-        init(userPaused: Bool = false, alwaysPauseDesktop: Bool = false, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, pausedDisplays: Set<UInt32>? = nil) {
+        init(userPaused: Bool = false, alwaysPauseDesktop: Bool = false, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
             self.userPaused = userPaused
             self.alwaysPauseDesktop = alwaysPauseDesktop
             self.pauseWhenOccluded = pauseWhenOccluded
             self.desktopOccluded = desktopOccluded
             self.pausedDisplays = pausedDisplays
+            self.screenSaverIsOurs = screenSaverIsOurs
         }
     }
 
@@ -76,6 +78,12 @@ final class WallpaperPrefs: @unchecked Sendable {
 
     var pausedDisplays: Set<UInt32> {
         lock.withLock { $0.pausedDisplays ?? [] }
+    }
+
+    /// Whether a Phosphene choice is the active screensaver (relayed by the app from
+    /// the wallpaper store's Idle sections).
+    var screenSaverIsOurs: Bool {
+        lock.withLock { $0.screenSaverIsOurs ?? false }
     }
 
     // MARK: - Public (State — extension → app)
@@ -192,6 +200,7 @@ final class WallpaperPrefs: @unchecked Sendable {
                 alwaysPauseDesktop: alwaysPauseDesktop,
                 pauseWhenOccluded: pauseWhenOccluded,
                 desktopOccluded: desktopOccluded,
+                screenSaverIsOurs: screenSaverIsOurs,
                 powerState: power,
             )
             state.forEachRenderer { renderer in
@@ -207,6 +216,7 @@ final class WallpaperPrefs: @unchecked Sendable {
                     alwaysPauseDesktop: alwaysPauseDesktop,
                     pauseWhenOccluded: pauseWhenOccluded,
                     desktopOccluded: desktopOccluded,
+                    screenSaverIsOurs: screenSaverIsOurs,
                     powerState: power,
                 )
                 state.forRenderers(displayID: displayID) { renderer in
