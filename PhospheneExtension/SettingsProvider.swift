@@ -13,13 +13,18 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
 
     let entries = library.entries
 
-    // Right-click menu on the group and every tile. Settings routes the press to
-    // invokeContextMenuAction with this identifier; the handler opens
-    // phosphene://add-video, which launches the app's video chooser.
+    // Right-click menu on the group and every tile. Settings routes presses to
+    // invokeContextMenuAction with the item's identifier; the handler opens the
+    // matching phosphene:// URL in the companion app.
     let addVideoMenu = ContextMenu(items: [
         ContextMenuItem(
             id: ContextMenuItemID(id: "add-video"),
             localizedTitle: "Add Video\u{2026}",
+            isDestructive: false,
+        ),
+        ContextMenuItem(
+            id: ContextMenuItemID(id: "manage-library"),
+            localizedTitle: "Manage Library\u{2026}",
             isDestructive: false,
         ),
     ])
@@ -97,9 +102,12 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
         isModificationDisabled: false,
     )
 
+    // The same groups serve both pickers: since the Sonoma unified model the
+    // screensaver is the wallpaper surface entering idle presentation, so any video
+    // choice is screensaver-capable (#26).
     let viewModels = SettingsViewModels(
         desktop: viewModel,
-        screenSaver: nil,
+        screenSaver: viewModel,
     )
 
     return remapToRealXPC(viewModels)

@@ -36,6 +36,10 @@ struct PhospheneApp: App {
         Window("Phosphene", id: "library") {
             LibraryWindow(manager: manager)
         }
+        // phosphene://library opens the window directly (used by the Settings-pane
+        // context menu). Promotion to a regular app happens in LibraryWindow.onAppear
+        // so every open path gets the Dock icon and activation.
+        .handlesExternalEvents(matching: ["library"])
         .defaultSize(width: 900, height: 600)
         .commands {
             CommandGroup(replacing: .appInfo) {
