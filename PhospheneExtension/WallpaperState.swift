@@ -190,6 +190,16 @@ final class WallpaperState: Sendable {
         }
     }
 
+    /// Whether ANY acquired context tracks the given choice id. Scans every context —
+    /// `activeDisplayContexts()` samples one arbitrary context per display, which
+    /// misreports when desktop, lock-screen, and preview surfaces coexist on one
+    /// display.
+    func hasContext(forVideoID videoID: String) -> Bool {
+        lock.withLock { state in
+            state.contexts.values.contains { $0.videoID == videoID }
+        }
+    }
+
     /// Live renderers whose context tracks the given choice id (e.g. the shuffle
     /// sentinel). Snapshot copy under lock, safe to use outside.
     func renderers(forVideoID videoID: String) -> [VideoRenderer] {

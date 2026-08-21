@@ -115,15 +115,17 @@ final class ShuffleController: @unchecked Sendable {
     /// Deactivate when no acquired context carries the shuffle choice anymore
     /// (the user picked a specific video, or all shuffle surfaces were torn down).
     func syncActiveWithContexts() {
-        let stillShuffling = WallpaperState.shared.activeDisplayContexts()
-            .contains { $0.videoID == shuffleChoiceID }
+        let stillShuffling = WallpaperState.shared.hasContext(forVideoID: shuffleChoiceID)
         let deactivated = lock.withLock { state in
             let was = state.active
             state.active = stillShuffling
             return was && !stillShuffling
         }
         if deactivated {
-            extensionLog("[Shuffle] no shuffle contexts remain — deactivated")
+            let inventory = WallpaperState.shared.activeDisplayContexts()
+                .map { "display \($0.displayID): \($0.videoID ?? "nil")" }
+                .joined(separator: ", ")
+            extensionLog("[Shuffle] no shuffle contexts remain — deactivated (contexts: [\(inventory)])")
             queue.async { [self] in stopTimer() }
         }
     }
