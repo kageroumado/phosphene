@@ -85,6 +85,7 @@ final class PhospheneExtension: NSObject, AppExtension {
         ) { _ in
             WallpaperState.shared.isDisplayAsleep = false
             Self.recomputeAndApplyPolicy()
+            ShuffleController.shared.noteWake()
             extensionLog("[Extension] Displays awake — recomputed policy (locked: \(WallpaperState.shared.isScreenLocked))")
 
             // Recompute again after a short delay to catch any pending
@@ -114,6 +115,7 @@ final class PhospheneExtension: NSObject, AppExtension {
         ) { _ in
             WallpaperState.shared.isScreenLocked = false
             Self.recomputeAndApplyPolicy()
+            ShuffleController.shared.noteWake()
             extensionLog("[Extension] Screen unlocked — recomputed policy")
         }
     }

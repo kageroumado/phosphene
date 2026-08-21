@@ -61,6 +61,7 @@ private func scheduleTeardown(for key: DisplayKey) {
         Lifecycle.teardownTimers[key] = nil
         let torn = WallpaperState.shared.tearDownContext(for: key)
         extensionLog("  [teardown] grace fired for display \(key.displayID) → \(torn ? "stopped renderer + invalidated CAContext" : "nothing to tear down")")
+        ShuffleController.shared.syncActiveWithContexts()
     }
     Lifecycle.teardownTimers[key] = item
     Lifecycle.queue.asyncAfter(deadline: .now() + Lifecycle.teardownGrace, execute: item)
@@ -210,6 +211,14 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         }
 
         traceLog("  destination: \(destSize) @\(scaleFactor)x, isPreview: \(isPreview), pid: \(connectionPID), choice: \(choiceConfiguration ?? "nil"), files: \(choiceFiles)")
+
+        // Native shuffle: adopt the frequency the host sent (optionValues in the
+        // descriptor; absent until the user touches the picker), then resolve the
+        // sentinel to the concrete video this surface should render. Contexts keep
+        // the RAW choice so re-acquires and switch decisions compare correctly.
+        let shuffleFrequency = extractPickerOptionValue("shuffleFrequency", fromRequest: request)
+        ShuffleController.shared.noteAcquire(choice: choiceConfiguration, frequencyID: shuffleFrequency)
+        let renderChoice = ShuffleController.shared.resolveChoice(choiceConfiguration)
         acquiredAsPreview = isPreview
 
         // Each acquire's `choiceConfiguration` is authoritative for *this* display's
@@ -234,7 +243,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // A re-acquire of THIS surface (display woke / preview refresh / switch) cancels its
         // pending teardown so a brief invalidate→re-acquire flicker doesn't drop it.
         cancelTeardown(for: key)
-        let videoURL = findVideoURL(forChoice: choiceConfiguration)
+        let videoURL = findVideoURL(forChoice: renderChoice)
         let cachedStill = loadCachedSnapshotImage(forChoice: choiceConfiguration)
 
         // Diagnostic bisection: host a still only (no video pipeline). Same context
@@ -285,7 +294,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 return
             }
             extensionLog("  [acquire] switching to \(videoURL.lastPathComponent) (renderer \(existing.renderer != nil ? "present → switchVideo" : "nil → create"))")
-            let selector = makeVariantSelector(choice: choiceConfiguration, fallback: videoURL)
+            let selector = makeVariantSelector(choice: renderChoice, fallback: videoURL)
             if let renderer = existing.renderer {
                 // Switch the video IN PLACE on the already-hosted display layer.
                 // Building a fresh renderer here (new AVSampleBufferDisplayLayer) is
@@ -415,7 +424,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             let boxedRoot = SendableBox(value: rootLayer)
             // The reply object is non-Sendable; box it to cross into the render Task.
             let boxedReply = SendableBox(value: replyObj)
-            let selector = makeVariantSelector(choice: choiceConfiguration, fallback: videoURL)
+            let selector = makeVariantSelector(choice: renderChoice, fallback: videoURL)
             Task { [coldStart, boxedRoot, boxedReply, videoURL, cachedStill, selector, key, choiceConfiguration] in
                 let renderer: VideoRenderer
                 do {
@@ -508,6 +517,12 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     }
 
     private func updateBody(request: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+        // Option edits can travel on the update path; adopt a shuffle-frequency
+        // change without waiting for the next acquire.
+        if let frequency = extractPickerOptionValue("shuffleFrequency", fromRequest: request) {
+            ShuffleController.shared.noteFrequencyChange(frequency)
+        }
+
         // Extract presentation mode / activity state by walking the request's Mirror
         // for the named properties and reading the enum case, rather than scanning a
         // stringified description (which silently fell through to "?" — and so failed
@@ -721,6 +736,27 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             }
         }
 
+        // The shuffle choice: no fixed video to record — resolve the current pick for
+        // the menu-bar UI and refresh snapshots. The acquire that follows activates
+        // rotation and does the rendering.
+        if choiceIdentifier == shuffleChoiceID {
+            extensionLog("=== CHOICE CHANGED === shuffle")
+            if let pick = ShuffleController.shared.resolveChoice(shuffleChoiceID) {
+                WallpaperState.shared.currentVideoID = pick
+                WallpaperState.shared.cachedThumbnailURL = nil
+                WallpaperPrefs.shared.updateCurrentVideo()
+            }
+            if let proxy = agentProxy {
+                proxy.invalidateSnapshots { error in
+                    if let error {
+                        extensionLog("  [Choice] invalidateSnapshots error: \(error)")
+                    }
+                }
+            }
+            reply(nil)
+            return
+        }
+
         guard let videoID = choiceIdentifier else {
             extensionLog("selectedChoicesDidChange: unknown choice \(String(describing: choiceIdentifier))")
             reply(nil)
@@ -817,13 +853,15 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     // MARK: - Shuffle
 
     func skipShuffledContent(withId _: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
-        traceLog("skipShuffledContent")
+        markServed()
+        let handled = ShuffleController.shared.skip()
+        extensionLog("=== SKIP SHUFFLED CONTENT === handled=\(handled)")
         reply(nil)
     }
 
     func canSkipShuffledContent(withId _: Any?, reply: @escaping @Sendable (Bool, (any Error)?) -> Void) {
         traceLog("canSkipShuffledContent")
-        reply(false, nil)
+        reply(ShuffleController.shared.isActive, nil)
     }
 
     // MARK: - Debug & Notifications
@@ -837,6 +875,33 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         traceLog("handleNotification(\(name ?? "nil"))")
         reply(nil)
     }
+}
+
+/// Extract the selected id of a picker option (e.g. "shuffleFrequency") from an XPC
+/// request whose descriptor carries `optionValues` — a
+/// `WallpaperChoiceOptionValues(values: [String: Kind])` map where a picker's value
+/// is `Kind.picker(PickerValue(id:))`. The key is absent until the user touches the
+/// picker; callers treat nil as "keep the declared default".
+func extractPickerOptionValue(_ optionID: String, fromRequest request: Any?) -> String? {
+    guard let request,
+          let optionValues = mirrorFindProperty("optionValues", in: request),
+          let values = mirrorFindProperty("values", in: optionValues)
+    else { return nil }
+    for entry in Mirror(reflecting: values).children {
+        var key: String?
+        var kind: Any?
+        for pair in Mirror(reflecting: entry.value).children {
+            if pair.label == "key" { key = pair.value as? String }
+            if pair.label == "value" { kind = pair.value }
+        }
+        guard key == optionID, let kind else { continue }
+        let kindMirror = Mirror(reflecting: kind)
+        guard kindMirror.displayStyle == .enum,
+              let payload = kindMirror.children.first, payload.label == "picker"
+        else { return nil }
+        return mirrorFindProperty("id", in: payload.value) as? String
+    }
+    return nil
 }
 
 /// Recursively search a value's `Mirror` for a stored property with the given

@@ -25,6 +25,7 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     ])
 
     var items = [SettingsItem]()
+    var thumbnailURLs = [URL]()
 
     for entry in entries {
         let videoURL = library.videoURL(for: entry)
@@ -42,6 +43,7 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
         guard let thumbnailURL = await library.generateThumbnail(for: entry) else {
             continue
         }
+        thumbnailURLs.append(thumbnailURL)
 
         let choiceDescriptor = ChoiceDescriptor(
             id: choiceID,
@@ -66,6 +68,14 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
             contextMenu: addVideoMenu,
         )
         items.append(item)
+    }
+
+    if items.count >= 2 {
+        items.append(makeShuffleItem(
+            bundleID: bundleID,
+            thumbnailURLs: thumbnailURLs,
+            contextMenu: addVideoMenu,
+        ))
     }
 
     let group = SettingsGroup(
@@ -93,6 +103,95 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     )
 
     return remapToRealXPC(viewModels)
+}
+
+/// The sentinel choice identifier for the shuffle tile. Acquires arriving with this
+/// configuration mean "rotate through the library" rather than one fixed video.
+let shuffleChoiceID = "shuffle-all"
+
+/// Item ids for the shuffle frequency picker. The ids and their interpretation are
+/// Phosphene's own; the system only stores and returns the selected id.
+enum ShuffleFrequencyID: String, CaseIterable {
+    case onWakeup
+    case onLogin
+    case fiveMinutes
+    case fifteenMinutes
+    case thirtyMinutes
+    case oneHour
+    case oneDay
+
+    var localizedName: String {
+        switch self {
+        case .onWakeup: "On Wake"
+        case .onLogin: "On Login"
+        case .fiveMinutes: "Every 5 Minutes"
+        case .fifteenMinutes: "Every 15 Minutes"
+        case .thirtyMinutes: "Every 30 Minutes"
+        case .oneHour: "Every Hour"
+        case .oneDay: "Every Day"
+        }
+    }
+
+    /// Rotation period for the timed frequencies; nil for the event-driven ones.
+    var interval: TimeInterval? {
+        switch self {
+        case .onWakeup, .onLogin: nil
+        case .fiveMinutes: 5 * 60
+        case .fifteenMinutes: 15 * 60
+        case .thirtyMinutes: 30 * 60
+        case .oneHour: 60 * 60
+        case .oneDay: 24 * 60 * 60
+        }
+    }
+}
+
+/// A "Shuffle" choice modeled on Apple's aerial shuffle tiles: a composite
+/// shuffleImages thumbnail plus a frequency picker in the choice's settings header.
+private func makeShuffleItem(bundleID: String, thumbnailURLs: [URL], contextMenu: ContextMenu) -> SettingsItem {
+    let choiceID = ChoiceID(
+        id: shuffleChoiceID,
+        descriptor: ChoiceIDDescriptor(
+            provider: ChoiceProviderID(rawValue: bundleID),
+            identifier: shuffleChoiceID,
+            files: [],
+            configuration: Data(shuffleChoiceID.utf8),
+        ),
+    )
+    let frequencyPicker = MenuPickerOption(
+        id: "shuffleFrequency",
+        localizedLabel: "Change Video",
+        defaultValueID: ShuffleFrequencyID.onWakeup.rawValue,
+        accessibilityIdentifier: nil,
+        localizedInformativeText: nil,
+        items: ShuffleFrequencyID.allCases.map { frequency in
+            .item(MenuPickerItem(
+                id: frequency.rawValue,
+                localizedName: frequency.localizedName,
+                accessibilityIdentifier: nil,
+                localizedInformativeText: nil,
+            ))
+        },
+    )
+    return SettingsItem(
+        id: choiceID,
+        localizedName: "Shuffle All",
+        thumbnail: .shuffleImages(urls: thumbnailURLs),
+        choice: ChoiceDescriptor(
+            id: choiceID,
+            provider: ChoiceProviderID(rawValue: bundleID),
+            identifier: shuffleChoiceID,
+            name: "Shuffle All",
+            localizedDescription: "Rotate through your video wallpapers",
+            thumbnail: .shuffleImages(urls: thumbnailURLs),
+            isDownloaded: true,
+            options: [.picker(frequencyPicker)],
+        ),
+        contentBadge: .video,
+        showInTopLevel: true,
+        sortOrder: 1_000,
+        disposability: .none,
+        contextMenu: contextMenu,
+    )
 }
 
 /// Fallback: create a WallpaperSettingsViewModelsXPC with empty groups.
