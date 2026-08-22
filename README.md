@@ -12,8 +12,8 @@
 
 <table>
   <tr>
-    <td align="center" width="40%"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/phosphene-popover-dark.png"><img src=".github/phosphene-popover.png" alt="The menu bar popover — the current wallpaper previewing live, its name and Playing status, and rows for Manage Library, Wallpaper Settings, Restart Wallpaper Agent, and Check for Updates" width="270"></picture><br><sub><b>the menu bar</b> ・ preview, pause, switch displays</sub></td>
-    <td align="center" width="60%"><img src=".github/phosphene-library.png" alt="The Library window — a grid of imported videos with the active one selected, and an inspector showing resolution, frame rate, duration, file size, codec, and pre-rendered variants" width="600"><br><sub><b>your library</b> ・ import, inspect, and optimize your videos</sub></td>
+    <td align="center" width="40%"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/phosphene-popover-dark.png"><img src=".github/phosphene-popover.png" alt="The menu bar popover — the current wallpaper previewing live with its name and Playing status, an Everywhere / Lock Screen / Paused playback control, setting toggles, and a footer with version, Library, and Choose chips" width="270"></picture><br><sub><b>the menu bar</b> ・ preview, pause, switch displays</sub></td>
+    <td align="center" width="60%"><img src=".github/phosphene-library.png" alt="The Library window — a grid of imported videos with the wallpaper in use badged and selected, and an inspector with an editable name, spec chips, optimized variants, and a Use as Wallpaper button" width="600"><br><sub><b>your library</b> ・ import, inspect, and optimize your videos</sub></td>
   </tr>
 </table>
 
