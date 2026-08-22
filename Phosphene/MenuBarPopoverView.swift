@@ -375,20 +375,24 @@ struct MenuBarPopoverView: View {
         let updates = SilentUpdates.shared
         if let justUpdated = updates.justUpdatedVersion {
             Button {
+                WhatsNewWindow.present(version: justUpdated, context: .justUpdated)
                 updates.acknowledgeUpdate()
             } label: {
                 Label("v\(justUpdated)", systemImage: "checkmark")
             }
             .buttonStyle(ChipButtonStyle(prominent: true))
-            .help("Updated to version \(justUpdated)")
+            .help("Updated to version \(justUpdated) — see what changed")
         } else if let available = manager.updateCheck.availableVersion ?? updates.pendingVersion {
             Button {
-                Task { await updates.updateNow() }
+                WhatsNewWindow.present(
+                    version: available,
+                    context: .updateAvailable(autoInstall: manager.autoUpdate),
+                )
             } label: {
                 Label(available, systemImage: "arrow.down.circle.fill")
             }
             .buttonStyle(ChipButtonStyle(prominent: true))
-            .help("Update to version \(available) and relaunch")
+            .help("See what's new in version \(available)")
         } else {
             Button {
                 manager.autoUpdate.toggle()

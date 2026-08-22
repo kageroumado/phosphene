@@ -29,7 +29,9 @@ struct PhospheneApp: App {
                 showLibraryWindow()
             })
         } label: {
-            Image(nsImage: MenuBarIcon.image(updateBadge: manager.updateCheck.availableVersion != nil))
+            let announcing = manager.updateCheck.availableVersion != nil
+                || SilentUpdates.shared.justUpdatedVersion != nil
+            Image(nsImage: MenuBarIcon.image(updateBadge: announcing))
         }
         .menuBarExtraStyle(.window)
 
@@ -127,8 +129,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     nonisolated func application(_: NSApplication, open urls: [URL]) {
         Task { @MainActor in
             for url in urls {
-                guard url.scheme == "phosphene", url.host == "add-video" else { continue }
-                PhospheneManager.shared?.openVideoChooser()
+                guard url.scheme == "phosphene" else { continue }
+                switch url.host {
+                case "add-video":
+                    PhospheneManager.shared?.openVideoChooser()
+                #if DEBUG
+                    // Exercise the What's New window against a real release without waiting
+                    // for an update: phosphene://whats-new?v=1.2.1[&context=updated]
+                    case "whats-new":
+                        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                        let version = components?.queryItems?.first(where: { $0.name == "v" })?.value ?? "1.2.1"
+                        let updated = components?.queryItems?.contains(where: { $0.name == "context" && $0.value == "updated" }) ?? false
+                        WhatsNewWindow.present(
+                            version: version,
+                            context: updated ? .justUpdated : .updateAvailable(autoInstall: true),
+                        )
+                #endif
+                default:
+                    break
+                }
             }
         }
     }
