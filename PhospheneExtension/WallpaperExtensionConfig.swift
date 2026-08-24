@@ -106,6 +106,7 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
         connection.invalidationHandler = { [weak handler] in
             guard let handler else { extensionLog("XPC invalidated (handler gone)"); return }
             handler.agentProxy = nil
+            SettingsPush.unregister(handler)
             let pid = handler.connectionPID
 
             // Spiral-of-death detection: a connection accepted then invalidated WITHOUT ever
@@ -136,6 +137,7 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
         // Publish the proxy before resuming so an early incoming callback can't
         // observe a nil agentProxy (and skip its invalidateSnapshots).
         handler.agentProxy = connection.remoteObjectProxy as? (any WallpaperExtensionProxyXPCProtocol)
+        SettingsPush.register(handler)
 
         connection.resume()
 

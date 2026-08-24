@@ -15,6 +15,14 @@ final class PhospheneExtension: NSObject, AppExtension {
             verifyRuntimeLayout()
             VideoLibrary.shared.scan()
             observeLibraryChanges()
+            // Push current view models shortly after launch: the extension is only
+            // ever spawned by a host connection, and the host's disk cache may
+            // predate library changes made while no extension process was alive to
+            // push them (issue #27). The delay lets the spawning connection's
+            // accept() register its proxy first.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                Task { await SettingsPush.push() }
+            }
             observeDisplaySleepWake()
             observeScreenLockState()
             WallpaperPrefs.shared.observeChanges()
@@ -160,6 +168,7 @@ final class PhospheneExtension: NSObject, AppExtension {
             { _, _, _, _, _ in
                 VideoLibrary.shared.scan()
                 extensionLog("[Extension] Library changed notification received, re-scanned")
+                SettingsPush.libraryDidChange()
             },
             "glass.kagerou.phosphene.libraryChanged" as CFString,
             nil,

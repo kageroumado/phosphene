@@ -362,6 +362,7 @@ enum VideoDeploymentService {
     }
 
     private static func notifyExtensionLibraryChanged() {
+        invalidateHostViewModelCache()
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterPostNotification(
             center,
@@ -372,5 +373,27 @@ enum VideoDeploymentService {
         )
         // Also post in-process so app-side views can observe
         NotificationCenter.default.post(name: libraryChangedNotification, object: nil)
+    }
+
+    /// Delete WallpaperAgent's cached copy of the extension's settings view models.
+    /// The agent caches each provider's tiles on disk and (on macOS 26.6) serves
+    /// that cache on every Settings launch without re-querying the extension, so a
+    /// library change made while the extension process is not running would never
+    /// surface (issue #27). The darwin notification updates a live extension in
+    /// place; deleting the cache covers a dead one — the next Settings query then
+    /// has to go to the extension. Deleted before the notification is posted so a
+    /// live extension's push (debounced ~0.5s) always lands after the deletion.
+    private static func invalidateHostViewModelCache() {
+        var buf = [CChar](repeating: 0, count: Int(PATH_MAX))
+        let length = unsafe confstr(_CS_DARWIN_USER_CACHE_DIR, &buf, buf.count)
+        guard length > 0 else { return }
+        let pathBytes = buf.prefix(length - 1).map { UInt8(bitPattern: $0) }
+        let cacheDir = URL(fileURLWithPath: String(decoding: pathBytes, as: UTF8.self))
+            .appendingPathComponent("com.apple.wallpaper.agent/com.apple.wallpaper.view-model-cache")
+        for surface in ["desktop", "screenSaver"] {
+            let file = cacheDir
+                .appendingPathComponent("extension-glass.kagerou.phosphene.extension-\(surface)")
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 }

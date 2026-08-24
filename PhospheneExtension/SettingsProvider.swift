@@ -83,6 +83,15 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
         ))
     }
 
+    // Never serve an empty group: the host caches this response on disk and (on
+    // macOS 26.6) reuses it on every Settings launch, only re-querying after a
+    // reinstall or OS update — a cached empty group hides the Phosphene section
+    // until then (issue #27). The first query fires at registration, before the
+    // user has added any video, so a fresh install always passes through here.
+    if items.isEmpty, let placeholder = makeAddVideoItem(bundleID: bundleID, contextMenu: addVideoMenu) {
+        items.append(placeholder)
+    }
+
     let group = SettingsGroup(
         id: groupID,
         items: items,
@@ -200,6 +209,86 @@ private func makeShuffleItem(bundleID: String, thumbnailURLs: [URL], contextMenu
         disposability: .none,
         contextMenu: contextMenu,
     )
+}
+
+/// The tile shown while the library is empty. Selecting it renders the acquire
+/// path's gradient fallback (it has no video file); its context menu — and its
+/// description — route the user to adding a video.
+private func makeAddVideoItem(bundleID: String, contextMenu: ContextMenu) -> SettingsItem? {
+    guard let thumbnailURL = placeholderThumbnailURL() else { return nil }
+    let id = "add-video-placeholder"
+    let choiceID = ChoiceID(
+        id: id,
+        descriptor: ChoiceIDDescriptor(
+            provider: ChoiceProviderID(rawValue: bundleID),
+            identifier: id,
+            files: [],
+            configuration: Data(id.utf8),
+        ),
+    )
+    return SettingsItem(
+        id: choiceID,
+        localizedName: "Add Video\u{2026}",
+        thumbnail: .image(url: thumbnailURL),
+        choice: ChoiceDescriptor(
+            id: choiceID,
+            provider: ChoiceProviderID(rawValue: bundleID),
+            identifier: id,
+            name: "Add Video\u{2026}",
+            localizedDescription: "Right-click to add a video",
+            thumbnail: .image(url: thumbnailURL),
+            isDownloaded: true,
+            options: [],
+        ),
+        contentBadge: .none,
+        showInTopLevel: true,
+        sortOrder: 0,
+        disposability: .none,
+        contextMenu: contextMenu,
+    )
+}
+
+/// The placeholder tile's thumbnail: the same gradient the renderer falls back to
+/// for a choice with no video file, plus a centered plus badge. Drawn once into
+/// the container Documents directory and reused.
+private func placeholderThumbnailURL() -> URL? {
+    let url = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Documents/add-video-tile.png")
+    if FileManager.default.fileExists(atPath: url.path) {
+        return url
+    }
+
+    let size = NSSize(width: 480, height: 270)
+    let image = NSImage(size: size, flipped: false) { rect in
+        let gradient = NSGradient(colors: [
+            NSColor(red: 0.2, green: 0.0, blue: 0.5, alpha: 1.0),
+            NSColor(red: 0.0, green: 0.3, blue: 0.7, alpha: 1.0),
+            NSColor(red: 0.0, green: 0.6, blue: 0.4, alpha: 1.0),
+        ])
+        gradient?.draw(in: rect, angle: 45)
+
+        let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 72, weight: .regular)
+            .applying(.init(paletteColors: [.white]))
+        if let plus = NSImage(systemSymbolName: "plus.circle.fill", accessibilityDescription: "Add")?
+            .withSymbolConfiguration(symbolConfiguration) {
+            let plusSize = NSSize(width: 80, height: 80)
+            let origin = NSPoint(x: rect.midX - plusSize.width / 2, y: rect.midY - plusSize.height / 2)
+            plus.draw(in: NSRect(origin: origin, size: plusSize))
+        }
+        return true
+    }
+
+    guard let tiff = image.tiffRepresentation,
+          let rep = NSBitmapImageRep(data: tiff),
+          let png = rep.representation(using: .png, properties: [:])
+    else { return nil }
+    do {
+        try png.write(to: url)
+        return url
+    } catch {
+        extensionLog("  [Settings] Placeholder thumbnail write failed: \(error)")
+        return nil
+    }
 }
 
 /// Fallback: create a WallpaperSettingsViewModelsXPC with empty groups.
