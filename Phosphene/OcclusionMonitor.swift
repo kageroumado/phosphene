@@ -122,10 +122,19 @@ final class OcclusionMonitor {
     /// GAME-INTERFERENCE-FINDINGS.md).
     private static let chromeLevelFloor = Int(CGWindowLevelForKey(.popUpMenuWindow))
 
-    /// The Dock's window is a display-sized transparent canvas (the visible bar is
-    /// drawn inside it), reported at full alpha — counting it marks every display
-    /// permanently occluded AND fullscreen-owned.
-    private static let dockLevel = Int(CGWindowLevelForKey(.dockWindow))
+    /// Only windows of regular applications (Dock-visible, cmd-tabbable — Wine
+    /// games included) count as covering. System chrome lives in the same layer
+    /// band as borderless games but its owners are agents, never `.regular`, and
+    /// much of it is display-sized transparent canvases reported at full alpha:
+    /// the Dock's window (layer 20), its desktop-reveal overlay (18), Notification
+    /// Center's sidebar canvas (21). Counting those marks displays permanently —
+    /// or, for the reveal overlay, exactly while the user admires the wallpaper.
+    private static func isRegularApp(_ pid: pid_t, cache: inout [pid_t: Bool]) -> Bool {
+        if let cached = cache[pid] { return cached }
+        let regular = NSRunningApplication(processIdentifier: pid)?.activationPolicy == .regular
+        cache[pid] = regular
+        return regular
+    }
 
     /// Rasterize every display and return (occluded, fullscreen-app, all) display IDs.
     private func computeOcclusion() -> (occluded: Set<UInt32>, fullscreen: Set<UInt32>, all: Set<UInt32>) {
@@ -135,9 +144,12 @@ final class OcclusionMonitor {
             return ([], [], [])
         }
 
+        var policyCache = [pid_t: Bool]()
         let occludingWindows = windowList.compactMap { window -> (rect: CGRect, layer: Int)? in
             guard let layer = window[kCGWindowLayer] as? Int,
-                  layer >= 0, layer < Self.chromeLevelFloor, layer != Self.dockLevel,
+                  layer >= 0, layer < Self.chromeLevelFloor,
+                  let ownerPID = window[kCGWindowOwnerPID] as? pid_t,
+                  Self.isRegularApp(ownerPID, cache: &policyCache),
                   let bounds = window[kCGWindowBounds] as? [String: CGFloat],
                   let x = bounds["X"], let y = bounds["Y"],
                   let w = bounds["Width"], let h = bounds["Height"],

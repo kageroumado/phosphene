@@ -323,6 +323,7 @@ final class VideoRenderer: @unchecked Sendable {
         guard !isPaused else { return }
         traceLog("  [pause #\(debugID)]")
         isPaused = true
+        cancelRamp()
         CMTimebaseSetRate(timebase, rate: 0.0)
         generateStillFrame()
         scheduleDeepPause()
@@ -332,6 +333,7 @@ final class VideoRenderer: @unchecked Sendable {
         guard isPaused else { return }
         traceLog("  [resume #\(debugID)] currentReader=\(currentReader == nil ? "nil(deep)" : "live") asset=\(asset.url.lastPathComponent) rate→1")
         isPaused = false
+        cancelRamp()
         cancelDeepPauseTimer()
         stillFrameLayer.opacity = 0
         if currentReader == nil {
@@ -353,7 +355,6 @@ final class VideoRenderer: @unchecked Sendable {
         let oldPolicy = currentPolicy
         currentPolicy = policy
         extensionLog("  [applyPolicy #\(debugID)] \(oldPolicy) → \(policy) animated=\(animated) asset=\(asset.url.lastPathComponent)")
-        cancelRamp()
 
         switch policy {
         case .paused:
@@ -363,7 +364,7 @@ final class VideoRenderer: @unchecked Sendable {
                 pause()
             }
         case .full, .reduced, .minimal:
-            if animated, oldPolicy == .paused {
+            if animated {
                 rampUp()
             } else {
                 resume()
@@ -389,41 +390,25 @@ final class VideoRenderer: @unchecked Sendable {
             : 1.0 - pow(-2.0 * t + 2.0, 3) / 2.0
     }
 
-    /// Gradually reduce timebase rate to zero, then freeze.
-    /// Uses a smooth ease-in curve so the deceleration looks natural.
+    /// Gradually reduce the timebase rate to zero, then freeze.
+    ///
+    /// `isPaused` flips immediately — it is the logical state, the rate follows.
+    /// With it flipped at ramp COMPLETION instead, a resume arriving mid-ramp hit
+    /// resume()/rampUp()'s `isPaused` guards and did nothing, stranding the rate
+    /// wherever the cancelled ramp left it (visibly slow-motion playback).
     private func rampDown() {
         guard !isPaused else { return }
-        let totalSteps = Int(Self.rampDownDuration / Self.rampStepInterval)
-        var step = 0
-
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + Self.rampStepInterval, repeating: Self.rampStepInterval)
-        timer.setEventHandler { [weak self] in
-            guard let self, isRunning else {
-                timer.cancel()
-                return
-            }
-            step += 1
-            let progress = Double(step) / Double(totalSteps)
-            // Ease-in: slow start, fast finish → rate drops slowly at first
-            let eased = Self.easeInOut(progress)
-            let rate = max(1.0 - eased, 0.0)
-            CMTimebaseSetRate(timebase, rate: rate)
-
-            if step >= totalSteps {
-                timer.cancel()
-                rampTimer = nil
-                isPaused = true
-                generateStillFrame()
-                scheduleDeepPause()
-            }
+        isPaused = true
+        cancelDeepPauseTimer()
+        ramp(to: 0.0, over: Self.rampDownDuration) { [weak self] in
+            guard let self else { return }
+            generateStillFrame()
+            scheduleDeepPause()
         }
-        rampTimer = timer
-        timer.resume()
     }
 
-    /// Gradually increase timebase rate from zero to 1.0.
-    /// Uses a smooth ease-out curve so acceleration looks natural.
+    /// Gradually raise the timebase rate to 1.0 — from wherever it is now, so
+    /// reversing a mid-flight ramp-down accelerates from the current speed.
     private func rampUp() {
         guard isPaused else { return }
         isPaused = false
@@ -433,6 +418,7 @@ final class VideoRenderer: @unchecked Sendable {
         if currentReader == nil {
             // Deep-paused: no frames to ramp into. Wake instantly (continuing from the paused
             // position, seamless) instead of running a ramp against an empty pipeline.
+            cancelRamp()
             queue.async { [weak self] in
                 guard let self, isRunning else { return }
                 recreatePlayback(seamlessResume: true)
@@ -441,11 +427,31 @@ final class VideoRenderer: @unchecked Sendable {
             return
         }
 
-        let totalSteps = Int(Self.rampUpDuration / Self.rampStepInterval)
+        ramp(to: 1.0, over: Self.rampUpDuration)
+    }
+
+    /// Ease the timebase rate from its CURRENT value to `target`.
+    ///
+    /// Starting from the live rate is what makes ramps reversible: a reversal
+    /// mid-flight travels the remaining distance in proportionally less time,
+    /// keeping the rate curve continuous instead of replaying a full schedule
+    /// from 1.0 or 0 (which made a paused wallpaper leap to speed and decelerate).
+    private func ramp(to target: Double, over fullDuration: TimeInterval, then completion: (@Sendable () -> Void)? = nil) {
+        cancelRamp()
+        let start = Double(CMTimebaseGetRate(timebase))
+        let distance = abs(target - start)
+        guard distance > 0.001 else {
+            CMTimebaseSetRate(timebase, rate: target)
+            completion?()
+            return
+        }
+        let totalSteps = max(1, Int(fullDuration * distance / Self.rampStepInterval))
         var step = 0
 
-        // Kick off immediately so there's no dead frame at rate 0
-        CMTimebaseSetRate(timebase, rate: 0.01)
+        // First step lands immediately so a resume never sits on a dead frame.
+        if target > start {
+            CMTimebaseSetRate(timebase, rate: max(start, 0.01))
+        }
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + Self.rampStepInterval, repeating: Self.rampStepInterval)
@@ -455,14 +461,14 @@ final class VideoRenderer: @unchecked Sendable {
                 return
             }
             step += 1
-            let progress = Double(step) / Double(totalSteps)
-            let eased = Self.easeInOut(progress)
-            let rate = min(eased, 1.0)
+            let progress = min(Double(step) / Double(totalSteps), 1.0)
+            let rate = start + (target - start) * Self.easeInOut(progress)
             CMTimebaseSetRate(timebase, rate: rate)
 
             if step >= totalSteps {
                 timer.cancel()
                 rampTimer = nil
+                completion?()
             }
         }
         rampTimer = timer
