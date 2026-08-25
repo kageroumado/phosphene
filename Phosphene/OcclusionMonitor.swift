@@ -122,6 +122,11 @@ final class OcclusionMonitor {
     /// GAME-INTERFERENCE-FINDINGS.md).
     private static let chromeLevelFloor = Int(CGWindowLevelForKey(.popUpMenuWindow))
 
+    /// The Dock's window is a display-sized transparent canvas (the visible bar is
+    /// drawn inside it), reported at full alpha — counting it marks every display
+    /// permanently occluded AND fullscreen-owned.
+    private static let dockLevel = Int(CGWindowLevelForKey(.dock))
+
     /// Rasterize every display and return (occluded, fullscreen-app, all) display IDs.
     private func computeOcclusion() -> (occluded: Set<UInt32>, fullscreen: Set<UInt32>, all: Set<UInt32>) {
         guard let windowList = CGWindowListCopyWindowInfo(
@@ -132,7 +137,7 @@ final class OcclusionMonitor {
 
         let occludingWindows = windowList.compactMap { window -> (rect: CGRect, layer: Int)? in
             guard let layer = window[kCGWindowLayer] as? Int,
-                  layer >= 0, layer < Self.chromeLevelFloor,
+                  layer >= 0, layer < Self.chromeLevelFloor, layer != Self.dockLevel,
                   let bounds = window[kCGWindowBounds] as? [String: CGFloat],
                   let x = bounds["X"], let y = bounds["Y"],
                   let w = bounds["Width"], let h = bounds["Height"],
