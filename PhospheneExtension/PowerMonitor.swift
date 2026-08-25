@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.ps
+import notify
 import os
 
 final class PowerMonitor: Sendable {
@@ -8,13 +9,16 @@ final class PowerMonitor: Sendable {
     private let state = OSAllocatedUnfairLock(initialState: PowerState())
     private let continuations = OSAllocatedUnfairLock(initialState: [UUID: AsyncStream<PowerState>.Continuation]())
     private nonisolated(unsafe) var _batteryScheduler: NSBackgroundActivityScheduler?
+    private let gameModeToken = OSAllocatedUnfairLock(initialState: NOTIFY_TOKEN_INVALID)
+
+    /// gamepolicyd's state-carrying Darwin notification for Game Mode sessions
+    /// (name recovered from the gamepolicyd binary; posted with notify_set_state).
+    private static let gameModeNotification = "com.apple.gamepolicy.game-mode-session"
 
     struct PowerState: Equatable {
         var thermalState: ProcessInfo.ThermalState = .nominal
         var isOnBattery = false
         var batteryLevel: Int = 100
-        // TODO: Detect via Darwin notification (e.g. "com.apple.GameMode.active")
-        // if one can be discovered. Sandboxed extensions may not receive it.
         var isGameModeActive: Bool = false
         /// Backlight brightness of the built-in display, 0.0–1.0. Defaults to 1.0
         /// when the value can't be read (external displays, headless, etc.).
@@ -103,6 +107,23 @@ final class PowerMonitor: Sendable {
         }
         _batteryScheduler = scheduler
 
+        // Game Mode — event-driven via gamepolicyd's state-carrying notification.
+        // Reaches the sandboxed extension: com.apple.* notify names aren't filtered.
+        var token = NOTIFY_TOKEN_INVALID
+        let status = notify_register_dispatch(
+            Self.gameModeNotification, &token,
+            DispatchQueue.global(qos: .utility),
+        ) { [weak self] token in
+            self?.updateGameModeState(token: token)
+        }
+        if status == UInt32(NOTIFY_STATUS_OK) {
+            let registered = token
+            gameModeToken.withLock { $0 = registered }
+            updateGameModeState(token: registered)
+        } else {
+            extensionLog("[PowerMonitor] Game Mode notify registration failed (status \(status))")
+        }
+
         let thermal = ProcessInfo.processInfo.thermalState.rawValue
         extensionLog("[PowerMonitor] Started (thermal: \(thermal))")
     }
@@ -186,6 +207,19 @@ final class PowerMonitor: Sendable {
             break
         }
         return brightness
+    }
+
+    /// A Game Mode session is active while the notification's state is non-zero.
+    private func updateGameModeState(token: Int32) {
+        var sessionState: UInt64 = 0
+        guard notify_get_state(token, &sessionState) == UInt32(NOTIFY_STATUS_OK) else { return }
+        let isActive = sessionState != 0
+        let previous = state.withLock { $0 }
+        state.withLock { $0.isGameModeActive = isActive }
+        let current = state.withLock { $0 }
+        guard previous != current else { return }
+        extensionLog("[PowerMonitor] Game Mode → \(isActive ? "active" : "inactive"), shouldPause via policy")
+        yieldToSubscribers(current)
     }
 
     private func yieldToSubscribers(_ state: PowerState) {
