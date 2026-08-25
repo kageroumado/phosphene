@@ -30,20 +30,11 @@ final class PhospheneExtension: NSObject, AppExtension {
             Task {
                 for await powerState in PowerMonitor.shared.stateChanges() {
                     let state = WallpaperState.shared
-                    let prefs = WallpaperPrefs.shared
-                    let policy = PlaybackPolicy.compute(
+                    WallpaperPrefs.shared.applyPolicies(
                         presentationMode: state.presentationMode,
                         activityState: state.activityState,
-                        userPaused: prefs.userPaused,
-                        alwaysPauseDesktop: prefs.alwaysPauseDesktop,
-                        pauseWhenOccluded: prefs.pauseWhenOccluded,
-                        desktopOccluded: prefs.desktopOccluded,
-            screenSaverIsOurs: prefs.screenSaverIsOurs,
                         powerState: powerState,
                     )
-                    WallpaperState.shared.forEachRenderer { renderer in
-                        renderer.applyPolicy(policy)
-                    }
                 }
             }
         } else {
@@ -132,8 +123,6 @@ final class PhospheneExtension: NSObject, AppExtension {
     /// Recompute playback policy from current state and apply to all renderers.
     static func recomputeAndApplyPolicy() {
         let state = WallpaperState.shared
-        let prefs = WallpaperPrefs.shared
-        let power = PowerMonitor.shared.currentState
 
         // When we know the screen is locked but the WallpaperAgent hasn't
         // updated the presentation mode yet (e.g., right after display wake),
@@ -143,19 +132,11 @@ final class PhospheneExtension: NSObject, AppExtension {
             ? "locked"
             : state.presentationMode
 
-        let policy = PlaybackPolicy.compute(
+        WallpaperPrefs.shared.applyPolicies(
             presentationMode: effectiveMode,
             activityState: state.activityState,
-            userPaused: prefs.userPaused,
-            alwaysPauseDesktop: prefs.alwaysPauseDesktop,
-            pauseWhenOccluded: prefs.pauseWhenOccluded,
-            desktopOccluded: prefs.desktopOccluded,
-            screenSaverIsOurs: prefs.screenSaverIsOurs,
-            powerState: power,
+            powerState: PowerMonitor.shared.currentState,
         )
-        state.forEachRenderer { renderer in
-            renderer.applyPolicy(policy)
-        }
     }
 
     /// Listen for Darwin notifications from the main app when it adds/removes videos.

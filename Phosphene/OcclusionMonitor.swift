@@ -2,23 +2,29 @@ import AppKit
 import CoreGraphics
 import os
 
-/// Monitors whether the desktop is fully occluded by windows.
+/// Monitors, per display, whether the desktop is fully occluded by windows.
 ///
 /// Uses `CGWindowListCopyWindowInfo` to enumerate on-screen windows and a coarse
 /// grid rasterization to compute the union of their coverage area, avoiding
-/// double-counting from overlapping windows.
+/// double-counting from overlapping windows. Each display is judged on its own:
+/// a fullscreen game on one display pauses that display's wallpaper while the
+/// others keep playing.
 ///
 /// The usable screen area (excluding dock and menu bar) is used as the reference,
 /// since windows behind the dock/menu bar don't meaningfully reveal the desktop.
 ///
 /// Combines event-driven checks (app activate/deactivate, space changes) with
-/// a low-frequency poll (every 3s) to catch window moves/resizes.
+/// a low-frequency poll (every 10s) to catch window moves/resizes.
 ///
 /// This lives in the main app (not the extension) because the sandboxed extension
 /// can't access `CGWindowList`. Results are communicated via `WallpaperPrefsService`.
 @MainActor
 @Observable
 final class OcclusionMonitor {
+    /// Display IDs whose usable area is ≥95% covered by windows.
+    private(set) var occludedDisplays: Set<UInt32> = []
+    /// Every display is occluded (the pre-per-display global signal; still
+    /// written to prefs so the popover's status line can say "Desktop Hidden").
     private(set) var isDesktopOccluded = false
 
     private var activateObserver: (any NSObjectProtocol)?
@@ -98,18 +104,25 @@ final class OcclusionMonitor {
         scheduler?.invalidate()
         scheduler = nil
 
-        if isDesktopOccluded {
+        if !occludedDisplays.isEmpty || isDesktopOccluded {
+            occludedDisplays = []
             isDesktopOccluded = false
-            WallpaperPrefsService.shared.desktopOccluded = false
+            let prefsService = WallpaperPrefsService.shared
+            prefsService.occludedDisplays = []
+            prefsService.desktopOccluded = false
         }
     }
 
     private func checkOcclusion() {
-        let occluded = computeDesktopOcclusion()
-        guard occluded != isDesktopOccluded else { return }
-        isDesktopOccluded = occluded
-        WallpaperPrefsService.shared.desktopOccluded = occluded
-        Log.general.info("Desktop occlusion changed: \(occluded)")
+        let (occluded, all) = computeOcclusion()
+        let allOccluded = !all.isEmpty && occluded == all
+        guard occluded != occludedDisplays || allOccluded != isDesktopOccluded else { return }
+        occludedDisplays = occluded
+        isDesktopOccluded = allOccluded
+        let prefsService = WallpaperPrefsService.shared
+        prefsService.occludedDisplays = occluded
+        prefsService.desktopOccluded = allOccluded
+        Log.general.info("Occluded displays changed: \(occluded.sorted()) (all: \(allOccluded))")
     }
 
     // MARK: - Occlusion Calculation
@@ -117,23 +130,38 @@ final class OcclusionMonitor {
     /// Grid cell size in points. 8pt gives good precision without excessive memory.
     private static let cellSize: CGFloat = 8
 
-    private func computeDesktopOcclusion() -> Bool {
+    /// Windows at or above this level are transient system chrome (popup menus,
+    /// Notification Center overlays, our own popover) and never count as occluding.
+    /// Everything from 0 up to it does: ordinary windows sit at layer 0, and
+    /// borderless fullscreen game windows land just above the menu bar — Wine
+    /// puts Genshin's at 26, invisible to a layer==0 filter (see
+    /// GAME-INTERFERENCE-FINDINGS.md).
+    private static let chromeLevelFloor = Int(CGWindowLevelForKey(.popUpMenuWindow))
+
+    /// Rasterize every display and return (occluded display IDs, all display IDs).
+    private func computeOcclusion() -> (occluded: Set<UInt32>, all: Set<UInt32>) {
         guard let windowList = CGWindowListCopyWindowInfo(
             [.excludeDesktopElements, .optionOnScreenOnly], kCGNullWindowID,
         ) as? [[CFString: Any]] else {
-            return false
+            return ([], [])
         }
 
-        // Filter to normal windows (layer 0) — excludes dock, menu bar, system UI
-        let normalWindows = windowList.filter { window in
+        let occludingWindows = windowList.filter { window in
             guard let layer = window[kCGWindowLayer] as? Int else { return false }
-            return layer == 0
+            return layer >= 0 && layer < Self.chromeLevelFloor
         }
+
+        var occluded = Set<UInt32>()
+        var all = Set<UInt32>()
 
         for screen in NSScreen.screens {
+            guard let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+            else { continue }
+
             // visibleFrame excludes the dock and menu bar regions
             let visibleFrame = screen.visibleFrame
             guard visibleFrame.width > 0, visibleFrame.height > 0 else { continue }
+            all.insert(displayID)
 
             // Convert visibleFrame to CG coordinates (top-left origin).
             // NSScreen.frame uses bottom-left; CGWindowList uses top-left.
@@ -145,12 +173,12 @@ final class OcclusionMonitor {
                 height: visibleFrame.height,
             )
 
-            if !isScreenOccluded(cgVisible, by: normalWindows) {
-                return false
+            if isScreenOccluded(cgVisible, by: occludingWindows) {
+                occluded.insert(displayID)
             }
         }
 
-        return true
+        return (occluded, all)
     }
 
     /// Rasterize the screen area into a coarse grid and mark cells covered by windows.

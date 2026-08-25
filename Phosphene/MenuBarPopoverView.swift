@@ -67,7 +67,11 @@ struct MenuBarPopoverView: View {
     private var heroSection: some View {
         ZStack {
             if let selection = currentSelection {
-                VideoPreviewCard(videoURL: selection.videoURL, displayID: selection.displayID)
+                VideoPreviewCard(
+                    videoID: selection.videoID,
+                    videoURL: selection.videoURL,
+                    displayID: selection.displayID,
+                )
                     .id(selection.id)
             }
 
@@ -129,8 +133,9 @@ struct MenuBarPopoverView: View {
         if prefsService.alwaysPauseDesktop {
             return "Playing on Lock Screen"
         }
-        if prefsService.pauseWhenOccluded, prefsService.desktopOccluded {
-            return "Paused — Desktop Hidden"
+        if prefsService.pauseWhenOccluded,
+           prefsService.desktopOccluded || prefsService.occludedDisplays.contains(selection.displayID) {
+            return "Paused — Display Covered"
         }
         if prefsService.pausedDisplays.contains(selection.displayID) {
             return "Paused"
@@ -299,7 +304,7 @@ struct MenuBarPopoverView: View {
                         }
                     },
                 ))
-                .help("Pause playback when all screens are covered by windows")
+                .help("Pause playback on displays fully covered by windows or fullscreen games")
             }
             .toggleStyle(SettingPillToggleStyle())
         }

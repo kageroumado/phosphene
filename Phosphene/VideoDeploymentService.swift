@@ -333,7 +333,7 @@ enum VideoDeploymentService {
     /// Generate a thumbnail.jpg from the first frame of a video.
     /// Uses async/await so the caller can coordinate thumbnail availability.
     @MainActor
-    private static func generateThumbnail(for videoURL: URL, in directory: URL) async {
+    static func generateThumbnail(for videoURL: URL, in directory: URL) async {
         let asset = AVURLAsset(url: videoURL)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true

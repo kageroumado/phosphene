@@ -549,18 +549,6 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         WallpaperState.shared.isScreenLocked = (presentationMode == "locked")
 
         let prefs = WallpaperPrefs.shared
-        let power = PowerMonitor.shared.currentState
-
-        let policy = PlaybackPolicy.compute(
-            presentationMode: presentationMode,
-            activityState: activityState,
-            userPaused: prefs.userPaused,
-            alwaysPauseDesktop: prefs.alwaysPauseDesktop,
-            pauseWhenOccluded: prefs.pauseWhenOccluded,
-            desktopOccluded: prefs.desktopOccluded,
-            screenSaverIsOurs: prefs.screenSaverIsOurs,
-            powerState: power,
-        )
 
         // Apple-like ramp when alwaysPauseDesktop is on:
         // desktop → lock = ramp up (start playing), lock → desktop = ramp down (pause).
@@ -570,12 +558,15 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             && activityState == "active"
             && modeChanged
 
-        WallpaperState.shared.forEachRenderer { renderer in
-            renderer.applyPolicy(policy, animated: animated)
-        }
+        prefs.applyPolicies(
+            presentationMode: presentationMode,
+            activityState: activityState,
+            powerState: PowerMonitor.shared.currentState,
+            animated: animated,
+        )
 
         previousPresentationMode = presentationMode
-        extensionLog("=== UPDATE (desktop pid \(connectionPID)) === mode: \(presentationMode), activity: \(activityState), policy: \(policy)")
+        extensionLog("=== UPDATE (desktop pid \(connectionPID)) === mode: \(presentationMode), activity: \(activityState)")
         reply(nil)
     }
 

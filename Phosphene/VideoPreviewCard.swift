@@ -1,13 +1,18 @@
-import AVFoundation
+import AppKit
 import SwiftUI
 
+/// The popover's hero card: the entry's first-frame thumbnail, like the tiles in
+/// Wallpaper Settings. A live player here spawns its own VTDecoderXPCService and
+/// software-scales full-resolution frames for as long as the popover is open
+/// (~50% CPU — see GAME-INTERFERENCE-FINDINGS.md), all to preview a video that
+/// is already playing full-screen behind the popover.
 struct VideoPreviewCard: View {
+    var videoID: String?
     var videoURL: URL?
     var displayID: UInt32?
 
     @State private var isHovering = false
-    @State private var previewPlayer: AVQueuePlayer?
-    @State private var playerLooper: AVPlayerLooper?
+    @State private var thumbnail: NSImage?
 
     private var prefsService: WallpaperPrefsService {
         .shared
@@ -15,8 +20,11 @@ struct VideoPreviewCard: View {
 
     var body: some View {
         ZStack {
-            if let previewPlayer {
-                PlayerLayerView(player: previewPlayer)
+            if let thumbnail {
+                Color.black
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
             } else {
                 placeholder
             }
@@ -31,19 +39,7 @@ struct VideoPreviewCard: View {
                 isHovering = hovering
             }
         }
-        .onAppear { startPreview() }
-        .onChange(of: videoURL) {
-            cleanupPreviewPlayer()
-            startPreview()
-        }
-        .onChange(of: isEffectivelyPaused) {
-            if isEffectivelyPaused {
-                previewPlayer?.pause()
-            } else {
-                previewPlayer?.play()
-            }
-        }
-        .onDisappear { cleanupPreviewPlayer() }
+        .task(id: videoID) { await loadThumbnail() }
     }
 
     // MARK: - Placeholder
@@ -99,97 +95,59 @@ struct VideoPreviewCard: View {
         .animation(.default, value: isEffectivelyPaused)
     }
 
+    /// This card's display is invisible behind windows (its own display covered,
+    /// or every display) and the occlusion pause is on.
+    private var isPausedByOcclusion: Bool {
+        prefsService.pauseWhenOccluded
+            && (prefsService.desktopOccluded
+                || displayID.map { prefsService.occludedDisplays.contains($0) } ?? false)
+    }
+
     /// The wallpaper is effectively paused for any reason: user, lock-screen-only, occlusion, or inactive.
     private var isEffectivelyPaused: Bool {
         !prefsService.isActive
             || prefsService.userPaused
             || prefsService.alwaysPauseDesktop
-            || (prefsService.pauseWhenOccluded && prefsService.desktopOccluded)
+            || isPausedByOcclusion
             || displayID.map { prefsService.pausedDisplays.contains($0) } ?? false
     }
 
     /// Only user-initiated pauses can be toggled via the overlay button.
     private var isAutoPaused: Bool {
-        prefsService.alwaysPauseDesktop
-            || (prefsService.pauseWhenOccluded && prefsService.desktopOccluded)
+        prefsService.alwaysPauseDesktop || isPausedByOcclusion
     }
 
     private var shouldShowOverlay: Bool {
         videoURL != nil && !isAutoPaused && (isHovering || isEffectivelyPaused)
     }
 
-    // MARK: - Playback
+    // MARK: - Thumbnail
 
-    private func startPreview() {
-        guard videoURL != nil, previewPlayer == nil else { return }
-        createPlayer()
-        if isEffectivelyPaused {
-            previewPlayer?.pause()
+    private func loadThumbnail() async {
+        guard let videoID else {
+            thumbnail = nil
+            return
+        }
+        if let url = VideoDeploymentService.thumbnailURL(for: videoID),
+           let image = NSImage(contentsOf: url) {
+            thumbnail = image
+            return
+        }
+        // Entries deployed before thumbnails existed have no thumbnail.jpg yet:
+        // generate one into the entry folder so every later load is a file read.
+        guard let videoURL else {
+            thumbnail = nil
+            return
+        }
+        await VideoDeploymentService.generateThumbnail(
+            for: videoURL,
+            in: videoURL.deletingLastPathComponent(),
+        )
+        if let url = VideoDeploymentService.thumbnailURL(for: videoID) {
+            thumbnail = NSImage(contentsOf: url)
         } else {
-            previewPlayer?.play()
+            thumbnail = nil
         }
-    }
-
-    private func createPlayer() {
-        guard let videoURL else { return }
-
-        let playerItem = AVPlayerItem(url: videoURL)
-        let queuePlayer = AVQueuePlayer(playerItem: playerItem)
-        queuePlayer.isMuted = true
-
-        let looper = AVPlayerLooper(player: queuePlayer, templateItem: playerItem)
-
-        previewPlayer = queuePlayer
-        playerLooper = looper
-    }
-
-    private func cleanupPreviewPlayer() {
-        playerLooper?.disableLooping()
-        previewPlayer?.pause()
-        previewPlayer = nil
-        playerLooper = nil
-    }
-}
-
-// MARK: - PlayerLayerView
-
-struct PlayerLayerView: NSViewRepresentable {
-    let player: AVPlayer
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.wantsLayer = true
-
-        let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.videoGravity = .resizeAspect
-        playerLayer.frame = view.bounds
-        playerLayer.backgroundColor = NSColor.clear.cgColor
-        playerLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
-
-        if let viewLayer = view.layer {
-            viewLayer.addSublayer(playerLayer)
-            context.coordinator.playerLayer = playerLayer
-        }
-
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if let playerLayer = context.coordinator.playerLayer {
-            let newFrame = nsView.bounds
-            if newFrame != playerLayer.frame {
-                playerLayer.frame = newFrame
-            }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    @MainActor
-    class Coordinator {
-        var playerLayer: AVPlayerLayer?
     }
 }
 

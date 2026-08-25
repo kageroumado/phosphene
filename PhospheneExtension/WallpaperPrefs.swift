@@ -14,14 +14,16 @@ final class WallpaperPrefs: @unchecked Sendable {
         var alwaysPauseDesktop: Bool
         var pauseWhenOccluded: Bool
         var desktopOccluded: Bool
+        var occludedDisplays: Set<UInt32>?
         var pausedDisplays: Set<UInt32>?
         var screenSaverIsOurs: Bool?
 
-        init(userPaused: Bool = false, alwaysPauseDesktop: Bool = false, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
+        init(userPaused: Bool = false, alwaysPauseDesktop: Bool = false, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, occludedDisplays: Set<UInt32>? = nil, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
             self.userPaused = userPaused
             self.alwaysPauseDesktop = alwaysPauseDesktop
             self.pauseWhenOccluded = pauseWhenOccluded
             self.desktopOccluded = desktopOccluded
+            self.occludedDisplays = occludedDisplays
             self.pausedDisplays = pausedDisplays
             self.screenSaverIsOurs = screenSaverIsOurs
         }
@@ -74,6 +76,18 @@ final class WallpaperPrefs: @unchecked Sendable {
 
     var desktopOccluded: Bool {
         lock.withLock { $0.desktopOccluded }
+    }
+
+    /// Displays fully covered by windows, as computed by the app's OcclusionMonitor.
+    var occludedDisplays: Set<UInt32> {
+        lock.withLock { $0.occludedDisplays ?? [] }
+    }
+
+    /// Whether this display's wallpaper is invisible behind windows — either its
+    /// own display is covered or every display is (global signal from an app
+    /// version that predates per-display occlusion).
+    func isOccluded(displayID: UInt32) -> Bool {
+        desktopOccluded || occludedDisplays.contains(displayID)
     }
 
     var pausedDisplays: Set<UInt32> {
@@ -179,48 +193,59 @@ final class WallpaperPrefs: @unchecked Sendable {
     /// Recompute playback policy and apply to all active renderers.
     /// Uses ramp animation for occlusion transitions (desktop covered/uncovered).
     private var previousDesktopOccluded = false
+    private var previousOccludedDisplays: Set<UInt32> = []
 
     private func applyPauseState() {
-        let state = WallpaperState.shared
         let occlusionChanged = desktopOccluded != previousDesktopOccluded
+            || occludedDisplays != previousOccludedDisplays
         previousDesktopOccluded = desktopOccluded
-        let animated = occlusionChanged && pauseWhenOccluded
+        previousOccludedDisplays = occludedDisplays
 
+        let state = WallpaperState.shared
+        applyPolicies(
+            presentationMode: state.presentationMode,
+            activityState: state.activityState,
+            powerState: PowerMonitor.shared.currentState,
+            animated: occlusionChanged && pauseWhenOccluded,
+        )
+    }
+
+    /// Compute and apply the playback policy to every renderer — per display
+    /// when per-display info exists, so per-display pause and occlusion survive
+    /// global recomputes (thermal, battery, lock, presentation changes).
+    func applyPolicies(
+        presentationMode: String,
+        activityState: String,
+        powerState: PowerMonitor.PowerState,
+        animated: Bool = false,
+    ) {
+        let state = WallpaperState.shared
         let displayIDs = state.uniqueDisplayIDs()
-        let currentPausedDisplays = pausedDisplays
 
-        let power = PowerMonitor.shared.currentState
+        func policy(for displayID: UInt32?) -> PlaybackPolicy {
+            PlaybackPolicy.compute(
+                presentationMode: presentationMode,
+                activityState: activityState,
+                userPaused: userPaused || displayID.map { pausedDisplays.contains($0) } ?? false,
+                alwaysPauseDesktop: alwaysPauseDesktop,
+                pauseWhenOccluded: pauseWhenOccluded,
+                desktopOccluded: displayID.map(isOccluded(displayID:)) ?? desktopOccluded,
+                screenSaverIsOurs: screenSaverIsOurs,
+                powerState: powerState,
+            )
+        }
 
         if displayIDs.isEmpty {
             // No per-display info — apply globally (backward compat)
-            let policy = PlaybackPolicy.compute(
-                presentationMode: state.presentationMode,
-                activityState: state.activityState,
-                userPaused: userPaused,
-                alwaysPauseDesktop: alwaysPauseDesktop,
-                pauseWhenOccluded: pauseWhenOccluded,
-                desktopOccluded: desktopOccluded,
-                screenSaverIsOurs: screenSaverIsOurs,
-                powerState: power,
-            )
+            let global = policy(for: nil)
             state.forEachRenderer { renderer in
-                renderer.applyPolicy(policy, animated: animated)
+                renderer.applyPolicy(global, animated: animated)
             }
         } else {
             for displayID in displayIDs {
-                let isDisplayPaused = currentPausedDisplays.contains(displayID)
-                let policy = PlaybackPolicy.compute(
-                    presentationMode: state.presentationMode,
-                    activityState: state.activityState,
-                    userPaused: userPaused || isDisplayPaused,
-                    alwaysPauseDesktop: alwaysPauseDesktop,
-                    pauseWhenOccluded: pauseWhenOccluded,
-                    desktopOccluded: desktopOccluded,
-                    screenSaverIsOurs: screenSaverIsOurs,
-                    powerState: power,
-                )
+                let displayPolicy = policy(for: displayID)
                 state.forRenderers(displayID: displayID) { renderer in
-                    renderer.applyPolicy(policy, animated: animated)
+                    renderer.applyPolicy(displayPolicy, animated: animated)
                 }
             }
         }
