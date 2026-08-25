@@ -133,6 +133,9 @@ struct MenuBarPopoverView: View {
         if prefsService.alwaysPauseDesktop {
             return "Playing on Lock Screen"
         }
+        if prefsService.fullscreenDisplays.contains(selection.displayID) {
+            return "Paused — Fullscreen App"
+        }
         if prefsService.pauseWhenOccluded,
            prefsService.desktopOccluded || prefsService.occludedDisplays.contains(selection.displayID) {
             return "Paused — Display Covered"
@@ -295,16 +298,9 @@ struct MenuBarPopoverView: View {
                 Toggle("Launch at Login", isOn: $manager.launchAtLogin)
                 Toggle("Pause When Hidden", isOn: Binding(
                     get: { prefsService.pauseWhenOccluded },
-                    set: { newValue in
-                        prefsService.pauseWhenOccluded = newValue
-                        if newValue {
-                            manager.occlusionMonitor.startMonitoring()
-                        } else {
-                            manager.occlusionMonitor.stopMonitoring()
-                        }
-                    },
+                    set: { prefsService.pauseWhenOccluded = $0 },
                 ))
-                .help("Pause playback on displays fully covered by windows or fullscreen games")
+                .help("Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.")
             }
             .toggleStyle(SettingPillToggleStyle())
         }

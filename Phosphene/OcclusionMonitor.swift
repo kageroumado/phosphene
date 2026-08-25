@@ -23,6 +23,11 @@ import os
 final class OcclusionMonitor {
     /// Display IDs whose usable area is ≥95% covered by windows.
     private(set) var occludedDisplays: Set<UInt32> = []
+    /// Display IDs owned by a single fullscreen app — a native fullscreen Space,
+    /// or a borderless-fullscreen game. These pause unconditionally: the wallpaper
+    /// is invisible (or reduced to the menu bar sliver) and the app wants the
+    /// hardware. "Pause When Hidden" only governs `occludedDisplays`.
+    private(set) var fullscreenDisplays: Set<UInt32> = []
     /// Every display is occluded (the pre-per-display global signal; still
     /// written to prefs so the popover's status line can say "Desktop Hidden").
     private(set) var isDesktopOccluded = false
@@ -87,42 +92,21 @@ final class OcclusionMonitor {
         checkOcclusion()
     }
 
-    func stopMonitoring() {
-        let center = NSWorkspace.shared.notificationCenter
-        if let observer = activateObserver {
-            center.removeObserver(observer)
-            activateObserver = nil
-        }
-        if let observer = deactivateObserver {
-            center.removeObserver(observer)
-            deactivateObserver = nil
-        }
-        if let observer = spaceObserver {
-            center.removeObserver(observer)
-            spaceObserver = nil
-        }
-        scheduler?.invalidate()
-        scheduler = nil
-
-        if !occludedDisplays.isEmpty || isDesktopOccluded {
-            occludedDisplays = []
-            isDesktopOccluded = false
-            let prefsService = WallpaperPrefsService.shared
-            prefsService.occludedDisplays = []
-            prefsService.desktopOccluded = false
-        }
-    }
-
     private func checkOcclusion() {
-        let (occluded, all) = computeOcclusion()
+        let (occluded, fullscreen, all) = computeOcclusion()
         let allOccluded = !all.isEmpty && occluded == all
-        guard occluded != occludedDisplays || allOccluded != isDesktopOccluded else { return }
+        guard occluded != occludedDisplays
+            || fullscreen != fullscreenDisplays
+            || allOccluded != isDesktopOccluded
+        else { return }
         occludedDisplays = occluded
+        fullscreenDisplays = fullscreen
         isDesktopOccluded = allOccluded
         let prefsService = WallpaperPrefsService.shared
         prefsService.occludedDisplays = occluded
+        prefsService.fullscreenDisplays = fullscreen
         prefsService.desktopOccluded = allOccluded
-        Log.general.info("Occluded displays changed: \(occluded.sorted()) (all: \(allOccluded))")
+        Log.general.info("Occlusion changed: occluded \(occluded.sorted()), fullscreen \(fullscreen.sorted()) (all: \(allOccluded))")
     }
 
     // MARK: - Occlusion Calculation
@@ -138,20 +122,27 @@ final class OcclusionMonitor {
     /// GAME-INTERFERENCE-FINDINGS.md).
     private static let chromeLevelFloor = Int(CGWindowLevelForKey(.popUpMenuWindow))
 
-    /// Rasterize every display and return (occluded display IDs, all display IDs).
-    private func computeOcclusion() -> (occluded: Set<UInt32>, all: Set<UInt32>) {
+    /// Rasterize every display and return (occluded, fullscreen-app, all) display IDs.
+    private func computeOcclusion() -> (occluded: Set<UInt32>, fullscreen: Set<UInt32>, all: Set<UInt32>) {
         guard let windowList = CGWindowListCopyWindowInfo(
             [.excludeDesktopElements, .optionOnScreenOnly], kCGNullWindowID,
         ) as? [[CFString: Any]] else {
-            return ([], [])
+            return ([], [], [])
         }
 
-        let occludingWindows = windowList.filter { window in
-            guard let layer = window[kCGWindowLayer] as? Int else { return false }
-            return layer >= 0 && layer < Self.chromeLevelFloor
+        let occludingWindows = windowList.compactMap { window -> (rect: CGRect, layer: Int)? in
+            guard let layer = window[kCGWindowLayer] as? Int,
+                  layer >= 0, layer < Self.chromeLevelFloor,
+                  let bounds = window[kCGWindowBounds] as? [String: CGFloat],
+                  let x = bounds["X"], let y = bounds["Y"],
+                  let w = bounds["Width"], let h = bounds["Height"],
+                  w > 0, h > 0
+            else { return nil }
+            return (CGRect(x: x, y: y, width: w, height: h), layer)
         }
 
         var occluded = Set<UInt32>()
+        var fullscreen = Set<UInt32>()
         var all = Set<UInt32>()
 
         for screen in NSScreen.screens {
@@ -163,7 +154,7 @@ final class OcclusionMonitor {
             guard visibleFrame.width > 0, visibleFrame.height > 0 else { continue }
             all.insert(displayID)
 
-            // Convert visibleFrame to CG coordinates (top-left origin).
+            // Convert to CG coordinates (top-left origin).
             // NSScreen.frame uses bottom-left; CGWindowList uses top-left.
             let mainHeight = NSScreen.screens.first?.frame.height ?? visibleFrame.height
             let cgVisible = CGRect(
@@ -172,18 +163,52 @@ final class OcclusionMonitor {
                 width: visibleFrame.width,
                 height: visibleFrame.height,
             )
+            let frame = screen.frame
+            let cgFull = CGRect(
+                x: frame.origin.x,
+                y: mainHeight - frame.origin.y - frame.height,
+                width: frame.width,
+                height: frame.height,
+            )
 
+            if hasFullscreenApp(full: cgFull, visible: cgVisible, windows: occludingWindows) {
+                fullscreen.insert(displayID)
+            }
             if isScreenOccluded(cgVisible, by: occludingWindows) {
                 occluded.insert(displayID)
             }
         }
 
-        return (occluded, all)
+        return (occluded, fullscreen, all)
+    }
+
+    /// A single window owning (nearly) the whole display marks it as running a
+    /// fullscreen app:
+    ///
+    /// - At layer 0 covering ≥99% of the FULL frame, menu bar region included —
+    ///   a native fullscreen Space, or a borderless window sized to the display.
+    /// - At an elevated layer (1 ..< popUpMenuWindow) covering ≥95% of the visible
+    ///   frame — borderless-fullscreen games: Wine parks them just above the menu
+    ///   bar (Genshin: 26), and ordinary app windows never sit at elevated layers,
+    ///   so a maximized browser can't trip this.
+    private func hasFullscreenApp(full: CGRect, visible: CGRect, windows: [(rect: CGRect, layer: Int)]) -> Bool {
+        let fullArea = full.width * full.height
+        let visibleArea = visible.width * visible.height
+        for window in windows {
+            if window.layer == 0 {
+                let overlap = window.rect.intersection(full)
+                if overlap.width * overlap.height >= fullArea * 0.99 { return true }
+            } else {
+                let overlap = window.rect.intersection(visible)
+                if overlap.width * overlap.height >= visibleArea * 0.95 { return true }
+            }
+        }
+        return false
     }
 
     /// Rasterize the screen area into a coarse grid and mark cells covered by windows.
     /// Returns true if >= 95% of cells are covered.
-    private func isScreenOccluded(_ screenRect: CGRect, by windows: [[CFString: Any]]) -> Bool {
+    private func isScreenOccluded(_ screenRect: CGRect, by windows: [(rect: CGRect, layer: Int)]) -> Bool {
         let cell = Self.cellSize
         let cols = Int(ceil(screenRect.width / cell))
         let rows = Int(ceil(screenRect.height / cell))
@@ -195,15 +220,7 @@ final class OcclusionMonitor {
         var coveredCount = 0
 
         for window in windows {
-            guard let boundsDict = window[kCGWindowBounds] as? [String: CGFloat],
-                  let x = boundsDict["X"],
-                  let y = boundsDict["Y"],
-                  let w = boundsDict["Width"],
-                  let h = boundsDict["Height"],
-                  w > 0, h > 0 else { continue }
-
-            let windowRect = CGRect(x: x, y: y, width: w, height: h)
-            let clipped = windowRect.intersection(screenRect)
+            let clipped = window.rect.intersection(screenRect)
             guard !clipped.isNull else { continue }
 
             // Convert to grid coordinates

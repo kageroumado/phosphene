@@ -15,15 +15,17 @@ final class WallpaperPrefs: @unchecked Sendable {
         var pauseWhenOccluded: Bool
         var desktopOccluded: Bool
         var occludedDisplays: Set<UInt32>?
+        var fullscreenDisplays: Set<UInt32>?
         var pausedDisplays: Set<UInt32>?
         var screenSaverIsOurs: Bool?
 
-        init(userPaused: Bool = false, alwaysPauseDesktop: Bool = false, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, occludedDisplays: Set<UInt32>? = nil, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
+        init(userPaused: Bool = false, alwaysPauseDesktop: Bool = false, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, occludedDisplays: Set<UInt32>? = nil, fullscreenDisplays: Set<UInt32>? = nil, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
             self.userPaused = userPaused
             self.alwaysPauseDesktop = alwaysPauseDesktop
             self.pauseWhenOccluded = pauseWhenOccluded
             self.desktopOccluded = desktopOccluded
             self.occludedDisplays = occludedDisplays
+            self.fullscreenDisplays = fullscreenDisplays
             self.pausedDisplays = pausedDisplays
             self.screenSaverIsOurs = screenSaverIsOurs
         }
@@ -88,6 +90,13 @@ final class WallpaperPrefs: @unchecked Sendable {
     /// version that predates per-display occlusion).
     func isOccluded(displayID: UInt32) -> Bool {
         desktopOccluded || occludedDisplays.contains(displayID)
+    }
+
+    /// Displays owned by a single fullscreen app (native fullscreen Space or
+    /// borderless-fullscreen game). Paused unconditionally, unlike occlusion,
+    /// which is gated by the "Pause When Hidden" setting.
+    var fullscreenDisplays: Set<UInt32> {
+        lock.withLock { $0.fullscreenDisplays ?? [] }
     }
 
     var pausedDisplays: Set<UInt32> {
@@ -194,19 +203,22 @@ final class WallpaperPrefs: @unchecked Sendable {
     /// Uses ramp animation for occlusion transitions (desktop covered/uncovered).
     private var previousDesktopOccluded = false
     private var previousOccludedDisplays: Set<UInt32> = []
+    private var previousFullscreenDisplays: Set<UInt32> = []
 
     private func applyPauseState() {
         let occlusionChanged = desktopOccluded != previousDesktopOccluded
             || occludedDisplays != previousOccludedDisplays
+            || fullscreenDisplays != previousFullscreenDisplays
         previousDesktopOccluded = desktopOccluded
         previousOccludedDisplays = occludedDisplays
+        previousFullscreenDisplays = fullscreenDisplays
 
         let state = WallpaperState.shared
         applyPolicies(
             presentationMode: state.presentationMode,
             activityState: state.activityState,
             powerState: PowerMonitor.shared.currentState,
-            animated: occlusionChanged && pauseWhenOccluded,
+            animated: occlusionChanged,
         )
     }
 
@@ -230,6 +242,8 @@ final class WallpaperPrefs: @unchecked Sendable {
                 alwaysPauseDesktop: alwaysPauseDesktop,
                 pauseWhenOccluded: pauseWhenOccluded,
                 desktopOccluded: displayID.map(isOccluded(displayID:)) ?? desktopOccluded,
+                displayHasFullscreenApp: displayID.map { fullscreenDisplays.contains($0) }
+                    ?? !fullscreenDisplays.isEmpty,
                 screenSaverIsOurs: screenSaverIsOurs,
                 powerState: powerState,
             )

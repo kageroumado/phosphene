@@ -50,6 +50,13 @@ final class WallpaperPrefsService {
         didSet { guard occludedDisplays != oldValue else { return }; savePrefs() }
     }
 
+    /// Displays owned by a single fullscreen app (native fullscreen Space or
+    /// borderless-fullscreen game). The extension pauses these unconditionally —
+    /// "Pause When Hidden" only governs `occludedDisplays`.
+    var fullscreenDisplays: Set<UInt32> = [] {
+        didSet { guard fullscreenDisplays != oldValue else { return }; savePrefs() }
+    }
+
     /// Whether any display or Space has a Phosphene choice as its screensaver (the
     /// store's Idle section). Derived from the wallpaper store, relayed to the
     /// extension so idle presentation plays full-screen instead of pausing (#26).
@@ -115,15 +122,17 @@ final class WallpaperPrefsService {
         var pauseWhenOccluded: Bool
         var desktopOccluded: Bool
         var occludedDisplays: Set<UInt32>?
+        var fullscreenDisplays: Set<UInt32>?
         var pausedDisplays: Set<UInt32>?
         var screenSaverIsOurs: Bool?
 
-        init(userPaused: Bool, alwaysPauseDesktop: Bool, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, occludedDisplays: Set<UInt32>? = nil, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
+        init(userPaused: Bool, alwaysPauseDesktop: Bool, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, occludedDisplays: Set<UInt32>? = nil, fullscreenDisplays: Set<UInt32>? = nil, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
             self.userPaused = userPaused
             self.alwaysPauseDesktop = alwaysPauseDesktop
             self.pauseWhenOccluded = pauseWhenOccluded
             self.desktopOccluded = desktopOccluded
             self.occludedDisplays = occludedDisplays
+            self.fullscreenDisplays = fullscreenDisplays
             self.pausedDisplays = pausedDisplays
             self.screenSaverIsOurs = screenSaverIsOurs
         }
@@ -231,6 +240,7 @@ final class WallpaperPrefsService {
             pauseWhenOccluded = prefs.pauseWhenOccluded
             desktopOccluded = prefs.desktopOccluded
             occludedDisplays = prefs.occludedDisplays ?? []
+            fullscreenDisplays = prefs.fullscreenDisplays ?? []
             pausedDisplays = prefs.pausedDisplays ?? []
         } catch {
             Log.general.error("Failed to decode prefs file: \(error)")
@@ -244,6 +254,7 @@ final class WallpaperPrefsService {
             pauseWhenOccluded: pauseWhenOccluded,
             desktopOccluded: desktopOccluded,
             occludedDisplays: occludedDisplays.isEmpty ? nil : occludedDisplays,
+            fullscreenDisplays: fullscreenDisplays.isEmpty ? nil : fullscreenDisplays,
             pausedDisplays: pausedDisplays.isEmpty ? nil : pausedDisplays,
             screenSaverIsOurs: screenSaverIsOurs,
         )

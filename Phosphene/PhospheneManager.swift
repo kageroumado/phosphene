@@ -88,9 +88,9 @@ final class PhospheneManager {
         // Migrate entries imported before metadata probing was added
         migrateEntryMetadata()
 
-        if prefsService.pauseWhenOccluded {
-            occlusionMonitor.startMonitoring()
-        }
+        // Always on: the fullscreen-app pause needs it regardless of the
+        // "Pause When Hidden" setting, which only gates the occlusion tier.
+        occlusionMonitor.startMonitoring()
 
         Task { await updateCheck.checkIfDue() }
         SilentUpdates.shared.start(autoInstall: autoUpdate)

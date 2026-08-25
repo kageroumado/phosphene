@@ -29,6 +29,7 @@ enum PlaybackPolicy: Int, Comparable {
         alwaysPauseDesktop: Bool,
         pauseWhenOccluded: Bool,
         desktopOccluded: Bool,
+        displayHasFullscreenApp: Bool = false,
         screenSaverIsOurs: Bool,
         thermalState: ProcessInfo.ThermalState,
         isOnBattery: Bool,
@@ -59,6 +60,10 @@ enum PlaybackPolicy: Int, Comparable {
         // Desktop occlusion is irrelevant on full-screen presentations — the
         // wallpaper is fully visible there regardless of desktop window state.
         if pauseWhenOccluded, desktopOccluded, !fullScreenPresentation { worst = max(worst, .paused) }
+        // A fullscreen app owning the display pauses unconditionally: the wallpaper
+        // is invisible (or a menu bar sliver) and the app wants the hardware.
+        // Catches what Game Mode can't — gamepolicyd never recognizes Wine games.
+        if displayHasFullscreenApp, !fullScreenPresentation { worst = max(worst, .paused) }
         if alwaysPauseDesktop, !fullScreenPresentation { worst = max(worst, .paused) }
 
         // --- minimal tier ---
@@ -80,6 +85,7 @@ enum PlaybackPolicy: Int, Comparable {
         alwaysPauseDesktop: Bool,
         pauseWhenOccluded: Bool,
         desktopOccluded: Bool,
+        displayHasFullscreenApp: Bool = false,
         screenSaverIsOurs: Bool,
         powerState: PowerMonitor.PowerState,
     ) -> PlaybackPolicy {
@@ -90,6 +96,7 @@ enum PlaybackPolicy: Int, Comparable {
             alwaysPauseDesktop: alwaysPauseDesktop,
             pauseWhenOccluded: pauseWhenOccluded,
             desktopOccluded: desktopOccluded,
+            displayHasFullscreenApp: displayHasFullscreenApp,
             screenSaverIsOurs: screenSaverIsOurs,
             thermalState: powerState.thermalState,
             isOnBattery: powerState.isOnBattery,

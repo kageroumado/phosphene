@@ -96,9 +96,13 @@ struct VideoPreviewCard: View {
     }
 
     /// This card's display is invisible behind windows (its own display covered,
-    /// or every display) and the occlusion pause is on.
+    /// or every display) and the occlusion pause is on — or a fullscreen app owns
+    /// the display, which pauses unconditionally.
     private var isPausedByOcclusion: Bool {
-        prefsService.pauseWhenOccluded
+        if displayID.map({ prefsService.fullscreenDisplays.contains($0) }) ?? false {
+            return true
+        }
+        return prefsService.pauseWhenOccluded
             && (prefsService.desktopOccluded
                 || displayID.map { prefsService.occludedDisplays.contains($0) } ?? false)
     }
