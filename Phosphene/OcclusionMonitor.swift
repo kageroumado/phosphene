@@ -125,7 +125,7 @@ final class OcclusionMonitor {
     /// The Dock's window is a display-sized transparent canvas (the visible bar is
     /// drawn inside it), reported at full alpha — counting it marks every display
     /// permanently occluded AND fullscreen-owned.
-    private static let dockLevel = Int(CGWindowLevelForKey(.dock))
+    private static let dockLevel = Int(CGWindowLevelForKey(.dockWindow))
 
     /// Rasterize every display and return (occluded, fullscreen-app, all) display IDs.
     private func computeOcclusion() -> (occluded: Set<UInt32>, fullscreen: Set<UInt32>, all: Set<UInt32>) {
