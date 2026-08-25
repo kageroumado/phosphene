@@ -71,9 +71,12 @@ final class VideoLibrary: Sendable {
 
     /// Select the best variant URL for a given playback policy.
     ///
-    /// For entries with variants: `full` picks highest fps, `reduced` picks middle tier,
-    /// `minimal` picks lowest fps. Falls back to original file URL if no variants exist.
-    /// Returns `nil` only if the entry itself doesn't exist.
+    /// `full` plays a variant only when one matches the source frame rate (Battery
+    /// Saver's downscaled full-rate tier) — the optimizer skips the full-FPS tier
+    /// when it isn't downscaling, so the top variant can be a half-rate tier and
+    /// full policy must fall back to the original file. `reduced` picks the highest
+    /// tier below the source rate, `minimal` the lowest. Falls back to the original
+    /// file URL if no variants exist. Returns `nil` only if the entry doesn't exist.
     func bestVariantURL(for id: String, policy: PlaybackPolicy) -> URL? {
         guard let entry = entry(for: id) else { return nil }
 
@@ -82,18 +85,21 @@ final class VideoLibrary: Sendable {
         }
 
         let sorted = variants.sorted { $0.fps > $1.fps }
+        let sourceFPS = Int(entry.fps.rounded())
 
         let chosen: VideoVariant
         switch policy {
         case .paused:
             return videoURL(for: entry)
         case .full:
-            chosen = sorted.first!
+            guard let top = sorted.first, top.fps >= sourceFPS else {
+                return videoURL(for: entry)
+            }
+            chosen = top
+        case .reduced:
+            chosen = sorted.first { $0.fps < sourceFPS } ?? sorted.last!
         case .minimal:
             chosen = sorted.last!
-        case .reduced:
-            let midIndex = sorted.count / 2
-            chosen = sorted[midIndex]
         }
 
         return variantURL(for: id, variant: chosen)

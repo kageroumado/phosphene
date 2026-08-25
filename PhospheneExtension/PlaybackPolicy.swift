@@ -72,24 +72,6 @@ enum PlaybackPolicy: Int, Comparable {
         return worst
     }
 
-    /// Generate FPS tiers by repeated halving from a source frame rate.
-    ///
-    /// Keeps halving until the result is at or below 15 fps. Always produces at least 2 tiers.
-    /// Examples: 120 → [120, 60, 30, 15], 60 → [60, 30, 15], 30 → [30, 15], 24 → [24, 12].
-    static func fpsTiers(from sourceFPS: Int) -> [Int] {
-        guard sourceFPS > 0 else { return [] }
-        var tiers = [sourceFPS]
-        var current = sourceFPS
-        while current > 15 {
-            current /= 2
-            tiers.append(current)
-        }
-        if tiers.count < 2 {
-            tiers.append(current / 2)
-        }
-        return tiers
-    }
-
     /// Convenience overload that unpacks a `PowerMonitor.PowerState`.
     static func compute(
         presentationMode: String,
