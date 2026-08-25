@@ -324,6 +324,11 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     old?.stop()
                     WallpaperPrefs.shared.setActive(true)
                     renderer.start()
+                    // A fresh renderer starts playing; the pause conditions written
+                    // before this process launched (fullscreen app, occlusion,
+                    // per-display pause) arrive by prefs reload, not notification,
+                    // so apply them now rather than waiting for the next change.
+                    PhospheneExtension.recomputeAndApplyPolicy()
                 }
             } else {
                 traceLog("  [acquire] renderer create already in flight for display \(key.displayID) — skipping duplicate")
@@ -452,6 +457,11 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 renderer.start(onFirstFrameReady: {
                     if !coldStart { reply(boxedReply.value, nil) }
                     old?.stop()
+                    // After the reply so a pre-first-frame pause can't stall the
+                    // acquire: apply pause conditions that predate this process
+                    // (fullscreen app, occlusion, per-display pause), which arrive
+                    // by prefs reload rather than a change notification.
+                    PhospheneExtension.recomputeAndApplyPolicy()
                 })
             }
         } else {
