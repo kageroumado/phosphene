@@ -301,11 +301,15 @@ enum MenuPickerItemEnum: Codable {
     }
 }
 
+/// Real type: WallpaperTypes.MenuPickerItem. The macOS 27 decoder requires
+/// `isDownloaded`; the macOS 26 decoder ignores the extra key, so it is always
+/// encoded (#29).
 struct MenuPickerItem: Codable {
     var id: String
     var localizedName: String
     var accessibilityIdentifier: String?
     var localizedInformativeText: String?
+    var isDownloaded: Bool
 }
 
 struct MenuPickerDivider: Codable {
