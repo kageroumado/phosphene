@@ -12,6 +12,11 @@ enum PlaybackPolicy: Int, Comparable {
         lhs.rawValue < rhs.rawValue
     }
 
+    /// Below this brightness, the screen is effectively invisible to the user
+    /// even though `screensDidSleepNotification` hasn't fired. We treat this
+    /// as paused so the renderer stops burning battery.
+    static let brightnessPauseThreshold: Float = 0.05
+
     /// Evaluate all conditions and return the most restrictive applicable policy.
     ///
     /// `alwaysPauseDesktop`: when true, wallpaper only plays on the lock screen.
@@ -54,7 +59,7 @@ enum PlaybackPolicy: Int, Comparable {
         // User dimmed the backlight to ~zero. The display is technically still
         // "awake" so `screensDidSleep` doesn't fire and the WallpaperAgent never
         // switches to "idle", but the user can't see any of it.
-        if displayBrightness < PowerMonitor.PowerState.brightnessPauseThreshold {
+        if displayBrightness < Self.brightnessPauseThreshold {
             worst = max(worst, .paused)
         }
         // Desktop occlusion is irrelevant on full-screen presentations — the
@@ -77,32 +82,4 @@ enum PlaybackPolicy: Int, Comparable {
         return worst
     }
 
-    /// Convenience overload that unpacks a `PowerMonitor.PowerState`.
-    static func compute(
-        presentationMode: String,
-        activityState: String,
-        userPaused: Bool,
-        alwaysPauseDesktop: Bool,
-        pauseWhenOccluded: Bool,
-        desktopOccluded: Bool,
-        displayHasFullscreenApp: Bool = false,
-        screenSaverIsOurs: Bool,
-        powerState: PowerMonitor.PowerState,
-    ) -> PlaybackPolicy {
-        compute(
-            presentationMode: presentationMode,
-            activityState: activityState,
-            userPaused: userPaused,
-            alwaysPauseDesktop: alwaysPauseDesktop,
-            pauseWhenOccluded: pauseWhenOccluded,
-            desktopOccluded: desktopOccluded,
-            displayHasFullscreenApp: displayHasFullscreenApp,
-            screenSaverIsOurs: screenSaverIsOurs,
-            thermalState: powerState.thermalState,
-            isOnBattery: powerState.isOnBattery,
-            batteryLevel: powerState.batteryLevel,
-            isGameModeActive: powerState.isGameModeActive,
-            displayBrightness: powerState.displayBrightness,
-        )
-    }
 }

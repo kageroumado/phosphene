@@ -3,11 +3,12 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 90;
+	objectVersion = 100;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		0B33648A2F4FCB4B00060732 /* PhospheneExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 0B3364832F4FCB4B00060732 /* PhospheneExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0B486A22303E6604001CB276 /* TiptoeGitHub in Frameworks */ = {isa = PBXBuildFile; productRef = 7A0000000000000000000002 /* TiptoeGitHub */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,6 +36,7 @@
 /* Begin PBXFileReference section */
 		0B3364832F4FCB4B00060732 /* PhospheneExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = PhospheneExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA9B91C92E900B9E008812A9 /* Phosphene.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Phosphene.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E5700000000000000000A01 /* PhospheneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhospheneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -45,6 +47,22 @@
 			);
 			target = 0B3364822F4FCB4B00060732 /* PhospheneExtension */;
 		};
+		7E5700000000000000000AA1 /* Exceptions for "PhospheneExtension" folder in "PhospheneTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				PlaybackPolicy.swift,
+				RampMath.swift,
+				VariantSelection.swift,
+			);
+			target = 7E5700000000000000000A03 /* PhospheneTests */;
+		};
+		7E5700000000000000000AA2 /* Exceptions for "Phosphene" folder in "PhospheneTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				OcclusionMath.swift,
+			);
+			target = 7E5700000000000000000A03 /* PhospheneTests */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -52,13 +70,22 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				0B33648E2F4FCB4B00060732 /* Exceptions for "PhospheneExtension" folder in "PhospheneExtension" target */,
+				7E5700000000000000000AA1 /* Exceptions for "PhospheneExtension" folder in "PhospheneTests" target */,
 			);
 			path = PhospheneExtension;
 			sourceTree = "<group>";
 		};
 		AA9B91CB2E900B9E008812A9 /* Phosphene */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7E5700000000000000000AA2 /* Exceptions for "Phosphene" folder in "PhospheneTests" target */,
+			);
 			path = Phosphene;
+			sourceTree = "<group>";
+		};
+		7E5700000000000000000A02 /* PhospheneTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PhospheneTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -72,6 +99,12 @@
 		AA9B91C62E900B9E008812A9 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				0B486A22303E6604001CB276 /* TiptoeGitHub in Frameworks */,
+			);
+		};
+		7E5700000000000000000A06 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -82,6 +115,7 @@
 			children = (
 				AA9B91CB2E900B9E008812A9 /* Phosphene */,
 				0B3364842F4FCB4B00060732 /* PhospheneExtension */,
+				7E5700000000000000000A02 /* PhospheneTests */,
 				AA9B91CA2E900B9E008812A9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -91,6 +125,7 @@
 			children = (
 				AA9B91C92E900B9E008812A9 /* Phosphene.app */,
 				0B3364832F4FCB4B00060732 /* PhospheneExtension.appex */,
+				7E5700000000000000000A01 /* PhospheneTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -141,6 +176,24 @@
 			productReference = AA9B91C92E900B9E008812A9 /* Phosphene.app */;
 			productType = "com.apple.product-type.application";
 		};
+		7E5700000000000000000A03 /* PhospheneTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E5700000000000000000A04 /* Build configuration list for PBXNativeTarget "PhospheneTests" */;
+			buildPhases = (
+				7E5700000000000000000A05 /* Sources */,
+				7E5700000000000000000A06 /* Frameworks */,
+				7E5700000000000000000A07 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				7E5700000000000000000A02 /* PhospheneTests */,
+			);
+			name = PhospheneTests;
+			productName = PhospheneTests;
+			productReference = 7E5700000000000000000A01 /* PhospheneTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -156,6 +209,9 @@
 					};
 					AA9B91C82E900B9E008812A9 = {
 						CreatedOnToolsVersion = 26.0.1;
+					};
+					7E5700000000000000000A03 = {
+						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
@@ -178,6 +234,7 @@
 			targets = (
 				AA9B91C82E900B9E008812A9 /* Phosphene */,
 				0B3364822F4FCB4B00060732 /* PhospheneExtension */,
+				7E5700000000000000000A03 /* PhospheneTests */,
 			);
 		};
 /* End PBXProject section */
@@ -193,6 +250,11 @@
 			files = (
 			);
 		};
+		7E5700000000000000000A07 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -202,6 +264,11 @@
 			);
 		};
 		AA9B91C52E900B9E008812A9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		7E5700000000000000000A05 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
 			);
@@ -221,7 +288,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 17;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 52K336H235;
 				ENABLE_APP_SANDBOX = YES;
@@ -236,7 +303,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = glass.kagerou.phosphene.extension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -253,7 +320,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 17;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 52K336H235;
 				ENABLE_APP_SANDBOX = YES;
@@ -268,7 +335,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = glass.kagerou.phosphene.extension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -428,7 +495,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 17;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 52K336H235;
 				ENABLE_APP_SANDBOX = NO;
@@ -448,7 +515,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = glass.kagerou.phosphene;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -477,7 +544,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 17;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 52K336H235;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -493,7 +560,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = glass.kagerou.phosphene;
 				PRODUCT_NAME = Phosphene;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -507,6 +574,40 @@
 				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
+		};
+		7E5700000000000000000A08 /* Debug configuration for PBXNativeTarget "PhospheneTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 17;
+				DEVELOPMENT_TEAM = 52K336H235;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.4.2;
+				PRODUCT_BUNDLE_IDENTIFIER = glass.kagerou.phosphene.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		7E5700000000000000000A09 /* Release configuration for PBXNativeTarget "PhospheneTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 17;
+				DEVELOPMENT_TEAM = 52K336H235;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.4.2;
+				PRODUCT_BUNDLE_IDENTIFIER = glass.kagerou.phosphene.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
@@ -533,6 +634,15 @@
 				AA9B91D62E900B9F008812A9 /* Release configuration for PBXNativeTarget "Phosphene" */,
 				AA9B928E2E9057E5008812A9 /* Debug configuration for PBXNativeTarget "Phosphene" */,
 			);
+			defaultConfigurationName = Release;
+		};
+		7E5700000000000000000A04 /* Build configuration list for PBXNativeTarget "PhospheneTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E5700000000000000000A08 /* Debug configuration for PBXNativeTarget "PhospheneTests" */,
+				7E5700000000000000000A09 /* Release configuration for PBXNativeTarget "PhospheneTests" */,
+			);
+			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */

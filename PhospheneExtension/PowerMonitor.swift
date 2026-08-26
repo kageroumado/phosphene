@@ -27,14 +27,9 @@ final class PowerMonitor: Sendable {
         var shouldPause: Bool {
             if thermalState == .critical || thermalState == .serious { return true }
             if isOnBattery, batteryLevel < 20 { return true }
-            if displayBrightness < Self.brightnessPauseThreshold { return true }
+            if displayBrightness < PlaybackPolicy.brightnessPauseThreshold { return true }
             return false
         }
-
-        /// Below this brightness, the screen is effectively invisible to the user
-        /// even though `screensDidSleepNotification` hasn't fired. We treat this
-        /// as paused so the renderer stops burning battery.
-        static let brightnessPauseThreshold: Float = 0.05
     }
 
     private init() {}
@@ -228,5 +223,36 @@ final class PowerMonitor: Sendable {
                 continuation.yield(state)
             }
         }
+    }
+}
+
+extension PlaybackPolicy {
+    /// Convenience overload that unpacks a `PowerMonitor.PowerState`.
+    static func compute(
+        presentationMode: String,
+        activityState: String,
+        userPaused: Bool,
+        alwaysPauseDesktop: Bool,
+        pauseWhenOccluded: Bool,
+        desktopOccluded: Bool,
+        displayHasFullscreenApp: Bool = false,
+        screenSaverIsOurs: Bool,
+        powerState: PowerMonitor.PowerState,
+    ) -> PlaybackPolicy {
+        compute(
+            presentationMode: presentationMode,
+            activityState: activityState,
+            userPaused: userPaused,
+            alwaysPauseDesktop: alwaysPauseDesktop,
+            pauseWhenOccluded: pauseWhenOccluded,
+            desktopOccluded: desktopOccluded,
+            displayHasFullscreenApp: displayHasFullscreenApp,
+            screenSaverIsOurs: screenSaverIsOurs,
+            thermalState: powerState.thermalState,
+            isOnBattery: powerState.isOnBattery,
+            batteryLevel: powerState.batteryLevel,
+            isGameModeActive: powerState.isGameModeActive,
+            displayBrightness: powerState.displayBrightness,
+        )
     }
 }

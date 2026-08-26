@@ -382,14 +382,6 @@ final class VideoRenderer: @unchecked Sendable {
     private static let rampDownDuration: TimeInterval = 6.0
     private static let rampStepInterval: TimeInterval = 1.0 / 120.0
 
-    /// Ease-in-out cubic: smooth acceleration then deceleration.
-    /// t in [0, 1] → output in [0, 1].
-    private static func easeInOut(_ t: Double) -> Double {
-        t < 0.5
-            ? 4.0 * t * t * t
-            : 1.0 - pow(-2.0 * t + 2.0, 3) / 2.0
-    }
-
     /// Gradually reduce the timebase rate to zero, then freeze.
     ///
     /// `isPaused` flips immediately — it is the logical state, the rate follows.
@@ -445,7 +437,7 @@ final class VideoRenderer: @unchecked Sendable {
             completion?()
             return
         }
-        let totalSteps = max(1, Int(fullDuration * distance / Self.rampStepInterval))
+        let totalSteps = RampMath.steps(distance: distance, fullDuration: fullDuration, stepInterval: Self.rampStepInterval)
         var step = 0
 
         // First step lands immediately so a resume never sits on a dead frame.
@@ -461,8 +453,8 @@ final class VideoRenderer: @unchecked Sendable {
                 return
             }
             step += 1
-            let progress = min(Double(step) / Double(totalSteps), 1.0)
-            let rate = start + (target - start) * Self.easeInOut(progress)
+            let progress = Double(step) / Double(totalSteps)
+            let rate = RampMath.rate(from: start, to: target, progress: progress)
             CMTimebaseSetRate(timebase, rate: rate)
 
             if step >= totalSteps {

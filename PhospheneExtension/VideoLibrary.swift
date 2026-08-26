@@ -3,12 +3,6 @@ import Foundation
 import ImageIO
 import os
 
-struct VideoVariant: Codable {
-    let filename: String
-    let fps: Int
-    let resolution: CGSize
-}
-
 struct VideoEntry: Codable {
     let id: String
     var name: String
@@ -69,39 +63,18 @@ final class VideoLibrary: Sendable {
             .appendingPathComponent(variant.filename)
     }
 
-    /// Select the best variant URL for a given playback policy.
-    ///
-    /// `full` plays a variant only when one matches the source frame rate (Battery
-    /// Saver's downscaled full-rate tier) — the optimizer skips the full-FPS tier
-    /// when it isn't downscaling, so the top variant can be a half-rate tier and
-    /// full policy must fall back to the original file. `reduced` picks the highest
-    /// tier below the source rate, `minimal` the lowest. Falls back to the original
-    /// file URL if no variants exist. Returns `nil` only if the entry doesn't exist.
+    /// Select the best variant URL for a given playback policy (selection rules
+    /// in `VariantSelection`). Falls back to the original file URL when the policy
+    /// resolves to no variant. Returns `nil` only if the entry doesn't exist.
     func bestVariantURL(for id: String, policy: PlaybackPolicy) -> URL? {
         guard let entry = entry(for: id) else { return nil }
-
-        guard let variants = entry.variants, !variants.isEmpty else {
+        guard let chosen = VariantSelection.variant(
+            for: policy,
+            sourceFPS: Int(entry.fps.rounded()),
+            variants: entry.variants ?? [],
+        ) else {
             return videoURL(for: entry)
         }
-
-        let sorted = variants.sorted { $0.fps > $1.fps }
-        let sourceFPS = Int(entry.fps.rounded())
-
-        let chosen: VideoVariant
-        switch policy {
-        case .paused:
-            return videoURL(for: entry)
-        case .full:
-            guard let top = sorted.first, top.fps >= sourceFPS else {
-                return videoURL(for: entry)
-            }
-            chosen = top
-        case .reduced:
-            chosen = sorted.first { $0.fps < sourceFPS } ?? sorted.last!
-        case .minimal:
-            chosen = sorted.last!
-        }
-
         return variantURL(for: id, variant: chosen)
     }
 
