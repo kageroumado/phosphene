@@ -1,4 +1,5 @@
 import AVKit
+import Propofol
 import SwiftUI
 
 struct MenuBarPopoverView: View {
@@ -6,54 +7,34 @@ struct MenuBarPopoverView: View {
     var openLibrary: () -> Void = {}
     @State private var selectedIndex = 0
     @State private var isHoveringVersion = false
-    @Namespace private var scopeNamespace
 
     private var prefsService: WallpaperPrefsService {
         manager.prefsService
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            headerSection
+        GlassEffectContainer(spacing: Theme.Space.md) {
+            VStack(spacing: Theme.Space.md) {
+                PopoverHeader("Phosphene")
 
-            if prefsService.selections.isEmpty {
-                emptyStateSection
-            } else {
-                heroSection
-                playbackScopePicker
+                if prefsService.selections.isEmpty {
+                    emptyStateSection
+                } else {
+                    heroSection
+                    playbackScopePicker
+                }
+
+                settingsSection
+                footerSection
             }
-
-            settingsSection
-            footerSection
+            .padding(Theme.Space.lg)
         }
-        .padding(14)
-        .frame(width: 320)
+        .frame(width: Theme.popoverWidth)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear { SilentUpdates.shared.refreshPending() }
         .onChange(of: prefsService.selections.count) {
             selectedIndex = min(selectedIndex, max(0, prefsService.selections.count - 1))
         }
-    }
-
-    // MARK: - Header
-
-    @Environment(\.openURL) private var openURL
-
-    private var headerSection: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Phosphene")
-                .font(.system(size: 15, weight: .bold))
-            Spacer()
-            Button {
-                openURL(URL(string: "https://kagerou.glass")!)
-            } label: {
-                Text("made by kageroumado \(Image(systemName: "arrow.up.right"))")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 4)
     }
 
     // MARK: - Hero
@@ -80,7 +61,7 @@ struct MenuBarPopoverView: View {
             }
         }
         .overlay(alignment: .bottom) { heroScrim }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(Theme.cardShape)
     }
 
     @ViewBuilder
@@ -187,71 +168,21 @@ struct MenuBarPopoverView: View {
 
     // MARK: - Playback Scope
 
-    private enum PlaybackScope: CaseIterable {
-        case everywhere, lockScreen, paused
-
-        var title: String {
-            switch self {
-            case .everywhere: "Everywhere"
-            case .lockScreen: "Lock Screen"
-            case .paused: "Paused"
-            }
-        }
-    }
-
-    private var currentScope: PlaybackScope {
-        if prefsService.userPaused { return .paused }
-        if prefsService.alwaysPauseDesktop { return .lockScreen }
-        return .everywhere
-    }
-
-    private func setScope(_ scope: PlaybackScope) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            switch scope {
-            case .everywhere:
-                prefsService.userPaused = false
-                prefsService.alwaysPauseDesktop = false
-            case .lockScreen:
-                prefsService.alwaysPauseDesktop = true
-                prefsService.userPaused = false
-            case .paused:
-                prefsService.userPaused = true
-                prefsService.alwaysPauseDesktop = false
-            }
-        }
-    }
-
     private var playbackScopePicker: some View {
-        HStack(spacing: 0) {
-            ForEach(PlaybackScope.allCases, id: \.self) { scope in
-                let isSelected = scope == currentScope
-                Button {
-                    setScope(scope)
-                } label: {
-                    Text(scope.title)
-                        .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
-                        .foregroundStyle(isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
-                        .background {
-                            if isSelected {
-                                Capsule().fill(Color.accentColor.opacity(0.28))
-                                    .matchedGeometryEffect(id: "scope", in: scopeNamespace)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3)
-        .background(.quinary, in: Capsule())
+        @Bindable var prefsService = prefsService
+        return PillPicker(
+            title: "Playback",
+            options: PlaybackScope.allCases.map { ($0, $0.title) },
+            selection: $prefsService.playbackScope,
+            height: 32,
+            onTint: Theme.onAccent,
+        )
     }
 
     // MARK: - Empty State
 
     private var emptyStateSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Theme.Space.sm) {
             Image(systemName: "film.stack")
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(.quaternary)
@@ -276,7 +207,7 @@ struct MenuBarPopoverView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .glassCard()
     }
 
     private var hasLibraryEntries: Bool {
@@ -286,21 +217,14 @@ struct MenuBarPopoverView: View {
     // MARK: - Settings
 
     private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Settings")
-                .font(.system(size: 10.5, weight: .semibold))
-                .kerning(0.7)
-                .textCase(.uppercase)
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 4)
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            SectionLabel("Settings")
 
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Space.sm) {
+                @Bindable var prefsService = prefsService
                 Toggle("Launch at Login", isOn: $manager.launchAtLogin)
-                Toggle("Pause When Hidden", isOn: Binding(
-                    get: { prefsService.pauseWhenOccluded },
-                    set: { prefsService.pauseWhenOccluded = $0 },
-                ))
-                .help("Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.")
+                Toggle("Pause When Hidden", isOn: $prefsService.pauseWhenOccluded)
+                    .help("Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.")
             }
             .toggleStyle(SettingPillToggleStyle())
         }
@@ -309,14 +233,14 @@ struct MenuBarPopoverView: View {
     // MARK: - Footer
 
     private var footerSection: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: Theme.Space.sm) {
             switch SilentUpdates.shared.manualPhase {
             case .working:
                 HStack(spacing: 6) {
                     ProgressView()
                         .controlSize(.small)
                     Text("Updating…")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             case .failed(let message):
@@ -325,47 +249,53 @@ struct MenuBarPopoverView: View {
                     SilentUpdates.shared.dismissFailure()
                 } label: {
                     Label("Update failed", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(Theme.onAccent)
                 }
-                .buttonStyle(ChipButtonStyle(prominent: true))
+                .buttonStyle(.glassProminent)
+                .controlSize(.small)
                 .help(message)
             case .idle:
                 updateChip
 
-                Button {
+                FooterChip(text: "Library", systemImage: "film.stack") {
                     openLibrary()
-                } label: {
-                    Label("Library", systemImage: "film.stack")
                 }
-                .buttonStyle(ChipButtonStyle())
 
-                Button {
+                FooterChip(text: "Choose", systemImage: "photo.on.rectangle") {
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!)
-                } label: {
-                    Label("Choose", systemImage: "photo.on.rectangle")
                 }
-                .buttonStyle(ChipButtonStyle())
                 .help("Choose the wallpaper in macOS Wallpaper Settings")
             }
 
             Spacer(minLength: 0)
 
-            Button {
-                WallpaperPrefsService.shared.restartWallpaperAgent()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(RoundIconButtonStyle())
-            .help("Force-restart the system WallpaperAgent if the wallpaper is stuck or wrong.")
+            HStack(spacing: Theme.Space.sm) {
+                Button {
+                    WallpaperPrefsService.shared.restartWallpaperAgent()
+                } label: {
+                    utilityIcon("arrow.clockwise")
+                }
+                .help("Force-restart the system WallpaperAgent if the wallpaper is stuck or wrong.")
 
-            Button {
-                NSApplication.shared.terminate(nil)
-            } label: {
-                Image(systemName: "xmark")
+                Button {
+                    NSApplication.shared.terminate(nil)
+                } label: {
+                    utilityIcon("xmark")
+                }
+                .keyboardShortcut("q")
+                .help("Quit Phosphene")
             }
-            .buttonStyle(RoundIconButtonStyle())
-            .keyboardShortcut("q")
-            .help("Quit Phosphene")
+            .buttonStyle(.glass)
+            .controlSize(.large)
         }
+    }
+
+    /// A glyph for the bottom-bar utility buttons, pinned to a fixed square so both `.glass`
+    /// capsules come out the same size regardless of glyph proportions.
+    private func utilityIcon(_ name: String) -> some View {
+        Image(systemName: name)
+            .frame(width: 16, height: 16)
     }
 
     /// The version chip is the whole update UI: it announces an update (click installs),
@@ -380,8 +310,11 @@ struct MenuBarPopoverView: View {
                 updates.acknowledgeUpdate()
             } label: {
                 Label("v\(justUpdated)", systemImage: "checkmark")
+                    .font(.caption)
+                    .foregroundStyle(Theme.onAccent)
             }
-            .buttonStyle(ChipButtonStyle(prominent: true))
+            .buttonStyle(.glassProminent)
+            .controlSize(.small)
             .help("Updated to version \(justUpdated) — see what changed")
         } else if let available = manager.updateCheck.availableVersion ?? updates.pendingVersion {
             Button {
@@ -391,23 +324,31 @@ struct MenuBarPopoverView: View {
                 )
             } label: {
                 Label(available, systemImage: "arrow.down.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Theme.onAccent)
             }
-            .buttonStyle(ChipButtonStyle(prominent: true))
+            .buttonStyle(.glassProminent)
+            .controlSize(.small)
             .help("See what's new in version \(available)")
         } else {
             Button {
                 manager.autoUpdate.toggle()
             } label: {
-                if isHoveringVersion {
-                    HStack(spacing: 5) {
-                        MiniSwitchPip(isOn: manager.autoUpdate)
-                        Text("Auto")
+                Group {
+                    if isHoveringVersion {
+                        HStack(spacing: 5) {
+                            MiniSwitchPip(isOn: manager.autoUpdate)
+                            Text("Auto")
+                        }
+                    } else {
+                        Text(versionString)
                     }
-                } else {
-                    Text(versionString)
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-            .buttonStyle(ChipButtonStyle())
+            .buttonStyle(.glass)
+            .controlSize(.small)
             .onHover { isHoveringVersion = $0 }
             .help("Install updates automatically")
         }
@@ -416,6 +357,46 @@ struct MenuBarPopoverView: View {
     private var versionString: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
         return "v\(version)"
+    }
+}
+
+// MARK: - Playback scope
+
+/// The tri-state the popover's scope picker edits, projected over the two underlying flags.
+private enum PlaybackScope: CaseIterable {
+    case everywhere, lockScreen, paused
+
+    var title: String {
+        switch self {
+        case .everywhere: "Everywhere"
+        case .lockScreen: "Lock Screen"
+        case .paused: "Paused"
+        }
+    }
+}
+
+extension WallpaperPrefsService {
+    fileprivate var playbackScope: PlaybackScope {
+        get {
+            if userPaused { return .paused }
+            if alwaysPauseDesktop { return .lockScreen }
+            return .everywhere
+        }
+        set {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                switch newValue {
+                case .everywhere:
+                    userPaused = false
+                    alwaysPauseDesktop = false
+                case .lockScreen:
+                    alwaysPauseDesktop = true
+                    userPaused = false
+                case .paused:
+                    userPaused = true
+                    alwaysPauseDesktop = false
+                }
+            }
+        }
     }
 }
 
@@ -439,129 +420,37 @@ private struct MiniSwitchPip: View {
     }
 }
 
-/// A capsule chip: quiet fill, brightens on hover, accent-tinted when prominent.
-private struct ChipButtonStyle: ButtonStyle {
-    var prominent = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        ChipBody(configuration: configuration, prominent: prominent)
-    }
-
-    private struct ChipBody: View {
-        let configuration: Configuration
-        let prominent: Bool
-        @State private var isHovered = false
-
-        var body: some View {
-            configuration.label
-                .font(.system(size: 11, weight: prominent ? .semibold : .medium))
-                .labelStyle(ChipLabelStyle())
-                .foregroundStyle(prominent ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background {
-                    Capsule().fill(
-                        prominent
-                            ? AnyShapeStyle(Color.accentColor.opacity(isHovered ? 0.26 : 0.16))
-                            : AnyShapeStyle(isHovered ? .quaternary : .quinary),
-                    )
-                }
-                .contentShape(Capsule())
-                .opacity(configuration.isPressed ? 0.7 : 1)
-                .onHover { isHovered = $0 }
-        }
-    }
-
-    private struct ChipLabelStyle: LabelStyle {
-        func makeBody(configuration: Configuration) -> some View {
-            HStack(spacing: 4) {
-                configuration.icon.font(.system(size: 10, weight: .medium))
-                configuration.title
-            }
-        }
-    }
-}
-
-/// A circular icon button: quiet fill, brightens on hover.
-private struct RoundIconButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        RoundBody(configuration: configuration)
-    }
-
-    private struct RoundBody: View {
-        let configuration: Configuration
-        @State private var isHovered = false
-
-        var body: some View {
-            configuration.label
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
-                .background {
-                    Circle().fill(isHovered ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.quinary))
-                }
-                .contentShape(Circle())
-                .opacity(configuration.isPressed ? 0.7 : 1)
-                .onHover { isHovered = $0 }
-        }
-    }
-}
-
-/// A settings toggle as a tappable pill with a miniature switch.
+/// A settings toggle as a tappable glass pill with a miniature switch — accent-tinted glass
+/// when on, plain glass when off.
 private struct SettingPillToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
-        PillBody(configuration: configuration)
-    }
-
-    private struct PillBody: View {
-        let configuration: Configuration
-        @State private var isHovered = false
-
-        var body: some View {
-            Button {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                    configuration.isOn.toggle()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    pip
-                    configuration.label
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(configuration.isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                        .lineLimit(1)
-                        .fixedSize()
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 8)
-                .background {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(
-                        configuration.isOn
-                            ? AnyShapeStyle(Color.accentColor.opacity(isHovered ? 0.26 : 0.18))
-                            : AnyShapeStyle(isHovered ? .quaternary : .quinary),
-                    )
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        Button {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                configuration.isOn.toggle()
             }
-            .buttonStyle(.plain)
-            .onHover { isHovered = $0 }
+        } label: {
+            HStack(spacing: 6) {
+                MiniSwitchPip(isOn: configuration.isOn)
+                configuration.label
+                    .font(.caption)
+                    .foregroundStyle(configuration.isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                    .lineLimit(1)
+                    .fixedSize()
+                Spacer(minLength: 0)
+            }
+            .padding(Theme.Space.sm)
+            .contentShape(Theme.innerShape)
         }
-
-        private var pip: some View {
-            Capsule()
-                .fill(configuration.isOn ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
-                .frame(width: 20, height: 12)
-                .overlay(alignment: configuration.isOn ? .trailing : .leading) {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 8, height: 8)
-                        .padding(2)
-                }
-        }
+        .buttonStyle(.plain)
+        .glassEffect(
+            configuration.isOn ? .regular.tint(Color.accentColor.opacity(0.35)) : .regular,
+            in: Theme.innerShape,
+        )
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
 }
 
 #Preview {
     MenuBarPopoverView(manager: PhospheneManager())
-        .frame(width: 320)
 }
