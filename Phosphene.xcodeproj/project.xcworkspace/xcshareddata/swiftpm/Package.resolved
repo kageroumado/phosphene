@@ -1,5 +1,5 @@
 {
-  "originHash" : "cdc4aa2aa4cb5eab2955a774f8e779c8be99ae432fa3c092573fbc127df068db",
+  "originHash" : "432c697429efd5307b5240b180af5a4bd63757ede3e28821131f2e21639306a5",
   "pins" : [
     {
       "identity" : "appupdater",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "5898041575a7a8ed5d44e7d31251156b3d463677",
         "version" : "4.1.1"
+      }
+    },
+    {
+      "identity" : "propofol",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kageroumado/propofol.git",
+      "state" : {
+        "revision" : "6730464c9bd21eb79b17c8bb00709a4ed7eac4ce",
+        "version" : "0.1.0"
       }
     },
     {
