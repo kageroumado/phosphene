@@ -398,6 +398,31 @@ final class WallpaperPrefsService {
         var result = perSpacePerDisplay
         for sel in allSpaces where !coveredDisplays.contains(sel.displayUUID) {
             result.append(sel)
+            coveredDisplays.insert(sel.displayUUID)
+        }
+
+        // Fall back to the global "AllSpacesAndDisplays"/"SystemDefault" record for
+        // any display not already covered — this is where "Show on all Spaces"
+        // lands when no per-display or per-Space override exists. Previously these
+        // top-level keys weren't parsed at all, so a globally-set wallpaper never
+        // showed up as a selection.
+        let globalVideoID = (plist["AllSpacesAndDisplays"] as? [String: Any]).flatMap(extractOurVideoID)
+            ?? (plist["SystemDefault"] as? [String: Any]).flatMap(extractOurVideoID)
+        if let globalVideoID {
+            let entry = entries.first { $0.id == globalVideoID }
+            for (displayUUID, info) in displayMap where !coveredDisplays.contains(displayUUID) {
+                result.append(WallpaperSelection(
+                    id: displayUUID,
+                    videoID: globalVideoID,
+                    displayUUID: displayUUID,
+                    displayName: info.name,
+                    displayID: info.displayID,
+                    spaceUUID: nil,
+                    spaceName: nil,
+                    videoName: entry?.name,
+                    videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) },
+                ))
+            }
         }
 
         selections = result.sorted { $0.displayName < $1.displayName }
@@ -408,9 +433,13 @@ final class WallpaperPrefsService {
     /// records.
     private static func idleSelectionIsOurs(_ plist: [String: Any]) -> Bool {
         func idleIsOurs(_ dict: [String: Any]) -> Bool {
-            guard let idle = dict["Idle"] as? [String: Any],
-                  let content = idle["Content"] as? [String: Any],
-                  let choices = content["Choices"] as? [[String: Any]] else { return false }
+            // Type == "linked" means Idle mirrors Desktop under "Linked" — see
+            // extractOurVideoID.
+            let content = (dict["Idle"] as? [String: Any])?["Content"] as? [String: Any]
+                ?? ((dict["Type"] as? String) == "linked"
+                    ? (dict["Linked"] as? [String: Any])?["Content"] as? [String: Any]
+                    : nil)
+            guard let content, let choices = content["Choices"] as? [[String: Any]] else { return false }
             return choices.contains { ($0["Provider"] as? String) == extensionBundleID }
         }
         if let systemDefault = plist["SystemDefault"] as? [String: Any], idleIsOurs(systemDefault) {
@@ -434,9 +463,12 @@ final class WallpaperPrefsService {
     }
 
     private func extractOurVideoID(from dict: [String: Any]) -> String? {
-        guard let desktop = dict["Desktop"] as? [String: Any],
-              let content = desktop["Content"] as? [String: Any],
-              let choices = content["Choices"] as? [[String: Any]] else {
+        // macOS 26 collapses a record to "Linked" (Type == "linked") when the
+        // desktop and idle/screensaver choice are the same, instead of separate
+        // "Desktop"/"Idle" sub-records. Fall back to it when "Desktop" is absent.
+        let content = (dict["Desktop"] as? [String: Any])?["Content"] as? [String: Any]
+            ?? (dict["Linked"] as? [String: Any])?["Content"] as? [String: Any]
+        guard let content, let choices = content["Choices"] as? [[String: Any]] else {
             return nil
         }
         for choice in choices {
