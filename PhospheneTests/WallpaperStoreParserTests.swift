@@ -133,6 +133,20 @@ struct WallpaperStoreParserTests {
         #expect(result.first { $0.displayUUID == Self.displayB }?.videoID == "vid-global")
     }
 
+    /// A display the user deliberately set to another provider's wallpaper keeps
+    /// it — the global fallback fills only the displays with no record of their own,
+    /// so it must not repaint an explicit foreign choice as ours.
+    @Test func foreignPerDisplayRecordIsNotOverriddenByGlobalFallback() {
+        let plist: [String: Any] = [
+            "Displays": [Self.displayA: desktopRecord([choice(provider: Self.foreign, videoID: "sequoia")])],
+            "SystemDefault": desktopRecord([choice(provider: Self.ours, videoID: "vid-global")]),
+        ]
+        let result = parse(plist)
+        #expect(result.count == 1)
+        #expect(result.first?.displayUUID == Self.displayB)
+        #expect(result.first?.videoID == "vid-global")
+    }
+
     @Test func foreignGlobalRecordProducesNoSelections() {
         let plist: [String: Any] = ["SystemDefault": desktopRecord([choice(provider: Self.foreign, videoID: "sequoia")])]
         #expect(parse(plist).isEmpty)

@@ -41,13 +41,20 @@ enum WallpaperStoreParser {
     ) -> [ParsedSelection] {
         var allSpacesSelections: [ParsedSelection] = []
         var perSpaceSelections: [ParsedSelection] = []
+        var displaysWithOwnRecord = Set<String>()
 
         // Displays → {uuid} → Desktop → Content → Choices — one choice for every
         // Space on that display.
         if let displays = plist["Displays"] as? [String: Any] {
             for (displayUUID, value) in displays {
-                guard let display = value as? [String: Any],
-                      let videoID = videoID(in: display, provider: provider),
+                guard let display = value as? [String: Any] else { continue }
+                // A display with its own all-Spaces desktop record — even one owned
+                // by another provider — has been deliberately set, so the global
+                // fallback below must not claim it.
+                if desktopChoices(in: display) != nil {
+                    displaysWithOwnRecord.insert(displayUUID)
+                }
+                guard let videoID = videoID(in: display, provider: provider),
                       let info = displayMap[displayUUID] else { continue }
                 allSpacesSelections.append(ParsedSelection(
                     id: displayUUID,
@@ -99,7 +106,8 @@ enum WallpaperStoreParser {
         let globalVideoID = (plist["AllSpacesAndDisplays"] as? [String: Any]).flatMap { videoID(in: $0, provider: provider) }
             ?? (plist["SystemDefault"] as? [String: Any]).flatMap { videoID(in: $0, provider: provider) }
         if let globalVideoID {
-            for (displayUUID, info) in displayMap where !coveredDisplays.contains(displayUUID) {
+            for (displayUUID, info) in displayMap
+                where !coveredDisplays.contains(displayUUID) && !displaysWithOwnRecord.contains(displayUUID) {
                 result.append(ParsedSelection(
                     id: displayUUID,
                     videoID: globalVideoID,
