@@ -324,163 +324,35 @@ final class WallpaperPrefsService {
             return
         }
 
-        screenSaverIsOurs = Self.idleSelectionIsOurs(plist)
+        screenSaverIsOurs = WallpaperStoreParser.idleSelectionIsOurs(plist, provider: Self.extensionBundleID)
 
-        let displayMap = resolveDisplayMap()
-        let spaceMap = resolveSpaceMap()
+        let displayMap = resolveDisplayMap().mapValues {
+            WallpaperStoreParser.DisplayInfo(displayID: $0.displayID, name: $0.name)
+        }
         let entries = VideoDeploymentService.listEntries()
-        var newSelections: [WallpaperSelection] = []
+        let parsed = WallpaperStoreParser.parseSelections(
+            plist: plist,
+            displayMap: displayMap,
+            spaceMap: resolveSpaceMap(),
+            provider: Self.extensionBundleID,
+        )
 
-        // Check Displays → {uuid} → Desktop → Content → Choices (all-spaces)
-        if let displays = plist["Displays"] as? [String: Any] {
-            for (displayUUID, value) in displays {
-                guard let display = value as? [String: Any] else { continue }
-                guard let videoID = extractOurVideoID(from: display) else { continue }
-                guard let info = displayMap[displayUUID] else { continue }
-                let entry = entries.first { $0.id == videoID }
-                newSelections.append(WallpaperSelection(
-                    id: displayUUID,
-                    videoID: videoID,
-                    displayUUID: displayUUID,
-                    displayName: info.name,
-                    displayID: info.displayID,
-                    spaceUUID: nil,
-                    spaceName: nil,
-                    videoName: entry?.name,
-                    videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) },
-                ))
-            }
+        // Layer the library video's display name and on-disk URL onto each parsed
+        // selection; the parser resolves everything the store itself knows.
+        selections = parsed.map { sel in
+            let entry = entries.first { $0.id == sel.videoID }
+            return WallpaperSelection(
+                id: sel.id,
+                videoID: sel.videoID,
+                displayUUID: sel.displayUUID,
+                displayName: sel.displayName,
+                displayID: sel.displayID,
+                spaceUUID: sel.spaceUUID,
+                spaceName: sel.spaceName,
+                videoName: entry?.name,
+                videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) },
+            )
         }
-
-        // Check Spaces → {spaceUUID} → Displays → {displayUUID} → Desktop → ...
-        if let spaces = plist["Spaces"] as? [String: Any] {
-            for (spaceUUID, spaceValue) in spaces {
-                guard let space = spaceValue as? [String: Any] else { continue }
-                let spaceName = spaceMap[spaceUUID]
-
-                if let perDisplays = space["Displays"] as? [String: Any] {
-                    for (displayUUID, displayValue) in perDisplays {
-                        guard let display = displayValue as? [String: Any] else { continue }
-                        guard let videoID = extractOurVideoID(from: display) else { continue }
-                        guard let info = displayMap[displayUUID] else { continue }
-                        guard spaceName != nil else { continue }
-                        let entry = entries.first { $0.id == videoID }
-                        newSelections.append(WallpaperSelection(
-                            id: "\(displayUUID):\(spaceUUID)",
-                            videoID: videoID,
-                            displayUUID: displayUUID,
-                            displayName: info.name,
-                            displayID: info.displayID,
-                            spaceUUID: spaceUUID,
-                            spaceName: spaceName,
-                            videoName: entry?.name,
-                            videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) },
-                        ))
-                    }
-                }
-            }
-        }
-
-        // Deduplicate: per-space-per-display wins over all-spaces for the same display
-        var coveredDisplays = Set<String>()
-        var perSpacePerDisplay: [WallpaperSelection] = []
-        var allSpaces: [WallpaperSelection] = []
-
-        for sel in newSelections {
-            if sel.spaceUUID != nil {
-                perSpacePerDisplay.append(sel)
-                coveredDisplays.insert(sel.displayUUID)
-            } else {
-                allSpaces.append(sel)
-            }
-        }
-
-        var result = perSpacePerDisplay
-        for sel in allSpaces where !coveredDisplays.contains(sel.displayUUID) {
-            result.append(sel)
-            coveredDisplays.insert(sel.displayUUID)
-        }
-
-        // Fall back to the global "AllSpacesAndDisplays"/"SystemDefault" record for
-        // any display not already covered — this is where "Show on all Spaces"
-        // lands when no per-display or per-Space override exists. Previously these
-        // top-level keys weren't parsed at all, so a globally-set wallpaper never
-        // showed up as a selection.
-        let globalVideoID = (plist["AllSpacesAndDisplays"] as? [String: Any]).flatMap(extractOurVideoID)
-            ?? (plist["SystemDefault"] as? [String: Any]).flatMap(extractOurVideoID)
-        if let globalVideoID {
-            let entry = entries.first { $0.id == globalVideoID }
-            for (displayUUID, info) in displayMap where !coveredDisplays.contains(displayUUID) {
-                result.append(WallpaperSelection(
-                    id: displayUUID,
-                    videoID: globalVideoID,
-                    displayUUID: displayUUID,
-                    displayName: info.name,
-                    displayID: info.displayID,
-                    spaceUUID: nil,
-                    spaceName: nil,
-                    videoName: entry?.name,
-                    videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) },
-                ))
-            }
-        }
-
-        selections = result.sorted { $0.displayName < $1.displayName }
-    }
-
-    /// Whether any Idle (screensaver) selection in the store belongs to Phosphene —
-    /// checks the SystemDefault, per-display, per-Space, and per-Space-per-display
-    /// records.
-    private static func idleSelectionIsOurs(_ plist: [String: Any]) -> Bool {
-        func idleIsOurs(_ dict: [String: Any]) -> Bool {
-            // Type == "linked" means Idle mirrors Desktop under "Linked" — see
-            // extractOurVideoID.
-            let content = (dict["Idle"] as? [String: Any])?["Content"] as? [String: Any]
-                ?? ((dict["Type"] as? String) == "linked"
-                    ? (dict["Linked"] as? [String: Any])?["Content"] as? [String: Any]
-                    : nil)
-            guard let content, let choices = content["Choices"] as? [[String: Any]] else { return false }
-            return choices.contains { ($0["Provider"] as? String) == extensionBundleID }
-        }
-        if let systemDefault = plist["SystemDefault"] as? [String: Any], idleIsOurs(systemDefault) {
-            return true
-        }
-        if let displays = plist["Displays"] as? [String: Any] {
-            for value in displays.values {
-                if let display = value as? [String: Any], idleIsOurs(display) { return true }
-            }
-        }
-        if let spaces = plist["Spaces"] as? [String: Any] {
-            for spaceValue in spaces.values {
-                guard let space = spaceValue as? [String: Any] else { continue }
-                if idleIsOurs(space) { return true }
-                for displayValue in (space["Displays"] as? [String: Any])?.values ?? [String: Any]().values {
-                    if let display = displayValue as? [String: Any], idleIsOurs(display) { return true }
-                }
-            }
-        }
-        return false
-    }
-
-    private func extractOurVideoID(from dict: [String: Any]) -> String? {
-        // macOS 26 collapses a record to "Linked" (Type == "linked") when the
-        // desktop and idle/screensaver choice are the same, instead of separate
-        // "Desktop"/"Idle" sub-records. Fall back to it when "Desktop" is absent.
-        let content = (dict["Desktop"] as? [String: Any])?["Content"] as? [String: Any]
-            ?? (dict["Linked"] as? [String: Any])?["Content"] as? [String: Any]
-        guard let content, let choices = content["Choices"] as? [[String: Any]] else {
-            return nil
-        }
-        for choice in choices {
-            guard (choice["Provider"] as? String) == Self.extensionBundleID else { continue }
-            if let config = choice["Configuration"] as? Data, !config.isEmpty {
-                return String(data: config, encoding: .utf8)
-            }
-            if let config = choice["Configuration"] as? String, !config.isEmpty {
-                return config
-            }
-        }
-        return nil
     }
 
     // MARK: - Display Resolution
