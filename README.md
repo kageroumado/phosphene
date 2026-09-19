@@ -8,7 +8,7 @@
 
 [![kagerou.glass](https://img.shields.io/badge/kagerou.glass-ff5fa6?style=for-the-badge&logo=safari&logoColor=white)](https://kagerou.glass/phosphene/)
 [![@kageroumado](https://img.shields.io/badge/@kageroumado-76e6e0?style=for-the-badge&logo=x&logoColor=0d0a10)](https://x.com/kageroumado)
-[![macOS Tahoe](https://img.shields.io/badge/macOS-Tahoe_26%2B-0d0a10?style=for-the-badge&logo=apple&logoColor=white)](#requirements)
+[![macOS 26+](https://img.shields.io/badge/macOS-26%2B-0d0a10?style=for-the-badge&logo=apple&logoColor=white)](#requirements)
 
 <table>
   <tr>
@@ -23,7 +23,7 @@ macOS doesn't let you use your own videos as wallpaper. The desktop only takes s
 
 There's no floating window pretending to be a wallpaper. Phosphene plugs into Apple's private `WallpaperExtensionKit` framework — the same wallpaper pipeline Apple's own Aerials use — which means playback runs out-of-process, survives app quits, works on the real lock screen, and integrates with the OS-level lock / idle / sleep lifecycle.
 
-> ⚠️ **Private framework.** Phosphene loads `WallpaperExtensionKit` via `dlopen` and uses Mirror-based runtime introspection to talk to its XPC types. Apple could change this at any major OS release. Validated on macOS 26 (Tahoe) and macOS 27 (beta).
+> ⚠️ **Private framework.** Phosphene loads `WallpaperExtensionKit` via `dlopen` and uses Mirror-based runtime introspection to talk to its XPC types. Apple could change this at any major OS release. Validated on macOS 26 and 27.
 
 ## Features
 
@@ -38,7 +38,7 @@ There's no floating window pretending to be a wallpaper. Phosphene plugs into Ap
 
 ## Requirements
 
-- **macOS Tahoe (26.0+).** Phosphene depends on the Wallpaper extension point introduced in macOS 14 but uses Tahoe-only SwiftUI and `glassEffect()` APIs. Tested on macOS 26 and macOS 27 (beta).
+- **macOS 26.0+.** Phosphene depends on the Wallpaper extension point introduced in macOS 14 but uses SwiftUI and `glassEffect()` APIs introduced in macOS 26. Tested on macOS 26 and 27.
 - **Apple Silicon or Intel.** Releases ship as a universal binary (`arm64` + `x86_64`).
 - **Xcode 17+** to build, with Swift 6 strict concurrency enabled.
 
