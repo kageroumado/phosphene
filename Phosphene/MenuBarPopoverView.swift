@@ -8,12 +8,20 @@ struct MenuBarPopoverView: View {
     @State private var selectedIndex = 0
     @State private var isHoveringVersion = false
 
+    private enum Layout {
+        /// Tighter than `Theme.Space.sm`: the footer must still fit the popover's width while
+        /// the version chip is widened into its Auto-Update switch.
+        static let footerSpacing: CGFloat = 6
+    }
+
     private var prefsService: WallpaperPrefsService {
         manager.prefsService
     }
 
     var body: some View {
-        GlassEffectContainer(spacing: Theme.Space.md) {
+        // Zero blend distance: the footer's controls sit closer together than any nonzero
+        // spacing would allow before their glass starts pooling into one shape.
+        GlassEffectContainer(spacing: 0) {
             VStack(spacing: Theme.Space.md) {
                 PopoverHeader("Phosphene")
 
@@ -27,7 +35,7 @@ struct MenuBarPopoverView: View {
                 settingsSection
                 footerSection
             }
-            .padding(Theme.Space.lg)
+            .popoverContainer()
         }
         .frame(width: Theme.popoverWidth)
         .fixedSize(horizontal: false, vertical: true)
@@ -61,7 +69,7 @@ struct MenuBarPopoverView: View {
             }
         }
         .overlay(alignment: .bottom) { heroScrim }
-        .clipShape(Theme.cardShape)
+        .clipShape(Theme.concentricCardShape)
     }
 
     @ViewBuilder
@@ -233,7 +241,7 @@ struct MenuBarPopoverView: View {
     // MARK: - Footer
 
     private var footerSection: some View {
-        HStack(spacing: Theme.Space.sm) {
+        HStack(spacing: Layout.footerSpacing) {
             switch SilentUpdates.shared.manualPhase {
             case .working:
                 HStack(spacing: 6) {
@@ -249,11 +257,9 @@ struct MenuBarPopoverView: View {
                     SilentUpdates.shared.dismissFailure()
                 } label: {
                     Label("Update failed", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
                         .foregroundStyle(Theme.onAccent)
                 }
-                .buttonStyle(.glassProminent)
-                .controlSize(.small)
+                .buttonStyle(.footerChipProminent)
                 .help(message)
             case .idle:
                 updateChip
@@ -270,32 +276,17 @@ struct MenuBarPopoverView: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: Theme.Space.sm) {
-                Button {
-                    WallpaperPrefsService.shared.restartWallpaperAgent()
-                } label: {
-                    utilityIcon("arrow.clockwise")
-                }
-                .help("Force-restart the system WallpaperAgent if the wallpaper is stuck or wrong.")
-
-                Button {
-                    NSApplication.shared.terminate(nil)
-                } label: {
-                    utilityIcon("xmark")
-                }
-                .keyboardShortcut("q")
-                .help("Quit Phosphene")
+            FooterIconButton("Restart Wallpaper Agent", systemImage: "arrow.clockwise") {
+                WallpaperPrefsService.shared.restartWallpaperAgent()
             }
-            .buttonStyle(.glass)
-            .controlSize(.large)
-        }
-    }
+            .help("Force-restart the system WallpaperAgent if the wallpaper is stuck or wrong.")
 
-    /// A glyph for the bottom-bar utility buttons, pinned to a fixed square so both `.glass`
-    /// capsules come out the same size regardless of glyph proportions.
-    private func utilityIcon(_ name: String) -> some View {
-        Image(systemName: name)
-            .frame(width: 16, height: 16)
+            FooterIconButton("Quit Phosphene", systemImage: "xmark") {
+                NSApplication.shared.terminate(nil)
+            }
+            .keyboardShortcut("q")
+            .help("Quit Phosphene")
+        }
     }
 
     /// The version chip is the whole update UI: it announces an update (click installs),
@@ -310,11 +301,9 @@ struct MenuBarPopoverView: View {
                 updates.acknowledgeUpdate()
             } label: {
                 Label("v\(justUpdated)", systemImage: "checkmark")
-                    .font(.caption)
                     .foregroundStyle(Theme.onAccent)
             }
-            .buttonStyle(.glassProminent)
-            .controlSize(.small)
+            .buttonStyle(.footerChipProminent)
             .help("Updated to version \(justUpdated) — see what changed")
         } else if let available = manager.updateCheck.availableVersion ?? updates.pendingVersion {
             Button {
@@ -324,11 +313,9 @@ struct MenuBarPopoverView: View {
                 )
             } label: {
                 Label(available, systemImage: "arrow.down.circle.fill")
-                    .font(.caption)
                     .foregroundStyle(Theme.onAccent)
             }
-            .buttonStyle(.glassProminent)
-            .controlSize(.small)
+            .buttonStyle(.footerChipProminent)
             .help("See what's new in version \(available)")
         } else {
             Button {
@@ -344,11 +331,9 @@ struct MenuBarPopoverView: View {
                         Text(versionString)
                     }
                 }
-                .font(.caption)
                 .foregroundStyle(.secondary)
             }
-            .buttonStyle(.glass)
-            .controlSize(.small)
+            .buttonStyle(.footerChip)
             .onHover { isHoveringVersion = $0 }
             .help("Install updates automatically")
         }
@@ -439,12 +424,12 @@ private struct SettingPillToggleStyle: ToggleStyle {
                 Spacer(minLength: 0)
             }
             .padding(Theme.Space.sm)
-            .contentShape(Theme.innerShape)
+            .contentShape(Theme.concentricInnerShape)
         }
         .buttonStyle(.plain)
         .glassEffect(
             configuration.isOn ? .regular.tint(Color.accentColor.opacity(0.35)) : .regular,
-            in: Theme.innerShape,
+            in: Theme.concentricInnerShape,
         )
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? "On" : "Off")

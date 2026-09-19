@@ -127,27 +127,12 @@ struct VideoInspectorView: View {
     }
 
     private var playOverlay: some View {
-        let showOverlay = isHoveringPreview || !isPlaying
-        return Button {
-            togglePlayback()
-        } label: {
-            ZStack {
-                Circle()
-                    .frame(width: 44, height: 44)
-                    .glassEffect(.clear)
-
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-        }
-        .buttonStyle(.plain)
-        .opacity(showOverlay ? 1 : 0)
-        .scaleEffect(showOverlay ? 1 : 0.8)
-        .allowsHitTesting(showOverlay)
-        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: showOverlay)
-        .animation(.default, value: isPlaying)
+        PlayOverlayButton(
+            isPaused: !isPlaying,
+            isVisible: isHoveringPreview || !isPlaying,
+            diameter: 44,
+            action: togglePlayback,
+        )
     }
 
     private func togglePlayback() {

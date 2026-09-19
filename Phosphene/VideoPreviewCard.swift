@@ -14,6 +14,10 @@ struct VideoPreviewCard: View {
     @State private var isHovering = false
     @State private var thumbnail: NSImage?
 
+    private enum Layout {
+        static let playButtonDiameter: CGFloat = 56
+    }
+
     private var prefsService: WallpaperPrefsService {
         .shared
     }
@@ -60,11 +64,12 @@ struct VideoPreviewCard: View {
 
     // MARK: - Play Overlay
 
-    /// Always resident in the hierarchy — visibility is opacity-only, so state flips
-    /// (scope changes, hover) cross-fade instead of removing and reinserting the button,
-    /// which drops a frame and restarts the transition from nothing.
     private var playOverlay: some View {
-        Button(action: {
+        PlayOverlayButton(
+            isPaused: isEffectivelyPaused,
+            isVisible: shouldShowOverlay,
+            diameter: Layout.playButtonDiameter,
+        ) {
             // A global user pause (the popover's "Paused" scope) outranks per-display
             // pause, so while it is set the play button resumes globally — toggling a
             // display underneath it would visibly do nothing.
@@ -75,24 +80,7 @@ struct VideoPreviewCard: View {
             } else {
                 prefsService.togglePause()
             }
-        }) {
-            ZStack {
-                Circle()
-                    .frame(width: 56, height: 56)
-                    .glassEffect(.clear)
-
-                Image(systemName: isEffectivelyPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.symbolEffect(.replace))
-            }
         }
-        .buttonStyle(.plain)
-        .opacity(shouldShowOverlay ? 1 : 0)
-        .scaleEffect(shouldShowOverlay ? 1 : 0.8)
-        .allowsHitTesting(shouldShowOverlay)
-        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: shouldShowOverlay)
-        .animation(.default, value: isEffectivelyPaused)
     }
 
     /// This card's display is invisible behind windows (its own display covered,

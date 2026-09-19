@@ -1,6 +1,7 @@
 #if DEBUG
 
     import AppKit
+    import Propofol
     import SwiftUI
 
     /// A chrome-less stage for capturing clean menu-bar popover screenshots.
@@ -8,7 +9,7 @@
     /// The real `MenuBarExtra` popover is useless for marketing captures: its window material
     /// samples whatever is behind the menu bar (muddy grays), and `screencapture` grabs that
     /// vibrancy rather than a crisp panel. This stage shows the same `MenuBarPopoverView`, bound
-    /// to the same live manager, on an opaque window background with rounded alpha corners and no
+    /// to the same live manager, on an opaque violet-wash backdrop with rounded alpha corners and no
     /// shadow — one window forced light, one forced dark, so both README variants come from a
     /// single run.
     ///
@@ -19,6 +20,8 @@
     ///
     /// Present by launching with `-PHOSPHENE_GALLERY 1`. Capture each window with
     /// `screencapture -l <window id> -o out.png` (find the id by window title via CGWindowList).
+    /// Tinted glass takes its color only in the key window, so launch once per shot with
+    /// `-PHOSPHENE_GALLERY_KEY light`, `dark`, or `library` (the default) and capture that window.
     @MainActor
     enum ScreenshotGallery {
         private static var windows: [NSWindow] = []
@@ -44,8 +47,14 @@
 
             windows = [library, light, dark]
             windows.forEach { $0.orderFront(nil) }
-            // Make the library window key last so its traffic lights render active in the capture.
-            library.makeKeyAndOrderFront(nil)
+            // Only the key window renders active: traffic lights for the library, accent-tinted
+            // glass for the popover stages. Each capture is taken with its own window key.
+            let keyWindow = switch UserDefaults.standard.string(forKey: "PHOSPHENE_GALLERY_KEY") {
+            case "light": light
+            case "dark": dark
+            default: library
+            }
+            keyWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
 
@@ -125,18 +134,37 @@
         @Bindable var manager: PhospheneManager
         let dark: Bool
 
-        private static let cornerRadius: CGFloat = 12
-
         var body: some View {
             MenuBarPopoverView(manager: manager)
-                .background(Color(nsColor: .windowBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+                .background { backdrop }
+                .clipShape(Theme.popoverShape)
                 .overlay {
-                    RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+                    Theme.popoverShape
                         .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
                 }
                 .padding(1)
                 .environment(\.colorScheme, dark ? .dark : .light)
+        }
+
+        /// Stands in for the popover's window material: a faint violet wash, lighter at the top
+        /// where the menu bar would be, so the glass controls have something to refract.
+        private var backdrop: some View {
+            LinearGradient(
+                colors: dark ? Backdrop.dark : Backdrop.light,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing,
+            )
+        }
+
+        private enum Backdrop {
+            static let light = [
+                Color(.sRGB, red: 0.99, green: 0.98, blue: 1.00, opacity: 1),
+                Color(.sRGB, red: 0.93, green: 0.91, blue: 0.98, opacity: 1),
+            ]
+            static let dark = [
+                Color(.sRGB, red: 0.17, green: 0.15, blue: 0.22, opacity: 1),
+                Color(.sRGB, red: 0.10, green: 0.09, blue: 0.14, opacity: 1),
+            ]
         }
     }
 
