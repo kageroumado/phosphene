@@ -9,9 +9,8 @@
     /// The real `MenuBarExtra` popover is useless for marketing captures: its window material
     /// samples whatever is behind the menu bar (muddy grays), and `screencapture` grabs that
     /// vibrancy rather than a crisp panel. This stage shows the same `MenuBarPopoverView`, bound
-    /// to the same live manager, on an opaque violet-wash backdrop with rounded alpha corners and no
-    /// shadow — one window forced light, one forced dark, so both README variants come from a
-    /// single run.
+    /// to the same live manager, in Propofol's `PopoverStageWindow` — one window forced light,
+    /// one forced dark.
     ///
     /// Because `selections` is derived from the *system* wallpaper store, the popover shows its
     /// empty state on any Mac where Phosphene isn't the active wallpaper. So the stage fabricates
@@ -109,62 +108,9 @@
         // MARK: - Stage window
 
         private static func makeStage(manager: PhospheneManager, dark: Bool, title: String) -> NSWindow {
-            let hosting = NSHostingController(rootView: StageView(manager: manager, dark: dark))
-            let window = KeyableBorderlessWindow(contentViewController: hosting)
-            window.styleMask = [.borderless]
-            window.title = title
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            window.hasShadow = false
-            window.isMovableByWindowBackground = true
-            window.isReleasedWhenClosed = false
-            window.level = .floating
-            window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            return window
-        }
-    }
-
-    /// Borderless windows refuse key status by default, which would make the popover's controls
-    /// (toggles, buttons) unclickable while staging.
-    private final class KeyableBorderlessWindow: NSWindow {
-        override var canBecomeKey: Bool { true }
-    }
-
-    private struct StageView: View {
-        @Bindable var manager: PhospheneManager
-        let dark: Bool
-
-        var body: some View {
-            MenuBarPopoverView(manager: manager)
-                .background { backdrop }
-                .clipShape(Theme.popoverShape)
-                .overlay {
-                    Theme.popoverShape
-                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-                }
-                .padding(1)
-                .environment(\.colorScheme, dark ? .dark : .light)
-        }
-
-        /// Stands in for the popover's window material: a faint violet wash, lighter at the top
-        /// where the menu bar would be, so the glass controls have something to refract.
-        private var backdrop: some View {
-            LinearGradient(
-                colors: dark ? Backdrop.dark : Backdrop.light,
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing,
-            )
-        }
-
-        private enum Backdrop {
-            static let light = [
-                Color(.sRGB, red: 0.99, green: 0.98, blue: 1.00, opacity: 1),
-                Color(.sRGB, red: 0.93, green: 0.91, blue: 0.98, opacity: 1),
-            ]
-            static let dark = [
-                Color(.sRGB, red: 0.17, green: 0.15, blue: 0.22, opacity: 1),
-                Color(.sRGB, red: 0.10, green: 0.09, blue: 0.14, opacity: 1),
-            ]
+            PopoverStageWindow(title: title, dark: dark) {
+                MenuBarPopoverView(manager: manager)
+            }
         }
     }
 

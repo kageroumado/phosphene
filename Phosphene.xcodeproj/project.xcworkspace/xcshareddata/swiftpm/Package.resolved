@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/kageroumado/propofol.git",
       "state" : {
-        "revision" : "de2043091ac3b1a73b8ff3d32eac39bc349afe32",
-        "version" : "0.2.0"
+        "revision" : "eac9055ca7373fa94aa5b9b501f3a83b3dc1ef80",
+        "version" : "0.2.1"
       }
     },
     {
