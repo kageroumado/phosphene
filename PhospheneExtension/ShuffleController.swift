@@ -66,16 +66,20 @@ final class ShuffleController: @unchecked Sendable {
             let wasActive = state.active
             let oldFrequency = state.frequency
             // A non-shuffle acquire does not deactivate by itself — another display
-            // may still be on shuffle. Deactivation happens when no shuffle context
+            // may still be on shuffle. Deactivation happens when no shuffle surface
             // remains (checked below).
-            if isShuffle { state.active = true }
-            if let frequency { state.frequency = frequency }
+            if isShuffle {
+                state.active = true
+            }
+            if let frequency {
+                state.frequency = frequency
+            }
             return (isShuffle && !wasActive, state.frequency != oldFrequency)
         }
         if !isShuffle {
-            // The acquire updates its context's videoID after this call returns —
-            // check for remaining shuffle contexts once that has settled.
-            queue.asyncAfter(deadline: .now() + 1.0) { [self] in syncActiveWithContexts() }
+            // The acquire records its surface's choice after this call returns;
+            // check for remaining shuffle surfaces once that has settled.
+            queue.asyncAfter(deadline: .now() + 1.0) { [self] in syncActiveWithSurfaces() }
             return
         }
         if becameActive || frequencyChanged {
@@ -112,20 +116,17 @@ final class ShuffleController: @unchecked Sendable {
         }
     }
 
-    /// Deactivate when no acquired context carries the shuffle choice anymore
-    /// (the user picked a specific video, or all shuffle surfaces were torn down).
-    func syncActiveWithContexts() {
-        let stillShuffling = WallpaperState.shared.hasContext(forVideoID: shuffleChoiceID)
+    /// Deactivate when no surface shows the shuffle choice anymore (the user picked a
+    /// specific video, or every shuffle surface was torn down).
+    func syncActiveWithSurfaces() {
+        let stillShuffling = SurfaceRegistry.shared.hasSurface(showing: shuffleChoiceID)
         let deactivated = lock.withLock { state in
             let was = state.active
             state.active = stillShuffling
             return was && !stillShuffling
         }
         if deactivated {
-            let inventory = WallpaperState.shared.activeDisplayContexts()
-                .map { "display \($0.displayID): \($0.videoID ?? "nil")" }
-                .joined(separator: ", ")
-            extensionLog("[Shuffle] no shuffle contexts remain — deactivated (contexts: [\(inventory)])")
+            extensionLog("[Shuffle] no shuffle surfaces remain — deactivated")
             queue.async { [self] in stopTimer() }
         }
     }
@@ -143,7 +144,9 @@ final class ShuffleController: @unchecked Sendable {
             case .onLogin:
                 return (false, "")
             default:
-                if state.pendingAdvance { return (true, "pending tick") }
+                if state.pendingAdvance {
+                    return (true, "pending tick")
+                }
                 if let interval = state.frequency.interval,
                    let last = state.lastAdvance,
                    Date().timeIntervalSince(last) > interval {
@@ -170,7 +173,9 @@ final class ShuffleController: @unchecked Sendable {
     private func currentOrNewPick() -> String? {
         let existing = lock.withLock(\.pick)
         let library = VideoLibrary.shared.entries.map(\.id)
-        if let existing, library.contains(existing) { return existing }
+        if let existing, library.contains(existing) {
+            return existing
+        }
         guard let fresh = library.randomElement() else { return nil }
         setPick(fresh)
         return fresh
@@ -207,7 +212,7 @@ final class ShuffleController: @unchecked Sendable {
         guard isActive else { return }
         // Switching while nothing is visible would fight the paused policy and waste
         // a decode; defer to the next wake instead.
-        if WallpaperState.shared.isDisplayAsleep {
+        if PlaybackStore.snapshot.displaysAsleep {
             lock.withLock { $0.pendingAdvance = true }
             traceLog("[Shuffle] tick deferred — display asleep")
             return
@@ -215,8 +220,8 @@ final class ShuffleController: @unchecked Sendable {
         advance(reason: "timer")
     }
 
-    /// Pick the next video and retarget every live renderer that sits on a shuffle
-    /// context. Runs on `queue`.
+    /// Pick the next video and retarget every live renderer on a shuffle surface. The
+    /// renderers keep their pause state across the switch. Runs on `queue`.
     private func advance(reason: String) {
         lock.withLock { $0.pendingAdvance = false }
         let library = VideoLibrary.shared.entries.map(\.id)
@@ -236,18 +241,11 @@ final class ShuffleController: @unchecked Sendable {
         }
         setPick(next)
 
-        let renderers = WallpaperState.shared.renderers(forVideoID: shuffleChoiceID)
+        let renderers = SurfaceRegistry.shared.renderers(showing: shuffleChoiceID)
         for renderer in renderers {
-            renderer.variantSelector = makeVariantSelector(choice: next, fallback: url)
-            renderer.switchVideo(to: url)
+            renderer.switchVideo(to: url, selector: makeVariantSelector(choice: next, fallback: url))
         }
-        // switchVideo restarts the pipeline running; immediately re-assert the
-        // current policy so a paused surface (alwaysPauseDesktop, occlusion, …)
-        // pauses again instead of playing through.
-        PhospheneExtension.recomputeAndApplyPolicy()
-
-        WallpaperState.shared.currentVideoID = next
-        WallpaperPrefs.shared.updateCurrentVideo()
+        PlaybackStore.post(.shufflePicked(next))
         extensionLog("[Shuffle] advanced to \(next) on \(renderers.count) renderer(s) (\(reason))")
     }
 }

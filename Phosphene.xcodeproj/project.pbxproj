@@ -50,6 +50,7 @@
 		7E5700000000000000000AA1 /* Exceptions for "PhospheneExtension" folder in "PhospheneTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				PlaybackModel.swift,
 				PlaybackPolicy.swift,
 				RampMath.swift,
 				VariantSelection.swift,

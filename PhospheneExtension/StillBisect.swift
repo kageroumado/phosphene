@@ -12,7 +12,7 @@ enum Bisect {
     }
 
     /// One still-hosting layer per display. Touched ONLY on `Lifecycle.queue`.
-    nonisolated(unsafe) static var stillLayers: [DisplayKey: AVSampleBufferDisplayLayer] = [:]
+    nonisolated(unsafe) static var stillLayers: [SurfaceKey: AVSampleBufferDisplayLayer] = [:]
 }
 
 /// Put a single still frame on the display's root layer (creating/reusing one AVSBDL per
@@ -20,7 +20,7 @@ enum Bisect {
 /// video frame — either way IOSurface-backed so it composites in the Agent's CALayerHost
 /// (a plain `CALayer.contents` does not). Tagged `DisplayImmediately` so a switch replaces
 /// the prior still with no flush. Must run on `Lifecycle.queue`.
-func bisectShowStill(videoURL: URL?, cachedStill: CGImage?, rootLayer: CALayer, for key: DisplayKey) {
+func bisectShowStill(videoURL: URL?, cachedStill: CGImage?, rootLayer: CALayer, for key: SurfaceKey) {
     let layer: AVSampleBufferDisplayLayer
     if let existing = Bisect.stillLayers[key] {
         layer = existing

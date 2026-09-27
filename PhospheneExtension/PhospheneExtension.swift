@@ -23,19 +23,16 @@ final class PhospheneExtension: NSObject, AppExtension {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 Task { await SettingsPush.push() }
             }
-            observeDisplaySleepWake()
-            observeScreenLockState()
-            WallpaperPrefs.shared.observeChanges()
+            SystemEvents.start()
+            PrefsSource.start()
             PowerMonitor.shared.startMonitoring()
-            Task {
-                for await powerState in PowerMonitor.shared.stateChanges() {
-                    let state = WallpaperState.shared
-                    WallpaperPrefs.shared.applyPolicies(
-                        presentationMode: state.presentationMode,
-                        activityState: state.activityState,
-                        powerState: powerState,
-                    )
+            Task(name: "Power events") {
+                for await power in PowerMonitor.shared.stateChanges() {
+                    PlaybackStore.post(.powerChanged(power))
                 }
+            }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { PlaybackStore.shared.startPublishing() }
             }
         } else {
             let err = String(cString: dlerror())
@@ -63,80 +60,6 @@ final class PhospheneExtension: NSObject, AppExtension {
         } else {
             extensionLog("  [SelfCheck] UNSUPPORTED RUNTIME — missing: \(missing.joined(separator: ", ")). Rendering/snapshots may be degraded.")
         }
-    }
-
-    /// Observe display sleep/wake to stop rendering when no display is awake
-    /// and resume on wake with correct policy.
-    private func observeDisplaySleepWake() {
-        let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(
-            forName: NSWorkspace.screensDidSleepNotification,
-            object: nil, queue: .main,
-        ) { _ in
-            WallpaperState.shared.isDisplayAsleep = true
-            WallpaperState.shared.forEachRenderer { renderer in
-                renderer.applyPolicy(.paused)
-            }
-            extensionLog("[Extension] Displays asleep — paused all renderers")
-        }
-        center.addObserver(
-            forName: NSWorkspace.screensDidWakeNotification,
-            object: nil, queue: .main,
-        ) { _ in
-            WallpaperState.shared.isDisplayAsleep = false
-            Self.recomputeAndApplyPolicy()
-            ShuffleController.shared.noteWake()
-            extensionLog("[Extension] Displays awake — recomputed policy (locked: \(WallpaperState.shared.isScreenLocked))")
-
-            // Recompute again after a short delay to catch any pending
-            // WallpaperAgent presentation mode updates that arrive after wake.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                Self.recomputeAndApplyPolicy()
-            }
-        }
-    }
-
-    /// Track screen lock state via distributed notifications from loginwindow.
-    /// This lets us know the lock screen is showing even before the WallpaperAgent
-    /// sends a presentation mode update — fixing the race where a video paused
-    /// on the desktop doesn't resume on the lock screen after lid open.
-    private func observeScreenLockState() {
-        let dnc = DistributedNotificationCenter.default()
-        dnc.addObserver(
-            forName: .init("com.apple.screenIsLocked"),
-            object: nil, queue: .main,
-        ) { _ in
-            WallpaperState.shared.isScreenLocked = true
-            extensionLog("[Extension] Screen locked")
-        }
-        dnc.addObserver(
-            forName: .init("com.apple.screenIsUnlocked"),
-            object: nil, queue: .main,
-        ) { _ in
-            WallpaperState.shared.isScreenLocked = false
-            Self.recomputeAndApplyPolicy()
-            ShuffleController.shared.noteWake()
-            extensionLog("[Extension] Screen unlocked — recomputed policy")
-        }
-    }
-
-    /// Recompute playback policy from current state and apply to all renderers.
-    static func recomputeAndApplyPolicy() {
-        let state = WallpaperState.shared
-
-        // When we know the screen is locked but the WallpaperAgent hasn't
-        // updated the presentation mode yet (e.g., right after display wake),
-        // use "locked" to prevent stale desktop-mode policy from blocking
-        // lock screen playback.
-        let effectiveMode = state.isScreenLocked && state.presentationMode != "locked"
-            ? "locked"
-            : state.presentationMode
-
-        WallpaperPrefs.shared.applyPolicies(
-            presentationMode: effectiveMode,
-            activityState: state.activityState,
-            powerState: PowerMonitor.shared.currentState,
-        )
     }
 
     /// Listen for Darwin notifications from the main app when it adds/removes videos.

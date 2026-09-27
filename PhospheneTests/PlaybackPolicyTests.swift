@@ -8,8 +8,8 @@ import Testing
 struct PlaybackPolicyTests {
     /// `compute` with the quiet-desktop defaults; tests override one axis each.
     private func policy(
-        presentationMode: String = "desktop",
-        activityState: String = "active",
+        presentationMode: PresentationMode = .default,
+        activityState: ActivityState = .active,
         userPaused: Bool = false,
         alwaysPauseDesktop: Bool = false,
         pauseWhenOccluded: Bool = false,
@@ -31,104 +31,136 @@ struct PlaybackPolicyTests {
             desktopOccluded: desktopOccluded,
             displayHasFullscreenApp: displayHasFullscreenApp,
             screenSaverIsOurs: screenSaverIsOurs,
-            thermalState: thermalState,
-            isOnBattery: isOnBattery,
-            batteryLevel: batteryLevel,
-            isGameModeActive: isGameModeActive,
-            displayBrightness: displayBrightness,
+            power: PowerState(
+                thermalState: thermalState,
+                isOnBattery: isOnBattery,
+                batteryLevel: batteryLevel,
+                isGameModeActive: isGameModeActive,
+                displayBrightness: displayBrightness,
+            ),
         )
     }
 
-    @Test func quietDesktopPlaysFull() {
+    @Test
+    func `quiet desktop plays full`() {
         #expect(policy() == .full)
     }
 
-    @Test func userPausePauses() {
+    @Test
+    func `user pause pauses`() {
         #expect(policy(userPaused: true) == .paused)
     }
 
-    @Test func gameModePauses() {
+    @Test
+    func `game mode pauses`() {
         #expect(policy(isGameModeActive: true) == .paused)
     }
 
     // MARK: - Fullscreen app tier
 
-    @Test func fullscreenAppPausesWithoutTheOcclusionSetting() {
+    @Test
+    func `fullscreen app pauses without the occlusion setting`() {
         #expect(policy(displayHasFullscreenApp: true) == .paused)
     }
 
-    @Test func fullscreenAppIsIrrelevantOnTheLockScreen() {
-        #expect(policy(presentationMode: "locked", displayHasFullscreenApp: true) == .full)
+    @Test
+    func `fullscreen app is irrelevant on the lock screen`() {
+        #expect(policy(presentationMode: .locked, displayHasFullscreenApp: true) == .full)
     }
 
-    @Test func fullscreenAppIsIrrelevantWhenOurScreensaverPresents() {
-        #expect(policy(presentationMode: "idle", displayHasFullscreenApp: true, screenSaverIsOurs: true) == .full)
+    @Test
+    func `fullscreen app is irrelevant when our screensaver presents`() {
+        #expect(policy(presentationMode: .idle, displayHasFullscreenApp: true, screenSaverIsOurs: true) == .full)
     }
 
     // MARK: - Occlusion tier (gated by the setting)
 
-    @Test func occlusionAloneDoesNotPause() {
+    @Test
+    func `occlusion alone does not pause`() {
         #expect(policy(desktopOccluded: true) == .full)
     }
 
-    @Test func occlusionPausesWhenTheSettingIsOn() {
+    @Test
+    func `occlusion pauses when the setting is on`() {
         #expect(policy(pauseWhenOccluded: true, desktopOccluded: true) == .paused)
     }
 
-    @Test func occlusionIsIrrelevantOnTheLockScreen() {
-        #expect(policy(presentationMode: "locked", pauseWhenOccluded: true, desktopOccluded: true) == .full)
+    @Test
+    func `occlusion is irrelevant on the lock screen`() {
+        #expect(policy(presentationMode: .locked, pauseWhenOccluded: true, desktopOccluded: true) == .full)
     }
 
     // MARK: - Lock-screen-only mode
 
-    @Test func lockScreenOnlyPausesOnTheDesktop() {
+    @Test
+    func `lock screen only pauses on the desktop`() {
         #expect(policy(alwaysPauseDesktop: true) == .paused)
     }
 
-    @Test func lockScreenOnlyPlaysOnTheLockScreen() {
-        #expect(policy(presentationMode: "locked", alwaysPauseDesktop: true) == .full)
+    @Test
+    func `lock screen only plays on the lock screen`() {
+        #expect(policy(presentationMode: .locked, alwaysPauseDesktop: true) == .full)
     }
 
     // MARK: - Idle presentation (screensaver)
 
-    @Test func foreignScreensaverPauses() {
-        #expect(policy(presentationMode: "idle") == .paused)
+    @Test
+    func `foreign screensaver pauses`() {
+        #expect(policy(presentationMode: .idle) == .paused)
     }
 
-    @Test func ourScreensaverPlaysFull() {
-        #expect(policy(presentationMode: "idle", screenSaverIsOurs: true) == .full)
+    @Test
+    func `our screensaver plays full`() {
+        #expect(policy(presentationMode: .idle, screenSaverIsOurs: true) == .full)
     }
 
     // MARK: - Power tiers
 
-    @Test func thermalTiers() {
+    @Test
+    func `thermal tiers`() {
         #expect(policy(thermalState: .fair) == .reduced)
         #expect(policy(thermalState: .serious) == .minimal)
         #expect(policy(thermalState: .critical) == .paused)
     }
 
-    @Test func batteryTiers() {
+    @Test
+    func `battery tiers`() {
         #expect(policy(isOnBattery: true) == .reduced)
         #expect(policy(isOnBattery: true, batteryLevel: 19) == .minimal)
         #expect(policy(isOnBattery: true, batteryLevel: 9) == .paused)
     }
 
-    @Test func criticalBatteryPausesEvenOnMains() {
+    @Test
+    func `critical battery pauses even on mains`() {
         #expect(policy(batteryLevel: 9) == .paused)
     }
 
-    @Test func zeroedBacklightPauses() {
+    @Test
+    func `zeroed backlight pauses`() {
         #expect(policy(displayBrightness: 0.0) == .paused)
         #expect(policy(displayBrightness: PlaybackPolicy.brightnessPauseThreshold) == .full)
     }
 
-    @Test func suspendedActivityPauses() {
-        #expect(policy(activityState: "suspended") == .paused)
+    @Test
+    func `suspended activity pauses`() {
+        #expect(policy(activityState: .suspended) == .paused)
     }
 
     /// The tiers combine by severity: the worst applicable one wins.
-    @Test func worstConditionWins() {
+    @Test
+    func `worst condition wins`() {
         #expect(policy(thermalState: .fair, isGameModeActive: true) == .paused)
         #expect(policy(thermalState: .serious, isOnBattery: true) == .minimal)
+    }
+
+    // MARK: - Agent case names
+
+    @Test
+    func `agent case names map to typed states`() {
+        #expect(PresentationMode(caseName: "locked") == .locked)
+        #expect(PresentationMode(caseName: "idle") == .idle)
+        #expect(PresentationMode(caseName: "default") == .default)
+        #expect(ActivityState(caseName: "active") == .active)
+        #expect(ActivityState(caseName: "suspendedWithoutRendering") == .suspended)
     }
 }

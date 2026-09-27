@@ -122,10 +122,6 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     return remapToRealXPC(viewModels)
 }
 
-/// The sentinel choice identifier for the shuffle tile. Acquires arriving with this
-/// configuration mean "rotate through the library" rather than one fixed video.
-let shuffleChoiceID = "shuffle-all"
-
 /// Item ids for the shuffle frequency picker. The ids and their interpretation are
 /// Phosphene's own; the system only stores and returns the selected id.
 enum ShuffleFrequencyID: String, CaseIterable {

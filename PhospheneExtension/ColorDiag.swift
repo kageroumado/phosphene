@@ -23,13 +23,13 @@ enum ColorDiag {
     }
 
     /// Displays that already have the sweep installed. Touched ONLY on `Lifecycle.queue`.
-    nonisolated(unsafe) static var installed: Set<DisplayKey> = []
+    nonisolated(unsafe) static var installed: Set<SurfaceKey> = []
 }
 
 /// Install the color-sweep layer onto the display's root layer (idempotent per display).
 /// Base fill is solid green; a magenta bar sweeps left→right→left forever. Must run on
 /// `Lifecycle.queue`.
-func colorDiagInstall(rootLayer: CALayer, for key: DisplayKey) {
+func colorDiagInstall(rootLayer: CALayer, for key: SurfaceKey) {
     guard !ColorDiag.installed.contains(key) else { return }
     ColorDiag.installed.insert(key)
 

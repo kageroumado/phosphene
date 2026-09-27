@@ -1,8 +1,81 @@
 import Foundation
 
-/// Central decision-maker for wallpaper playback behavior.
-/// Replaces scattered shouldPause boolean checks with a graduated policy system.
-enum PlaybackPolicy: Int, Comparable {
+/// How WallpaperAgent is presenting one surface, from the `presentationMode` of an
+/// `update` request.
+nonisolated enum PresentationMode: Equatable, Sendable, CustomStringConvertible {
+    /// The ordinary desktop.
+    case `default`
+    /// The lock screen.
+    case locked
+    /// The screensaver slot: ours when a Phosphene choice is the screensaver, a
+    /// foreign screensaver covering us otherwise.
+    case idle
+    case other(String)
+
+    /// Map the agent's enum case name (read via `Mirror`) to a mode.
+    init(caseName: String) {
+        switch caseName {
+        case "default": self = .default
+        case "locked": self = .locked
+        case "idle": self = .idle
+        default: self = .other(caseName)
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .default: "default"
+        case .locked: "locked"
+        case .idle: "idle"
+        case let .other(name): name
+        }
+    }
+}
+
+/// Whether WallpaperAgent considers one surface active, from the `activityState` of
+/// an `update` request.
+nonisolated enum ActivityState: Equatable, Sendable, CustomStringConvertible {
+    case active
+    /// Every suspended variant: the surface is not being composited.
+    case suspended
+    case other(String)
+
+    init(caseName: String) {
+        if caseName == "active" {
+            self = .active
+        } else if caseName.contains("suspended") {
+            self = .suspended
+        } else {
+            self = .other(caseName)
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .active: "active"
+        case .suspended: "suspended"
+        case let .other(name): name
+        }
+    }
+}
+
+/// Power, thermal, Game Mode and backlight conditions, sampled by `PowerMonitor`.
+nonisolated struct PowerState: Equatable, Sendable, CustomStringConvertible {
+    var thermalState: ProcessInfo.ThermalState = .nominal
+    var isOnBattery = false
+    var batteryLevel: Int = 100
+    var isGameModeActive = false
+    /// Backlight brightness of the built-in display, 0.0–1.0. 1.0 when there is no
+    /// backlit display to read.
+    var displayBrightness: Float = 1.0
+
+    var description: String {
+        "thermal \(thermalState.rawValue), battery \(isOnBattery ? "\(batteryLevel)%" : "off"), gameMode \(isGameModeActive), brightness \(displayBrightness)"
+    }
+}
+
+/// How hard one surface may play.
+nonisolated enum PlaybackPolicy: Int, Comparable, Sendable {
     case full = 0
     case reduced = 1
     case minimal = 2
@@ -12,74 +85,92 @@ enum PlaybackPolicy: Int, Comparable {
         lhs.rawValue < rhs.rawValue
     }
 
-    /// Below this brightness, the screen is effectively invisible to the user
-    /// even though `screensDidSleepNotification` hasn't fired. We treat this
-    /// as paused so the renderer stops burning battery.
+    /// Below this brightness the screen is effectively invisible even though
+    /// `screensDidSleepNotification` hasn't fired, so playback pauses.
     static let brightnessPauseThreshold: Float = 0.05
 
     /// Evaluate all conditions and return the most restrictive applicable policy.
     ///
-    /// `alwaysPauseDesktop`: when true, wallpaper only plays on the lock screen.
-    /// On the desktop (unlocked), it pauses with a ramp animation.
+    /// `alwaysPauseDesktop`: the wallpaper plays only on the lock screen (and our own
+    /// screensaver); on the desktop it pauses.
     ///
     /// `screenSaverIsOurs`: a Phosphene choice is the active screensaver, so idle
-    /// presentation means WE are what's on screen — play full, like the lock screen.
-    /// Without it, idle means a foreign screensaver covers us — pause.
+    /// presentation means we are what's on screen and play like the lock screen.
+    /// Otherwise idle means a foreign screensaver covers us, and we pause.
     ///
-    /// Lock screen never reduces FPS by itself — only power/thermal conditions do.
+    /// The lock screen never reduces FPS by itself; only power and thermal do.
     static func compute(
-        presentationMode: String,
-        activityState: String,
+        presentationMode: PresentationMode,
+        activityState: ActivityState,
         userPaused: Bool,
         alwaysPauseDesktop: Bool,
         pauseWhenOccluded: Bool,
         desktopOccluded: Bool,
         displayHasFullscreenApp: Bool = false,
         screenSaverIsOurs: Bool,
-        thermalState: ProcessInfo.ThermalState,
-        isOnBattery: Bool,
-        batteryLevel: Int,
-        isGameModeActive: Bool,
-        displayBrightness: Float = 1.0,
+        power: PowerState = PowerState(),
     ) -> PlaybackPolicy {
         var worst: PlaybackPolicy = .full
 
         // Presentations where the wallpaper fills the screen with nothing over it:
         // the lock screen, and the screensaver when the screensaver is ours.
-        let fullScreenPresentation = presentationMode == "locked"
-            || (presentationMode == "idle" && screenSaverIsOurs)
+        let fullScreenPresentation = presentationMode == .locked
+            || (presentationMode == .idle && screenSaverIsOurs)
 
         // --- paused tier ---
-        if userPaused { worst = max(worst, .paused) }
-        if thermalState == .critical { worst = max(worst, .paused) }
-        if batteryLevel < 10 { worst = max(worst, .paused) }
-        if activityState.contains("suspended") { worst = max(worst, .paused) }
-        if presentationMode == "idle", !screenSaverIsOurs { worst = max(worst, .paused) }
-        if isGameModeActive { worst = max(worst, .paused) }
-        // User dimmed the backlight to ~zero. The display is technically still
-        // "awake" so `screensDidSleep` doesn't fire and the WallpaperAgent never
-        // switches to "idle", but the user can't see any of it.
-        if displayBrightness < Self.brightnessPauseThreshold {
+        if userPaused {
             worst = max(worst, .paused)
         }
-        // Desktop occlusion is irrelevant on full-screen presentations — the
-        // wallpaper is fully visible there regardless of desktop window state.
-        if pauseWhenOccluded, desktopOccluded, !fullScreenPresentation { worst = max(worst, .paused) }
-        // A fullscreen app owning the display pauses unconditionally: the wallpaper
-        // is invisible (or a menu bar sliver) and the app wants the hardware.
-        // Catches what Game Mode can't — gamepolicyd never recognizes Wine games.
-        if displayHasFullscreenApp, !fullScreenPresentation { worst = max(worst, .paused) }
-        if alwaysPauseDesktop, !fullScreenPresentation { worst = max(worst, .paused) }
+        if power.thermalState == .critical {
+            worst = max(worst, .paused)
+        }
+        if power.batteryLevel < 10 {
+            worst = max(worst, .paused)
+        }
+        if activityState == .suspended {
+            worst = max(worst, .paused)
+        }
+        if presentationMode == .idle, !screenSaverIsOurs {
+            worst = max(worst, .paused)
+        }
+        if power.isGameModeActive {
+            worst = max(worst, .paused)
+        }
+        // The user dimmed the backlight to ~zero. The display is technically awake, so
+        // `screensDidSleep` doesn't fire and the agent never switches to idle.
+        if power.displayBrightness < Self.brightnessPauseThreshold {
+            worst = max(worst, .paused)
+        }
+        // Desktop occlusion is irrelevant on full-screen presentations.
+        if pauseWhenOccluded, desktopOccluded, !fullScreenPresentation {
+            worst = max(worst, .paused)
+        }
+        // A fullscreen app owning the display pauses unconditionally: the wallpaper is
+        // invisible and the app wants the hardware. Catches what Game Mode can't —
+        // gamepolicyd never recognizes Wine games.
+        if displayHasFullscreenApp, !fullScreenPresentation {
+            worst = max(worst, .paused)
+        }
+        if alwaysPauseDesktop, !fullScreenPresentation {
+            worst = max(worst, .paused)
+        }
 
         // --- minimal tier ---
-        if thermalState == .serious { worst = max(worst, .minimal) }
-        if isOnBattery, batteryLevel < 20 { worst = max(worst, .minimal) }
+        if power.thermalState == .serious {
+            worst = max(worst, .minimal)
+        }
+        if power.isOnBattery, power.batteryLevel < 20 {
+            worst = max(worst, .minimal)
+        }
 
         // --- reduced tier ---
-        if thermalState == .fair { worst = max(worst, .reduced) }
-        if isOnBattery { worst = max(worst, .reduced) }
+        if power.thermalState == .fair {
+            worst = max(worst, .reduced)
+        }
+        if power.isOnBattery {
+            worst = max(worst, .reduced)
+        }
 
         return worst
     }
-
 }

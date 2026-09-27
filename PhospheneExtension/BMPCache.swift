@@ -11,10 +11,14 @@ import ImageIO
 ///   passes its own choice so the right cached frame is shown during transitions.
 ///   Reading the process-wide "current" selection here would race across displays.
 func loadCachedSnapshotImage(forChoice videoID: String?) -> CGImage? {
-    guard let cacheDir = WallpaperState.shared.cacheDirectoryURL else { return nil }
+    guard let cacheDir = SurfaceRegistry.shared.cacheDirectoryURL else { return nil }
 
     let gained = cacheDir.startAccessingSecurityScopedResource()
-    defer { if gained { cacheDir.stopAccessingSecurityScopedResource() } }
+    defer {
+        if gained {
+            cacheDir.stopAccessingSecurityScopedResource()
+        }
+    }
 
     guard let contents = try? FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil) else {
         return nil
@@ -46,13 +50,17 @@ func loadCachedSnapshotImage(forChoice videoID: String?) -> CGImage? {
 /// Each video gets its own BMP file (keyed by video ID hash) so the Agent shows
 /// the correct cached frame during transitions between videos.
 func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: Int, displayPixelHeight: Int) async {
-    guard let cacheDir = WallpaperState.shared.cacheDirectoryURL else {
+    guard let cacheDir = SurfaceRegistry.shared.cacheDirectoryURL else {
         traceLog("  [BMPCache] No cacheDirectoryURL, skipping")
         return
     }
 
     let gained = cacheDir.startAccessingSecurityScopedResource()
-    defer { if gained { cacheDir.stopAccessingSecurityScopedResource() } }
+    defer {
+        if gained {
+            cacheDir.stopAccessingSecurityScopedResource()
+        }
+    }
 
     guard gained else {
         traceLog("  [BMPCache] Failed to acquire security-scoped access")

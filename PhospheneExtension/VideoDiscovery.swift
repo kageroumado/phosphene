@@ -36,7 +36,7 @@ func findVideoURL(forChoice videoID: String?) -> URL? {
 /// requests that don't carry a wallpaperID, etc.). Uses the last user-picked
 /// video as a best-effort hint — do not use this on the rendering path.
 func findVideoURL() -> URL? {
-    findVideoURL(forChoice: WallpaperState.shared.currentVideoID)
+    findVideoURL(forChoice: PlaybackStore.currentVideoID)
 }
 
 /// Generate a JPEG thumbnail from the video's first frame.

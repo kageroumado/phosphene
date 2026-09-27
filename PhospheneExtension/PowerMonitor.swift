@@ -15,33 +15,11 @@ final class PowerMonitor: Sendable {
     /// (name recovered from the gamepolicyd binary; posted with notify_set_state).
     private static let gameModeNotification = "com.apple.gamepolicy.game-mode-session"
 
-    struct PowerState: Equatable {
-        var thermalState: ProcessInfo.ThermalState = .nominal
-        var isOnBattery = false
-        var batteryLevel: Int = 100
-        var isGameModeActive: Bool = false
-        /// Backlight brightness of the built-in display, 0.0–1.0. Defaults to 1.0
-        /// when the value can't be read (external displays, headless, etc.).
-        var displayBrightness: Float = 1.0
-
-        var shouldPause: Bool {
-            if thermalState == .critical || thermalState == .serious { return true }
-            if isOnBattery, batteryLevel < 20 { return true }
-            if displayBrightness < PlaybackPolicy.brightnessPauseThreshold { return true }
-            return false
-        }
-    }
-
     private init() {}
 
     /// Current power state snapshot.
     var currentState: PowerState {
         state.withLock { $0 }
-    }
-
-    /// Whether power conditions require pausing playback.
-    var shouldPause: Bool {
-        state.withLock { $0.shouldPause }
     }
 
     /// AsyncStream that yields whenever any component of power state changes.
@@ -130,7 +108,7 @@ final class PowerMonitor: Sendable {
         state.withLock { $0.thermalState = ProcessInfo.processInfo.thermalState }
         let current = state.withLock { $0 }
         guard previous != current else { return }
-        extensionLog("[PowerMonitor] Thermal → shouldPause: \(current.shouldPause)")
+        extensionLog("[PowerMonitor] Thermal → \(current.thermalState.rawValue)")
         yieldToSubscribers(current)
     }
 
@@ -155,7 +133,7 @@ final class PowerMonitor: Sendable {
         }
         let current = state.withLock { $0 }
         guard previous != current else { return }
-        extensionLog("[PowerMonitor] Battery → shouldPause: \(current.shouldPause)")
+        extensionLog("[PowerMonitor] Battery → \(current.isOnBattery ? "\(current.batteryLevel)%" : "AC")")
         yieldToSubscribers(current)
     }
 
@@ -168,7 +146,7 @@ final class PowerMonitor: Sendable {
         state.withLock { $0.displayBrightness = brightness }
         let current = state.withLock { $0 }
         guard previous != current else { return }
-        extensionLog("[PowerMonitor] Brightness → \(brightness), shouldPause: \(current.shouldPause)")
+        extensionLog("[PowerMonitor] Brightness → \(brightness)")
         yieldToSubscribers(current)
     }
 
@@ -213,7 +191,7 @@ final class PowerMonitor: Sendable {
         state.withLock { $0.isGameModeActive = isActive }
         let current = state.withLock { $0 }
         guard previous != current else { return }
-        extensionLog("[PowerMonitor] Game Mode → \(isActive ? "active" : "inactive"), shouldPause via policy")
+        extensionLog("[PowerMonitor] Game Mode → \(isActive ? "active" : "inactive")")
         yieldToSubscribers(current)
     }
 
@@ -223,36 +201,5 @@ final class PowerMonitor: Sendable {
                 continuation.yield(state)
             }
         }
-    }
-}
-
-extension PlaybackPolicy {
-    /// Convenience overload that unpacks a `PowerMonitor.PowerState`.
-    static func compute(
-        presentationMode: String,
-        activityState: String,
-        userPaused: Bool,
-        alwaysPauseDesktop: Bool,
-        pauseWhenOccluded: Bool,
-        desktopOccluded: Bool,
-        displayHasFullscreenApp: Bool = false,
-        screenSaverIsOurs: Bool,
-        powerState: PowerMonitor.PowerState,
-    ) -> PlaybackPolicy {
-        compute(
-            presentationMode: presentationMode,
-            activityState: activityState,
-            userPaused: userPaused,
-            alwaysPauseDesktop: alwaysPauseDesktop,
-            pauseWhenOccluded: pauseWhenOccluded,
-            desktopOccluded: desktopOccluded,
-            displayHasFullscreenApp: displayHasFullscreenApp,
-            screenSaverIsOurs: screenSaverIsOurs,
-            thermalState: powerState.thermalState,
-            isOnBattery: powerState.isOnBattery,
-            batteryLevel: powerState.batteryLevel,
-            isGameModeActive: powerState.isGameModeActive,
-            displayBrightness: powerState.displayBrightness,
-        )
     }
 }

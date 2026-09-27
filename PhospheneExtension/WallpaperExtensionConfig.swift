@@ -131,7 +131,7 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
             // escalating gray. Contexts are only freed when their video is removed
             // (`removeChoiceRequest`); a genuinely idle process is suspended by
             // RunningBoard, which pauses the renderers at no cost.
-            traceLog("XPC invalidated (pid: \(pid)) — kept \(WallpaperState.shared.activeContextCount) context(s) for reuse")
+            traceLog("XPC invalidated (pid: \(pid)) — kept \(SurfaceRegistry.shared.count) surface(s) for reuse")
         }
 
         // Publish the proxy before resuming so an early incoming callback can't
