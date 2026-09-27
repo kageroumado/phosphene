@@ -25,25 +25,7 @@ private nonisolated(unsafe) let logDateFormatter: ISO8601DateFormatter = {
     return f
 }()
 
-/// Get or create the persistent log file handle.
-/// Rotates the log if it exceeds `maxLogSize`.
-private func getLogHandle() -> FileHandle? {
-    logLock.withLock { handle in
-        if let h = handle {
-            // Check size and rotate if needed
-            if (try? h.seekToEnd()) ?? 0 >= maxLogSize {
-                try? h.close()
-                rotateLog()
-                return openLogHandle()
-            }
-            return h
-        }
-        let h = openLogHandle()
-        handle = h
-        return h
-    }
-}
-
+/// Open the log for writing at its end, creating the file if needed.
 private func openLogHandle() -> FileHandle? {
     guard let h = try? FileHandle(forWritingTo: logURL) else {
         // File doesn't exist yet — create it
@@ -128,14 +110,24 @@ func traceLog(_ message: @autoclosure () -> String) {
     extensionLog(message())
 }
 
+/// Append one line. Seek, rotation and write happen under one lock: threads writing
+/// at once would otherwise share a file offset and overwrite each other's lines.
 func extensionLog(_ message: String) {
-    let ts = logDateFormatter.string(from: Date())
-    let line = "[\(ts)] \(message)\n"
-    guard let data = line.data(using: .utf8) else { return }
-    guard let handle = getLogHandle() else {
-        // Last resort — write directly (creates file if missing)
-        try? data.write(to: logURL, options: .atomic)
-        return
+    logLock.withLock { handle in
+        let line = "[\(logDateFormatter.string(from: Date()))] \(message)\n"
+        let data = Data(line.utf8)
+        if handle == nil {
+            handle = openLogHandle()
+        }
+        if let current = handle, ((try? current.seekToEnd()) ?? 0) >= maxLogSize {
+            try? current.close()
+            rotateLog()
+            handle = openLogHandle()
+        }
+        guard let current = handle else {
+            try? data.write(to: logURL, options: .atomic)
+            return
+        }
+        current.write(data)
     }
-    handle.write(data)
 }
