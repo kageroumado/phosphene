@@ -66,7 +66,9 @@ extern unsigned int CGSMainConnectionID(void);
 - (void)invokeContextMenuActionWithMenuItemID:(id _Nullable)menuItemID groupItemID:(id _Nullable)groupItemID reply:(void (^ _Nonnull)(NSError * _Nullable))reply;
 
 // Downloads
-- (void)isChoiceDownloadedWith:(id _Nullable)choiceID reply:(void (^ _Nonnull)(BOOL, NSError * _Nullable))reply;
+// The reply carries an NSNumber-boxed Bool (`@?<v@?@"NSNumber"@"NSError">`). Declaring a bare BOOL
+// makes NSXPC reject the call as an undecodable message and cancel the whole agent connection.
+- (void)isChoiceDownloadedWith:(id _Nullable)choiceID reply:(void (^ _Nonnull)(NSNumber * _Nullable, NSError * _Nullable))reply;
 - (id _Nullable)downloadWithChoiceID:(id _Nullable)choiceID reply:(void (^ _Nonnull)(NSError * _Nullable))reply;
 - (void)pauseDownloadFor:(id _Nullable)choiceID reply:(void (^ _Nonnull)(NSError * _Nullable))reply;
 - (void)cancelDownloadFor:(id _Nullable)choiceID reply:(void (^ _Nonnull)(NSError * _Nullable))reply;

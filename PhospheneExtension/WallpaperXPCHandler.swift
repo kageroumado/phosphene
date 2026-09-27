@@ -816,9 +816,10 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
 
     // MARK: - Downloads
 
-    func isChoiceDownloaded(with _: Any?, reply: @escaping @Sendable (Bool, (any Error)?) -> Void) {
+    func isChoiceDownloaded(with _: Any?, reply: @escaping @Sendable (NSNumber?, (any Error)?) -> Void) {
+        markServed()
         traceLog("isChoiceDownloaded")
-        reply(true, nil)
+        reply(NSNumber(value: true), nil)
     }
 
     func download(withChoiceID _: Any?, reply: ((any Error)?) -> Void) -> Any? {
