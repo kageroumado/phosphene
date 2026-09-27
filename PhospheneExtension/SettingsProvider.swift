@@ -69,7 +69,10 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
             contentBadge: .video,
             showInTopLevel: true,
             sortOrder: 0,
-            disposability: .removable,
+            // Never `.removable`: the pane's Delete action force-unwraps the item's
+            // `choiceRequest`, and a video tile has none, so Delete crashed System
+            // Settings (macOS 27). Videos are deleted from Phosphene's library window.
+            disposability: .none,
             contextMenu: addVideoMenu,
         )
         items.append(item)
