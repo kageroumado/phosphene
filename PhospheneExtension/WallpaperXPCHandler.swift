@@ -581,60 +581,30 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         reply(nil, nil)
     }
 
-    func removeChoiceRequest(withChoiceRequest request: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+    /// WallpaperAgent routes a removal request by its case (image, folder, color,
+    /// screensaver, Photos) to Apple's own providers, so none reaches a third-party
+    /// extension. Video tiles are deleted through `removeDownload(for:)` instead.
+    func removeChoiceRequest(withChoiceRequest _: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
         markServed()
-        nonisolated(unsafe) let unsafeRequest = request
-        nonisolated(unsafe) let handler = self
-        Lifecycle.queue.async { handler.removeChoiceRequestBody(request: unsafeRequest, reply: reply) }
+        extensionLog("=== REMOVE CHOICE REQUEST === (not routed to third-party providers; ignored)")
+        reply(nil)
     }
 
-    private func removeChoiceRequestBody(request: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
-        extensionLog("=== REMOVE CHOICE REQUEST ===")
-
-        // Extract video ID from the choice request using Mirror (same pattern as selectedChoicesDidChange)
-        var videoID: String?
-        if let reqObj = request as? NSObject {
-            let desc = String(describing: reqObj)
-            if let range = desc.range(of: "identifier: \"") {
-                let after = desc[range.upperBound...]
-                if let endQuote = after.firstIndex(of: "\"") {
-                    videoID = String(after[..<endQuote])
-                }
-            }
-        }
-
-        guard let videoID else {
-            extensionLog("  [Remove] Could not extract video ID from request")
-            reply(nil)
-            return
-        }
-
-        extensionLog("  [Remove] Removing video: \(videoID)")
-
-        // Remove from library (deletes files + metadata)
+    /// Delete a video from the library and tear down the surfaces showing it. Other
+    /// displays may show other videos and keep running. Runs on `Lifecycle.queue`.
+    private func removeVideo(_ videoID: String) {
         VideoLibrary.shared.removeVideo(id: videoID)
-
-        // Tear down only the surfaces showing this video: it left the library, so they
-        // are gone for good. Other displays may show other videos and keep running.
         let removed = SurfaceRegistry.shared.removeSurfaces(showing: videoID)
         for key in removed {
             PlaybackStore.post(.surfaceRemoved(key))
         }
         PlaybackStore.post(.videoRemoved(videoID))
-        if !removed.isEmpty {
-            extensionLog("  [Remove] Stopped \(removed.count) renderer(s) for removed video")
-        }
-
-        // Invalidate Agent snapshots so Settings refreshes
-        if let proxy = agentProxy {
-            proxy.invalidateSnapshots { error in
-                if let error {
-                    extensionLog("  [Remove] invalidateSnapshots error: \(error)")
-                }
+        extensionLog("  [Remove] \(videoID): stopped \(removed.count) renderer(s)")
+        agentProxy?.invalidateSnapshots { error in
+            if let error {
+                extensionLog("  [Remove] invalidateSnapshots error: \(error)")
             }
         }
-
-        reply(nil)
     }
 
     func selectedChoicesDidChange(for id: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
@@ -700,7 +670,29 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         reply(nil)
     }
 
-    func removeDownload(for _: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+    /// The Settings pane's "Remove Download" button on a video tile. Tiles are
+    /// `.purgeable`, so the pane sends `purgeChoice` with the tile's choice ID, which
+    /// WallpaperAgent forwards here and then re-queries the view models.
+    func removeDownload(for choiceID: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+        markServed()
+        nonisolated(unsafe) let unsafeID = choiceID
+        nonisolated(unsafe) let handler = self
+        Lifecycle.queue.async { handler.removeDownloadBody(choiceID: unsafeID, reply: reply) }
+    }
+
+    private func removeDownloadBody(choiceID: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+        // The video id is the descriptor's `configuration`, as on the acquire path.
+        guard let choiceID,
+              let configuration = mirrorFindProperty("configuration", in: choiceID) as? Data,
+              let videoID = String(data: configuration, encoding: .utf8),
+              VideoLibrary.shared.entry(for: videoID) != nil
+        else {
+            extensionLog("=== REMOVE DOWNLOAD === no library video in \(String(describing: choiceID))")
+            reply(nil)
+            return
+        }
+        extensionLog("=== REMOVE DOWNLOAD === \(videoID)")
+        removeVideo(videoID)
         reply(nil)
     }
 
