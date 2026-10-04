@@ -10,6 +10,8 @@
 [![@kageroumado](https://img.shields.io/badge/@kageroumado-76e6e0?style=for-the-badge&logo=x&logoColor=0d0a10)](https://x.com/kageroumado)
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-0d0a10?style=for-the-badge&logo=apple&logoColor=white)](#requirements)
 
+<a href="https://kagerou.glass/get/phosphene?from=readme"><img src=".github/download.svg" alt="Download Phosphene for Mac" width="360" height="80"></a><br><sub>A signed, notarized disk image · free and open source (MIT)</sub>
+
 <table>
   <tr>
     <td align="center" width="40%"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/phosphene-popover-dark.png"><img src=".github/phosphene-popover.png" alt="The menu bar popover — the current wallpaper's preview with its name and playback status, an Everywhere / Lock Screen / Paused playback control, setting toggles, and a footer with version, Library, and Choose chips beside restart and quit buttons" width="270"></picture><br><sub><b>the menu bar</b> ・ preview, pause, switch displays</sub></td>
@@ -44,7 +46,7 @@ There's no floating window pretending to be a wallpaper. Phosphene plugs into Ap
 
 ## Install
 
-Grab the signed, notarized DMG from **[GitHub Releases](https://github.com/kageroumado/phosphene/releases/latest)** — open it, drag **Phosphene** to Applications, and launch.
+**[Download Phosphene](https://kagerou.glass/get/phosphene?from=readme)**, the signed, notarized DMG of the latest release — open it, drag **Phosphene** to Applications, and launch.
 
 Or via Homebrew — Phosphene is in the official [homebrew/cask](https://formulae.brew.sh/cask/phosphene) repository:
 
