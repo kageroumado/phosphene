@@ -14,9 +14,9 @@ import TiptoeGitHub
 /// that. The gate is a veto, not a preference: Tiptoe's own patience relaxes over days, this never
 /// does.
 ///
-/// With auto-update off, the daily check loop never runs. `UpdateCheckService` still notifies
-/// (the popover's version chip), and ``updateNow()`` performs the same download-verify-swap
-/// on demand.
+/// With auto-update off, the daily check still runs but only reports: nothing is downloaded,
+/// and nothing is swapped except through ``updateNow()``, which performs the same
+/// download-verify-swap on demand.
 @MainActor
 @Observable
 final class SilentUpdates {
@@ -47,11 +47,10 @@ final class SilentUpdates {
     /// notice. Read from Tiptoe's store at launch; cleared by ``acknowledgeUpdate()``.
     private(set) var justUpdatedVersion: String?
 
-    /// The long-lived automatic updater: daily check loop + quiet-moment install. Created up
-    /// front so its `Tiptoe` reconciles the recorded wait (and surfaces `justUpdatedTo`) even
-    /// when auto-update is off; the check loop only runs after `start(autoInstall:)`.
+    /// The updater: daily check loop, plus the quiet-moment install when auto-update is on.
+    /// Created up front so its `Tiptoe` reconciles the recorded wait (and surfaces
+    /// `justUpdatedTo`) before the loop starts.
     @ObservationIgnored private let github: TiptoeGitHub
-    @ObservationIgnored private var autoRunning = false
 
     private init() {
         github = TiptoeGitHub(owner: Self.owner, repo: Self.repo, checkInterval: Self.checkInterval)
@@ -63,30 +62,18 @@ final class SilentUpdates {
 
     /// Called once at launch with the user's setting.
     func start(autoInstall: Bool) {
-        if autoInstall { startAuto() }
-    }
-
-    /// Reacts to the Auto-Update toggle. Turning it off stops the check loop and the
-    /// quiet-moment watcher; a DMG already downloaded stays downloaded but installs only
-    /// via ``updateNow()``.
-    func setAutoInstall(_ enabled: Bool) {
-        enabled ? startAuto() : stopAuto()
-    }
-
-    private func startAuto() {
         // Never in DEBUG: a development build must not poll GitHub, and must never be swapped
         // out from under Xcode.
         #if !DEBUG
-            guard !autoRunning else { return }
-            autoRunning = true
-            github.start()
+            github.installsAutomatically(autoInstall).start()
         #endif
     }
 
-    private func stopAuto() {
-        guard autoRunning else { return }
-        autoRunning = false
-        github.stop()
+    /// Reacts to the Auto-Update toggle. Turning it off keeps the check loop but stops the
+    /// quiet-moment watcher; a DMG already downloaded stays downloaded but installs only
+    /// via ``updateNow()``.
+    func setAutoInstall(_ enabled: Bool) {
+        github.installsAutomatically(enabled)
         refreshPending()
     }
 
@@ -108,21 +95,15 @@ final class SilentUpdates {
         #else
             manualPhase = .working
 
-            if autoRunning, github.tiptoe.pending != nil {
-                // The automatic path already downloaded and verified it — just stop waiting.
-                await github.tiptoe.installNow().value
-            } else {
-                // Auto is off (its instance is stopped, and a stopped TiptoeGitHub refuses
-                // `checkNow`), so run the download through a one-shot instance. It shares
-                // Tiptoe's on-disk store, so a successful install still records "just updated"
-                // for the relaunch to announce.
-                let oneShot = TiptoeGitHub(owner: Self.owner, repo: Self.repo)
-                await oneShot.checkNow()
-                guard oneShot.tiptoe.pending != nil else {
-                    manualPhase = .failed("Couldn't download the update. Check your connection, or get it from the releases page.")
-                    return
-                }
-                await oneShot.tiptoe.installNow().value
+            guard await github.updateNow() else {
+                // `availableVersion` is set only by a check that reached GitHub and found an
+                // installable DMG; without it there is nothing to download, whatever the network.
+                manualPhase = .failed(
+                    github.availableVersion == nil
+                        ? "Couldn't find a download for this update. Get it from the releases page."
+                        : "Couldn't download the update. Check your connection, or get it from the releases page."
+                )
+                return
             }
 
             // A successful swap terminates this process on its own schedule, possibly a beat
