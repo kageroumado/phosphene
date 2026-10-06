@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 import Tiptoe
 import TiptoeGitHub
 
@@ -14,9 +15,10 @@ import TiptoeGitHub
 /// that. The gate is a veto, not a preference: Tiptoe's own patience relaxes over days, this never
 /// does.
 ///
-/// With auto-update off, the daily check still runs but only reports: nothing is downloaded,
-/// and nothing is swapped except through ``updateNow()``, which performs the same
-/// download-verify-swap on demand.
+/// One check loop serves both modes: with auto-update off the daily check still runs and still
+/// answers ``availableVersion`` — the menu bar badge and version chip draw from it — but nothing
+/// downloads or installs except through ``updateNow()``. This is the app's single daily request
+/// to GitHub.
 @MainActor
 @Observable
 final class SilentUpdates {
@@ -25,9 +27,15 @@ final class SilentUpdates {
     static let owner = "kageroumado"
     static let repo = "phosphene"
 
-    /// Matches `UpdateCheckService`'s cadence — finding an update sooner would not install it
-    /// sooner anyway.
+    /// Finding an update sooner than daily would not install it sooner anyway.
     private static let checkInterval: TimeInterval = 60 * 60 * 24
+
+    /// How often ``refresh()`` copies Tiptoe's in-memory state into the observable properties,
+    /// so the menu bar badge appears without the popover being opened. No network involved.
+    private static let mirrorInterval: Duration = .seconds(60)
+
+    /// Where the update-failed affordance sends the user.
+    static let releasesPageURL = URL(string: "https://github.com/\(owner)/\(repo)/releases/latest")!
 
     /// Progress of a user-initiated install, for the version chip. A successful install replaces
     /// the process, so the only terminal state this side of the swap is `.failed`.
@@ -39,8 +47,13 @@ final class SilentUpdates {
 
     private(set) var manualPhase: ManualPhase = .idle
 
+    /// The newest published version when it is newer than the running app, from the check loop —
+    /// in both modes, downloaded or not. Refreshed by ``refresh()`` — Tiptoe itself is not
+    /// observable.
+    private(set) var availableVersion: String?
+
     /// The version the automatic path has downloaded and is holding for a quiet moment, if any.
-    /// Refreshed by ``refreshPending()`` — Tiptoe itself is not observable.
+    /// A stronger claim than ``availableVersion``; refreshed by ``refresh()``.
     private(set) var pendingVersion: String?
 
     /// The version a silent (or manual) install brought us to, until the user has seen the
@@ -51,10 +64,14 @@ final class SilentUpdates {
     /// Created up front so its `Tiptoe` reconciles the recorded wait (and surfaces
     /// `justUpdatedTo`) before the loop starts.
     @ObservationIgnored private let github: TiptoeGitHub
+    @ObservationIgnored private var mirrorTask: Task<Void, Never>?
 
     private init() {
         github = TiptoeGitHub(owner: Self.owner, repo: Self.repo, checkInterval: Self.checkInterval)
             .gate("a video optimization is running") { await Self.noOptimizationRunning() }
+        github.onChecksFailing = { error in
+            Log.update.error("update checks have been failing: \(error.localizedDescription, privacy: .public)")
+        }
         justUpdatedVersion = github.tiptoe.justUpdatedTo
     }
 
@@ -66,6 +83,12 @@ final class SilentUpdates {
         // out from under Xcode.
         #if !DEBUG
             github.installsAutomatically(autoInstall).start()
+            mirrorTask = Task(name: "Mirror update state") { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: Self.mirrorInterval)
+                    self?.refresh()
+                }
+            }
         #endif
     }
 
@@ -74,12 +97,13 @@ final class SilentUpdates {
     /// via ``updateNow()``.
     func setAutoInstall(_ enabled: Bool) {
         github.installsAutomatically(enabled)
-        refreshPending()
+        refresh()
     }
 
-    /// Copies Tiptoe's pending state into the observable ``pendingVersion``. Called when the
-    /// popover appears and after update actions — Tiptoe has no change callback for it.
-    func refreshPending() {
+    /// Copies Tiptoe's state into the observable properties. Called when the popover appears,
+    /// every ``mirrorInterval``, and after update actions — Tiptoe has no change callback.
+    func refresh() {
+        availableVersion = github.availableVersion
         pendingVersion = github.tiptoe.pending?.version
     }
 
@@ -103,13 +127,14 @@ final class SilentUpdates {
                         ? "Couldn't find a download for this update. Get it from the releases page."
                         : "Couldn't download the update. Check your connection, or get it from the releases page."
                 )
+                refresh()
                 return
             }
 
             // A successful swap terminates this process on its own schedule, possibly a beat
             // after the install call returns — wait it out before declaring failure.
             try? await Task.sleep(for: .seconds(4))
-            refreshPending()
+            refresh()
             manualPhase = .failed("The update couldn't be installed. Try again, or get it from the releases page.")
         #endif
     }

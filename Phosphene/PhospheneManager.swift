@@ -53,7 +53,6 @@ final class PhospheneManager {
 
     let prefsService = WallpaperPrefsService.shared
     let occlusionMonitor = OcclusionMonitor()
-    let updateCheck = UpdateCheckService()
 
     // MARK: - Private
 
@@ -92,7 +91,6 @@ final class PhospheneManager {
         // "Pause When Hidden" setting, which only gates the occlusion tier.
         occlusionMonitor.startMonitoring()
 
-        Task { await updateCheck.checkIfDue() }
         SilentUpdates.shared.start(autoInstall: autoUpdate)
     }
 

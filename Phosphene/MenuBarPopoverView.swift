@@ -39,7 +39,7 @@ struct MenuBarPopoverView: View {
         }
         .frame(width: Theme.popoverWidth)
         .fixedSize(horizontal: false, vertical: true)
-        .onAppear { SilentUpdates.shared.refreshPending() }
+        .onAppear { SilentUpdates.shared.refresh() }
         .onChange(of: prefsService.selections.count) {
             selectedIndex = min(selectedIndex, max(0, prefsService.selections.count - 1))
         }
@@ -253,7 +253,7 @@ struct MenuBarPopoverView: View {
                 }
             case .failed(let message):
                 Button {
-                    NSWorkspace.shared.open(manager.updateCheck.releasesPageURL)
+                    NSWorkspace.shared.open(SilentUpdates.releasesPageURL)
                     SilentUpdates.shared.dismissFailure()
                 } label: {
                     Label("Update failed", systemImage: "exclamationmark.triangle.fill")
@@ -305,7 +305,7 @@ struct MenuBarPopoverView: View {
             }
             .buttonStyle(.footerChipProminent)
             .help("Updated to version \(justUpdated) — see what changed")
-        } else if let available = manager.updateCheck.availableVersion ?? updates.pendingVersion {
+        } else if let available = updates.availableVersion ?? updates.pendingVersion {
             Button {
                 WhatsNewWindow.present(
                     version: available,

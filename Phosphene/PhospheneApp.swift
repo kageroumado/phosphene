@@ -29,7 +29,7 @@ struct PhospheneApp: App {
                 showLibraryWindow()
             })
         } label: {
-            let announcing = manager.updateCheck.availableVersion != nil
+            let announcing = SilentUpdates.shared.availableVersion != nil
                 || SilentUpdates.shared.justUpdatedVersion != nil
             Image(nsImage: MenuBarIcon.image(updateBadge: announcing))
         }
