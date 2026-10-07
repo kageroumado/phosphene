@@ -73,3 +73,5 @@ Secrets.plist
 # Xcode build output
 DerivedData/
 build/
+# Coverage output
+*.profraw
