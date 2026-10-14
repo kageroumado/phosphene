@@ -1,5 +1,7 @@
 # Phosphene
 
+[English](README.md) · [简体中文](README.zh-CN.md)
+
 Phosphene adds your videos to System Settings → Wallpaper through the same wallpaper pipeline as Apple’s Aerials. macOS plays them on the desktop and lock screen, even after you quit the app.
 
 <a href="https://kagerou.glass/get/phosphene?from=readme"><img src=".github/download.svg" alt="Download Phosphene for Mac" width="360" height="80"></a>
@@ -30,4 +32,3 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 - macOS 26+ · Apple silicon or Intel.
 - Homebrew: `brew install --cask phosphene`.
 - Uses private `WallpaperExtensionKit` APIs, which macOS updates can change. [Troubleshooting and implementation](REFERENCE.md).
-- [English](README.md) · [简体中文](README.zh-CN.md).

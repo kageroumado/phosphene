@@ -1,5 +1,7 @@
 # Phosphene
 
+[English](README.md) · [简体中文](README.zh-CN.md)
+
 Phosphene 通过与 Apple 航拍墙纸相同的墙纸管线，把你的视频添加到“系统设置”→“墙纸”。macOS 会在桌面和锁定屏幕上播放它们，即使退出 App 之后也一样。
 
 <a href="https://kagerou.glass/get/phosphene?from=readme"><img src=".github/download.zh-CN.svg" alt="下载 Mac 版 Phosphene" width="360" height="80"></a>
@@ -30,4 +32,3 @@ Phosphene 通过与 Apple 航拍墙纸相同的墙纸管线，把你的视频添
 - macOS 26+ · Apple 芯片或 Intel。
 - Homebrew：`brew install --cask phosphene`。
 - 使用私有的 `WallpaperExtensionKit` API，macOS 更新可能改变其行为。[故障排除与实现细节](REFERENCE.md)（英文）。
-- [English](README.md) · [简体中文](README.zh-CN.md)。
