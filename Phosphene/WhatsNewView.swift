@@ -52,7 +52,7 @@ enum WhatsNewWindow {
         ))
         hosting.sizingOptions = .standardBounds
         let w = NSWindow(contentViewController: hosting)
-        w.title = "What's New" // for the window menu / accessibility only
+        w.title = String(localized: "What's New") // for the window menu / accessibility only
         w.styleMask = [.titled, .closable]
         w.titleVisibility = .hidden
         w.titlebarAppearsTransparent = true
@@ -145,11 +145,11 @@ struct WhatsNewView: View {
     private var subtitle: String {
         switch context {
         case .justUpdated:
-            "Phosphene updated itself at a quiet moment — here's what changed."
+            String(localized: "Phosphene updated itself at a quiet moment — here's what changed.")
         case .updateAvailable(autoInstall: true):
-            "It will install itself when your Mac is idle — the wallpaper keeps playing."
+            String(localized: "It will install itself when your Mac is idle — the wallpaper keeps playing.")
         case .updateAvailable(autoInstall: false):
-            "A newer version of Phosphene is ready when you are."
+            String(localized: "A newer version of Phosphene is ready when you are.")
         }
     }
 

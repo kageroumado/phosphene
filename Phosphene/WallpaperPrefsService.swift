@@ -369,7 +369,7 @@ final class WallpaperPrefsService {
                 let displayID = (display.value(forKey: "displayID") as? UInt32) ?? 0
                 let screenName = NSScreen.screens.first(where: {
                     ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32) == displayID
-                })?.localizedName ?? "Display"
+                })?.localizedName ?? String(localized: "Display")
                 map[uuidString] = (displayID: displayID, name: screenName)
             }
         }
@@ -400,7 +400,7 @@ final class WallpaperPrefsService {
             guard let spaces = monitor["Spaces"] as? [[String: Any]] else { continue }
             for (index, space) in spaces.enumerated() {
                 if let uuid = space["uuid"] as? String {
-                    map[uuid] = "Space \(index + 1)"
+                    map[uuid] = String(localized: "Space \(index + 1)")
                 }
             }
         }

@@ -124,8 +124,8 @@ final class SilentUpdates {
                 // installable DMG; without it there is nothing to download, whatever the network.
                 manualPhase = .failed(
                     github.availableVersion == nil
-                        ? "Couldn't find a download for this update. Get it from the releases page."
-                        : "Couldn't download the update. Check your connection, or get it from the releases page."
+                        ? String(localized: "Couldn't find a download for this update. Get it from the releases page.")
+                        : String(localized: "Couldn't download the update. Check your connection, or get it from the releases page.")
                 )
                 refresh()
                 return
@@ -135,7 +135,7 @@ final class SilentUpdates {
             // after the install call returns — wait it out before declaring failure.
             try? await Task.sleep(for: .seconds(4))
             refresh()
-            manualPhase = .failed("The update couldn't be installed. Try again, or get it from the releases page.")
+            manualPhase = .failed(String(localized: "The update couldn't be installed. Try again, or get it from the releases page."))
         #endif
     }
 

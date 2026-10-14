@@ -282,7 +282,7 @@ struct VideoInspectorView: View {
                 selection.displayName
             }
         }
-        return "In use on \(names.joined(separator: ", "))"
+        return String(localized: "In use on \(names.joined(separator: ", "))")
     }
 
     // MARK: - Optimization
@@ -362,7 +362,7 @@ struct VideoInspectorView: View {
         VStack(alignment: .leading, spacing: 7) {
             Picker(selection: $selectedPreset) {
                 ForEach(OptimizationPreset.allCases) { preset in
-                    Text(preset.rawValue).tag(preset)
+                    Text(preset.title).tag(preset)
                 }
             } label: {
                 EmptyView()

@@ -17,15 +17,22 @@ enum OptimizationPreset: String, CaseIterable, Identifiable {
         rawValue
     }
 
+    /// The preset's name in the inspector's segmented picker.
+    var title: String {
+        switch self {
+        case .batterySaver: String(localized: "Battery Saver")
+        case .balanced: String(localized: "Balanced")
+        case .quality: String(localized: "Quality")
+        }
+    }
+
     /// Short description shown in the inspector below the preset picker.
     var description: String {
         switch self {
         case .batterySaver:
-            "Downscales to 1080p with reduced frame rate tiers. Best for laptops on battery."
-        case .balanced:
-            "Keeps original resolution, creates lower frame rate tiers for power-saving modes."
-        case .quality:
-            "Keeps original resolution, creates lower frame rate tiers for power-saving modes."
+            String(localized: "Downscales to 1080p with reduced frame rate tiers. Best for laptops on battery.")
+        case .balanced, .quality:
+            String(localized: "Keeps original resolution, creates lower frame rate tiers for power-saving modes.")
         }
     }
 

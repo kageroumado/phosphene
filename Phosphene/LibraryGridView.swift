@@ -122,7 +122,7 @@ struct LibraryGridView: View {
 
     private var librarySummary: String {
         let count = entries.count
-        let videos = count == 1 ? "1 video" : "\(count) videos"
+        let videos = String(localized: "\(count) videos")
         let totalBytes = entries.compactMap { VideoDeploymentService.fileSize(for: $0) }.reduce(0, +)
         guard totalBytes > 0 else { return videos }
         let size = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)

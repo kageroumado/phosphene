@@ -120,22 +120,22 @@ struct MenuBarPopoverView: View {
 
     private func playbackStatusText(for selection: WallpaperPrefsService.WallpaperSelection) -> String {
         if prefsService.alwaysPauseDesktop {
-            return "Playing on Lock Screen"
+            return String(localized: "Playing on Lock Screen")
         }
         if prefsService.fullscreenDisplays.contains(selection.displayID) {
-            return "Paused — Fullscreen App"
+            return String(localized: "Paused — Fullscreen App")
         }
         if prefsService.pauseWhenOccluded,
            prefsService.desktopOccluded || prefsService.occludedDisplays.contains(selection.displayID) {
-            return "Paused — Display Covered"
+            return String(localized: "Paused — Display Covered")
         }
         if prefsService.pausedDisplays.contains(selection.displayID) {
-            return "Paused"
+            return String(localized: "Paused")
         }
         if prefsService.userPaused {
-            return "Paused"
+            return String(localized: "Paused")
         }
-        return "Playing"
+        return String(localized: "Playing")
     }
 
     private var carouselArrows: some View {
@@ -179,7 +179,7 @@ struct MenuBarPopoverView: View {
     private var playbackScopePicker: some View {
         @Bindable var prefsService = prefsService
         return PillPicker(
-            title: "Playback",
+            title: String(localized: "Playback"),
             options: PlaybackScope.allCases.map { ($0, $0.title) },
             selection: $prefsService.playbackScope,
             height: 32,
@@ -226,7 +226,7 @@ struct MenuBarPopoverView: View {
 
     private var settingsSection: some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            SectionLabel("Settings")
+            SectionLabel(String(localized: "Settings"))
 
             HStack(spacing: Theme.Space.sm) {
                 @Bindable var prefsService = prefsService
@@ -264,11 +264,11 @@ struct MenuBarPopoverView: View {
             case .idle:
                 updateChip
 
-                FooterChip(text: "Library", systemImage: "film.stack") {
+                FooterChip(text: String(localized: "Library"), systemImage: "film.stack") {
                     openLibrary()
                 }
 
-                FooterChip(text: "Choose", systemImage: "photo.on.rectangle") {
+                FooterChip(text: String(localized: "Choose"), systemImage: "photo.on.rectangle") {
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!)
                 }
                 .help("Choose the wallpaper in macOS Wallpaper Settings")
@@ -276,12 +276,12 @@ struct MenuBarPopoverView: View {
 
             Spacer(minLength: 0)
 
-            FooterIconButton("Restart Wallpaper Agent", systemImage: "arrow.clockwise") {
+            FooterIconButton(String(localized: "Restart Wallpaper Agent"), systemImage: "arrow.clockwise") {
                 WallpaperPrefsService.shared.restartWallpaperAgent()
             }
             .help("Force-restart the system WallpaperAgent if the wallpaper is stuck or wrong.")
 
-            FooterIconButton("Quit Phosphene", systemImage: "xmark") {
+            FooterIconButton(String(localized: "Quit Phosphene"), systemImage: "xmark") {
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q")
@@ -353,9 +353,9 @@ private enum PlaybackScope: CaseIterable {
 
     var title: String {
         switch self {
-        case .everywhere: "Everywhere"
-        case .lockScreen: "Lock Screen"
-        case .paused: "Paused"
+        case .everywhere: String(localized: "Everywhere")
+        case .lockScreen: String(localized: "Lock Screen")
+        case .paused: String(localized: "Paused")
         }
     }
 }
