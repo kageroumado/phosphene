@@ -6,7 +6,7 @@ Phosphene 通过与 Apple 航拍墙纸相同的墙纸管线，把你的视频添
 
 <a href="https://kagerou.glass/get/phosphene?from=readme"><img src=".github/download.zh-CN.svg" alt="下载 Mac 版 Phosphene" width="360" height="80"></a>
 
-![“系统设置”→“墙纸”中的 Phosphene 视频](.github/phosphene-settings.png)
+![“系统设置”→“墙纸”中的 Phosphene 视频](.github/phosphene-settings.zh-CN.png)
 
 ## 特色
 
