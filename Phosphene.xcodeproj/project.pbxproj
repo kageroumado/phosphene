@@ -61,6 +61,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				OcclusionMath.swift,
+				PostUpdateNotice.swift,
 				WallpaperStoreParser.swift,
 			);
 			target = 7E5700000000000000000A03 /* PhospheneTests */;

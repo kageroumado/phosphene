@@ -72,7 +72,11 @@ final class SilentUpdates {
         github.onChecksFailing = { error in
             Log.update.error("update checks have been failing: \(error.localizedDescription, privacy: .public)")
         }
-        justUpdatedVersion = github.tiptoe.justUpdatedTo
+        justUpdatedVersion = PostUpdateNotice.reconcile(
+            recordedVersion: github.tiptoe.justUpdatedTo,
+            runningVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+            acknowledge: { github.tiptoe.acknowledge() },
+        )
     }
 
     // MARK: - Automatic installs
