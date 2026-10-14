@@ -6,7 +6,7 @@ import CoreGraphics
 // borderless window presents to CGWindowList.
 
 guard let windowList = CGWindowListCopyWindowInfo(
-    [.excludeDesktopElements, .optionOnScreenOnly], kCGNullWindowID
+    [.excludeDesktopElements, .optionOnScreenOnly], kCGNullWindowID,
 ) as? [[CFString: Any]] else {
     print("CGWindowList failed"); exit(1)
 }
@@ -31,8 +31,12 @@ for screen in NSScreen.screens {
     let vf = screen.visibleFrame
     guard vf.width > 0, vf.height > 0 else { continue }
     let did = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-    let cg = CGRect(x: vf.origin.x, y: mainHeight - vf.origin.y - vf.height,
-                    width: vf.width, height: vf.height)
+    let cg = CGRect(
+        x: vf.origin.x,
+        y: mainHeight - vf.origin.y - vf.height,
+        width: vf.width,
+        height: vf.height,
+    )
     let cols = Int(ceil(cg.width / cell)), rows = Int(ceil(cg.height / cell))
     var grid = [Bool](repeating: false, count: cols * rows)
     var covered = 0
@@ -54,6 +58,12 @@ for screen in NSScreen.screens {
         }
     }
     let pct = 100.0 * Double(covered) / Double(cols * rows)
-    print(String(format: "  displayID %u  frame %.0fx%.0f  coverage %.1f%%  occluded=%@",
-                 did, vf.width, vf.height, pct, pct >= 95 ? "YES" : "no"))
+    print(String(
+        format: "  displayID %u  frame %.0fx%.0f  coverage %.1f%%  occluded=%@",
+        did,
+        vf.width,
+        vf.height,
+        pct,
+        pct >= 95 ? "YES" : "no",
+    ))
 }

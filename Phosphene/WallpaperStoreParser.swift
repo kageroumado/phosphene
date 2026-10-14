@@ -151,15 +151,21 @@ enum WallpaperStoreParser {
         }
         if let displays = plist["Displays"] as? [String: Any] {
             for value in displays.values {
-                if let display = value as? [String: Any], idleIsOurs(display) { return true }
+                if let display = value as? [String: Any], idleIsOurs(display) {
+                    return true
+                }
             }
         }
         if let spaces = plist["Spaces"] as? [String: Any] {
             for spaceValue in spaces.values {
                 guard let space = spaceValue as? [String: Any] else { continue }
-                if idleIsOurs(space) { return true }
+                if idleIsOurs(space) {
+                    return true
+                }
                 for displayValue in (space["Displays"] as? [String: Any])?.values ?? [String: Any]().values {
-                    if let display = displayValue as? [String: Any], idleIsOurs(display) { return true }
+                    if let display = displayValue as? [String: Any], idleIsOurs(display) {
+                        return true
+                    }
                 }
             }
         }

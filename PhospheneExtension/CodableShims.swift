@@ -50,7 +50,15 @@ enum Disposability: Codable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if container.contains(.none) { self = .none } else if container.contains(.removable) { self = .removable } else if container.contains(.purgeable) { self = .purgeable } else { self = .none }
+        if container.contains(.none) {
+            self = .none
+        } else if container.contains(.removable) {
+            self = .removable
+        } else if container.contains(.purgeable) {
+            self = .purgeable
+        } else {
+            self = .none
+        }
     }
 }
 
@@ -114,7 +122,15 @@ enum ContentBadge: Codable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if container.contains(.none) { self = .none } else if container.contains(.video) { self = .video } else if container.contains(.dynamic) { self = .dynamic } else { self = .none }
+        if container.contains(.none) {
+            self = .none
+        } else if container.contains(.video) {
+            self = .video
+        } else if container.contains(.dynamic) {
+            self = .dynamic
+        } else {
+            self = .none
+        }
     }
 }
 
@@ -205,7 +221,15 @@ enum CustomButton: Codable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if container.contains(.addPhotoButton) { self = .addPhotoButton } else if container.contains(.addColorButton) { self = .addColorButton } else if container.contains(.shuffleColorsButton) { self = .shuffleColorsButton } else { self = .addPhotoButton }
+        if container.contains(.addPhotoButton) {
+            self = .addPhotoButton
+        } else if container.contains(.addColorButton) {
+            self = .addColorButton
+        } else if container.contains(.shuffleColorsButton) {
+            self = .shuffleColorsButton
+        } else {
+            self = .addPhotoButton
+        }
     }
 }
 

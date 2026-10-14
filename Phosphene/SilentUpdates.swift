@@ -125,7 +125,7 @@ final class SilentUpdates {
                 manualPhase = .failed(
                     github.availableVersion == nil
                         ? String(localized: "Couldn't find a download for this update. Get it from the releases page.")
-                        : String(localized: "Couldn't download the update. Check your connection, or get it from the releases page.")
+                        : String(localized: "Couldn't download the update. Check your connection, or get it from the releases page."),
                 )
                 refresh()
                 return
@@ -141,7 +141,9 @@ final class SilentUpdates {
 
     /// The user has seen the failure notice (the version chip was clicked).
     func dismissFailure() {
-        if case .failed = manualPhase { manualPhase = .idle }
+        if case .failed = manualPhase {
+            manualPhase = .idle
+        }
     }
 
     /// The user has seen the post-update notice.

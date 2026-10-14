@@ -70,7 +70,11 @@ struct LibraryGridView: View {
         }
         .alert("Delete Video", isPresented: .init(
             get: { confirmingDelete != nil },
-            set: { if !$0 { confirmingDelete = nil } },
+            set: {
+                if !$0 {
+                    confirmingDelete = nil
+                }
+            },
         )) {
             Button("Delete", role: .destructive) {
                 if let entry = confirmingDelete {

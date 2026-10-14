@@ -34,10 +34,14 @@ enum OcclusionMath {
         for window in windows {
             if window.layer == 0 {
                 let overlap = window.rect.intersection(full)
-                if overlap.width * overlap.height >= fullArea * 0.99 { return true }
+                if overlap.width * overlap.height >= fullArea * 0.99 {
+                    return true
+                }
             } else {
                 let overlap = window.rect.intersection(visible)
-                if overlap.width * overlap.height >= visibleArea * 0.95 { return true }
+                if overlap.width * overlap.height >= visibleArea * 0.95 {
+                    return true
+                }
             }
         }
         return false
@@ -81,7 +85,9 @@ enum OcclusionMath {
             }
 
             // Early exit: already fully covered
-            if coveredCount == totalCells { return true }
+            if coveredCount == totalCells {
+                return true
+            }
         }
 
         let coverage = Double(coveredCount) / Double(totalCells)

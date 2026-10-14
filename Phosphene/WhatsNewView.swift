@@ -211,7 +211,9 @@ struct WhatsNewView: View {
     }
 
     private var showsInstallButton: Bool {
-        if case .updateAvailable = context { return true }
+        if case .updateAvailable = context {
+            return true
+        }
         return false
     }
 }
@@ -269,11 +271,15 @@ struct ReleaseNotesText: View {
 
         func flushParagraph() {
             let trimmed = paragraph.trimmingCharacters(in: .whitespaces)
-            if !trimmed.isEmpty { result.append(.paragraph(trimmed)) }
+            if !trimmed.isEmpty {
+                result.append(.paragraph(trimmed))
+            }
             paragraph = ""
         }
         func flushBullet() {
-            if let b = bullet { result.append(.bullet(b)) }
+            if let b = bullet {
+                result.append(.bullet(b))
+            }
             bullet = nil
         }
 
@@ -325,20 +331,20 @@ struct ReleaseNotesText: View {
             version: "9.9.9",
             body: """
             A redesign and a new updater — most of it from **community reports**.
-
+            
             ### Fixed
-
+            
             - **The wallpaper no longer stays small after a display reconnects** — the reuse \
             path discarded the new size. Reported by [@someone](https://github.com/kageroumado). (#21)
             - **Grey wallpaper after standby is gone** — the extension re-acquires its surface.
-
+            
             ### New
-
+            
             - **Silent auto-updates** — Phosphene installs new versions at a quiet moment.
-
+            
               The swap waits while a video optimization is running, and the wallpaper keeps \
             playing throughout.
-
+            
             Prefer manual updates? Turn off Auto-Update from the version pill in the menu bar.
             """,
             url: URL(string: "https://github.com/kageroumado/phosphene/releases")!,

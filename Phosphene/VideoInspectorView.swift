@@ -181,7 +181,9 @@ struct VideoInspectorView: View {
                 .onSubmit { endRenaming(commit: true) }
                 .onExitCommand { endRenaming(commit: false) }
                 .onChange(of: nameFocused) { _, focused in
-                    if !focused { endRenaming(commit: true) }
+                    if !focused {
+                        endRenaming(commit: true)
+                    }
                 }
                 .padding(.vertical, 3)
                 .padding(.horizontal, 6)
@@ -251,9 +253,9 @@ struct VideoInspectorView: View {
 
     private func resolutionLabel(_ size: CGSize) -> String {
         switch (Int(size.width), Int(size.height)) {
-        case (3840, 2160): "4K"
-        case (2560, 1440): "1440p"
-        case (1920, 1080): "1080p"
+        case (3_840, 2_160): "4K"
+        case (2_560, 1_440): "1440p"
+        case (1_920, 1_080): "1080p"
         default: "\(Int(size.width)) × \(Int(size.height))"
         }
     }

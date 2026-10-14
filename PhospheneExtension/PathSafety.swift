@@ -13,9 +13,15 @@ enum PathSafety {
     /// filenames here are always basenames (`<source>.mov`, `variant_30fps.mp4`,
     /// `metadata.json`, `thumbnail.jpg`), so this never rejects a valid file.
     static func isSafeComponent(_ name: String) -> Bool {
-        if name.isEmpty || name == "." || name == ".." { return false }
-        if name.contains("/") || name.contains("\\") { return false }
-        if name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) { return false }
+        if name.isEmpty || name == "." || name == ".." {
+            return false
+        }
+        if name.contains("/") || name.contains("\\") {
+            return false
+        }
+        if name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) {
+            return false
+        }
         // A genuine basename is unchanged by lastPathComponent.
         return (name as NSString).lastPathComponent == name
     }

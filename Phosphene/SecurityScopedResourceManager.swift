@@ -40,7 +40,9 @@ final class SecurityScopedResourceManager {
     func withAccess<T>(to url: URL, perform operation: () throws -> T) rethrows -> T {
         let granted = requestAccess(to: url)
         defer {
-            if granted { releaseAccess(to: url) }
+            if granted {
+                releaseAccess(to: url)
+            }
         }
         return try operation()
     }
@@ -49,7 +51,9 @@ final class SecurityScopedResourceManager {
     func withAccess<T>(to url: URL, perform operation: () async throws -> T) async rethrows -> T {
         let granted = requestAccess(to: url)
         defer {
-            if granted { releaseAccess(to: url) }
+            if granted {
+                releaseAccess(to: url)
+            }
         }
         return try await operation()
     }

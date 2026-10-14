@@ -22,7 +22,9 @@ struct WallpaperStoreParserTests {
     /// the way macOS stores it (UTF-8 `Data`).
     private func choice(provider: String, videoID: String? = nil) -> [String: Any] {
         var choice: [String: Any] = ["Provider": provider]
-        if let videoID { choice["Configuration"] = Data(videoID.utf8) }
+        if let videoID {
+            choice["Configuration"] = Data(videoID.utf8)
+        }
         return choice
     }
 
@@ -63,7 +65,8 @@ struct WallpaperStoreParserTests {
 
     // MARK: - Per-display desktop records
 
-    @Test func individualSchemaDesktopRecordIsParsed() {
+    @Test
+    func `individual schema desktop record is parsed`() {
         let plist: [String: Any] = ["Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-A")])]]
         let result = parse(plist)
         #expect(result.count == 1)
@@ -74,24 +77,28 @@ struct WallpaperStoreParserTests {
 
     /// The macOS 26 regression that emptied the popover (issue #31): the desktop
     /// choice lives under `Linked`, not `Desktop`.
-    @Test func linkedSchemaDesktopRecordIsParsed() {
+    @Test
+    func `linked schema desktop record is parsed`() {
         let plist: [String: Any] = ["Displays": [Self.displayA: linkedRecord([choice(provider: Self.ours, videoID: "vid-A")])]]
         let result = parse(plist)
         #expect(result.count == 1)
         #expect(result.first?.videoID == "vid-A")
     }
 
-    @Test func foreignProviderIsIgnored() {
+    @Test
+    func `foreign provider is ignored`() {
         let plist: [String: Any] = ["Displays": [Self.displayA: desktopRecord([choice(provider: Self.foreign, videoID: "sequoia")])]]
         #expect(parse(plist).isEmpty)
     }
 
-    @Test func stringConfigurationIsAccepted() {
+    @Test
+    func `string configuration is accepted`() {
         let plist: [String: Any] = ["Displays": [Self.displayA: desktopRecord([["Provider": Self.ours, "Configuration": "vid-str"]])]]
         #expect(parse(plist).first?.videoID == "vid-str")
     }
 
-    @Test func displayNotInMapIsSkipped() {
+    @Test
+    func `display not in map is skipped`() {
         let unknown = "CCCCCCCC-0000-0000-0000-000000000003"
         let plist: [String: Any] = ["Displays": [unknown: desktopRecord([choice(provider: Self.ours, videoID: "vid")])]]
         #expect(parse(plist).isEmpty)
@@ -99,7 +106,8 @@ struct WallpaperStoreParserTests {
 
     // MARK: - Global fallback (Show on all Spaces)
 
-    @Test func globalSystemDefaultFallbackCoversEveryDisplay() {
+    @Test
+    func `global system default fallback covers every display`() {
         let plist: [String: Any] = ["SystemDefault": desktopRecord([choice(provider: Self.ours, videoID: "vid-global")])]
         let result = parse(plist)
         #expect(result.count == 2)
@@ -109,12 +117,14 @@ struct WallpaperStoreParserTests {
 
     /// The reporter's exact configuration: "Show on all Spaces" on macOS 26, so a
     /// `linked` global record — the two fixes have to compose.
-    @Test func globalLinkedSystemDefaultFallbackCoversEveryDisplay() {
+    @Test
+    func `global linked system default fallback covers every display`() {
         let plist: [String: Any] = ["SystemDefault": linkedRecord([choice(provider: Self.ours, videoID: "vid-global")])]
         #expect(parse(plist).count == 2)
     }
 
-    @Test func allSpacesAndDisplaysTakesPrecedenceOverSystemDefault() {
+    @Test
+    func `all spaces and displays takes precedence over system default`() {
         let plist: [String: Any] = [
             "AllSpacesAndDisplays": desktopRecord([choice(provider: Self.ours, videoID: "vid-all")]),
             "SystemDefault": desktopRecord([choice(provider: Self.ours, videoID: "vid-default")]),
@@ -122,7 +132,8 @@ struct WallpaperStoreParserTests {
         #expect(parse(plist).allSatisfy { $0.videoID == "vid-all" })
     }
 
-    @Test func perDisplayRecordIsNotOverriddenByGlobalFallback() {
+    @Test
+    func `per display record is not overridden by global fallback`() {
         let plist: [String: Any] = [
             "Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-A")])],
             "SystemDefault": desktopRecord([choice(provider: Self.ours, videoID: "vid-global")]),
@@ -136,7 +147,8 @@ struct WallpaperStoreParserTests {
     /// A display the user deliberately set to another provider's wallpaper keeps
     /// it — the global fallback fills only the displays with no record of their own,
     /// so it must not repaint an explicit foreign choice as ours.
-    @Test func foreignPerDisplayRecordIsNotOverriddenByGlobalFallback() {
+    @Test
+    func `foreign per display record is not overridden by global fallback`() {
         let plist: [String: Any] = [
             "Displays": [Self.displayA: desktopRecord([choice(provider: Self.foreign, videoID: "sequoia")])],
             "SystemDefault": desktopRecord([choice(provider: Self.ours, videoID: "vid-global")]),
@@ -147,14 +159,16 @@ struct WallpaperStoreParserTests {
         #expect(result.first?.videoID == "vid-global")
     }
 
-    @Test func foreignGlobalRecordProducesNoSelections() {
+    @Test
+    func `foreign global record produces no selections`() {
         let plist: [String: Any] = ["SystemDefault": desktopRecord([choice(provider: Self.foreign, videoID: "sequoia")])]
         #expect(parse(plist).isEmpty)
     }
 
     // MARK: - Per-Space records
 
-    @Test func perSpacePerDisplayWinsOverAllSpaces() {
+    @Test
+    func `per space per display wins over all spaces`() {
         let space = "SPACE-001"
         let plist: [String: Any] = [
             "Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-all")])],
@@ -167,14 +181,16 @@ struct WallpaperStoreParserTests {
         #expect(result.first?.spaceName == "Space 1")
     }
 
-    @Test func perSpaceRecordWithoutAKnownNameIsSkipped() {
+    @Test
+    func `per space record without A known name is skipped`() {
         let plist: [String: Any] = ["Spaces": ["SPACE-unknown": ["Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid")])]]]]
         #expect(parse(plist, spaceMap: [:]).isEmpty)
     }
 
     // MARK: - Shape and ordering
 
-    @Test func selectionsAreSortedByDisplayName() {
+    @Test
+    func `selections are sorted by display name`() {
         let displayMap = [
             Self.displayA: DisplayInfo(displayID: 1, name: "Zeta"),
             Self.displayB: DisplayInfo(displayID: 2, name: "Alpha"),
@@ -183,33 +199,39 @@ struct WallpaperStoreParserTests {
         #expect(parse(plist, displayMap: displayMap).map(\.displayName) == ["Alpha", "Zeta"])
     }
 
-    @Test func emptyPlistYieldsNoSelections() {
+    @Test
+    func `empty plist yields no selections`() {
         #expect(parse([:]).isEmpty)
     }
 
     // MARK: - Idle (screensaver) detection
 
-    @Test func idleDetectsOurScreensaverInIndividualRecord() {
+    @Test
+    func `idle detects our screensaver in individual record`() {
         let plist: [String: Any] = ["SystemDefault": idleRecord([choice(provider: Self.ours)])]
         #expect(Parser.idleSelectionIsOurs(plist, provider: Self.ours))
     }
 
-    @Test func idleDetectsOurScreensaverInLinkedRecord() {
+    @Test
+    func `idle detects our screensaver in linked record`() {
         let plist: [String: Any] = ["Displays": [Self.displayA: linkedRecord([choice(provider: Self.ours, videoID: "vid")])]]
         #expect(Parser.idleSelectionIsOurs(plist, provider: Self.ours))
     }
 
-    @Test func idleDetectsOurScreensaverPerSpacePerDisplay() {
+    @Test
+    func `idle detects our screensaver per space per display`() {
         let plist: [String: Any] = ["Spaces": ["SPACE-001": ["Displays": [Self.displayA: idleRecord([choice(provider: Self.ours)])]]]]
         #expect(Parser.idleSelectionIsOurs(plist, provider: Self.ours))
     }
 
-    @Test func idleIgnoresForeignScreensaver() {
+    @Test
+    func `idle ignores foreign screensaver`() {
         let plist: [String: Any] = ["SystemDefault": idleRecord([choice(provider: Self.foreign)])]
         #expect(!Parser.idleSelectionIsOurs(plist, provider: Self.ours))
     }
 
-    @Test func idleFalseWhenNoScreensaverRecord() {
+    @Test
+    func `idle false when no screensaver record`() {
         #expect(!Parser.idleSelectionIsOurs([:], provider: Self.ours))
     }
 }

@@ -61,7 +61,7 @@ struct MenuBarPopoverView: View {
                     videoURL: selection.videoURL,
                     displayID: selection.displayID,
                 )
-                    .id(selection.id)
+                .id(selection.id)
             }
 
             if prefsService.selections.count > 1 {
@@ -251,7 +251,7 @@ struct MenuBarPopoverView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            case .failed(let message):
+            case let .failed(message):
                 Button {
                     NSWorkspace.shared.open(SilentUpdates.releasesPageURL)
                     SilentUpdates.shared.dismissFailure()
@@ -349,7 +349,9 @@ struct MenuBarPopoverView: View {
 
 /// The tri-state the popover's scope picker edits, projected over the two underlying flags.
 private enum PlaybackScope: CaseIterable {
-    case everywhere, lockScreen, paused
+    case everywhere
+    case lockScreen
+    case paused
 
     var title: String {
         switch self {
@@ -360,11 +362,15 @@ private enum PlaybackScope: CaseIterable {
     }
 }
 
-extension WallpaperPrefsService {
-    fileprivate var playbackScope: PlaybackScope {
+private extension WallpaperPrefsService {
+    var playbackScope: PlaybackScope {
         get {
-            if userPaused { return .paused }
-            if alwaysPauseDesktop { return .lockScreen }
+            if userPaused {
+                return .paused
+            }
+            if alwaysPauseDesktop {
+                return .lockScreen
+            }
             return .everywhere
         }
         set {

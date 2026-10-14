@@ -66,7 +66,7 @@ func gpuUtilization() -> (device: Int, renderer: Int)? {
 }
 
 func processName(pid: pid_t) -> String {
-    var buffer = [CChar](repeating: 0, count: 4096)
+    var buffer = [CChar](repeating: 0, count: 4_096)
     guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return "?" }
     return (String(cString: buffer) as NSString).lastPathComponent
 }
@@ -130,7 +130,9 @@ while Date().timeIntervalSince(start) < duration {
             continue
         }
         defer { previous[pid] = usage }
-        if energyStart[pid] == nil { energyStart[pid] = usage.energyNanojoules }
+        if energyStart[pid] == nil {
+            energyStart[pid] = usage.energyNanojoules
+        }
         energyEnd[pid] = usage.energyNanojoules
         guard let prev = previous[pid] else {
             columns.append("…")
@@ -166,11 +168,14 @@ for (pid, label) in targets {
     var energyLine = ""
     if let first = energyStart[pid], let last = energyEnd[pid], last > first {
         let joules = Double(last - first) / 1e9
-        energyLine = String(format: " · %.2f J (%.0f mW avg)", joules, joules / duration * 1000)
+        energyLine = String(format: " · %.2f J (%.0f mW avg)", joules, joules / duration * 1_000)
     }
     print(String(format: "%@ (%@): %.2f%% CPU%@", label, processName(pid: pid), avgCPU, energyLine))
 }
 if gpuCount > 0 {
-    print(String(format: "GPU: device %.1f%%, renderer %.1f%% (whole-system)",
-                 Double(gpuDeviceSum) / Double(gpuCount), Double(gpuRendererSum) / Double(gpuCount)))
+    print(String(
+        format: "GPU: device %.1f%%, renderer %.1f%% (whole-system)",
+        Double(gpuDeviceSum) / Double(gpuCount),
+        Double(gpuRendererSum) / Double(gpuCount),
+    ))
 }

@@ -11,9 +11,15 @@ enum PathSafety {
     /// True if `name` is a safe single path component: a plain basename with no
     /// directory separators, no `.`/`..`, and no control characters.
     static func isSafeComponent(_ name: String) -> Bool {
-        if name.isEmpty || name == "." || name == ".." { return false }
-        if name.contains("/") || name.contains("\\") { return false }
-        if name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) { return false }
+        if name.isEmpty || name == "." || name == ".." {
+            return false
+        }
+        if name.contains("/") || name.contains("\\") {
+            return false
+        }
+        if name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) {
+            return false
+        }
         return (name as NSString).lastPathComponent == name
     }
 

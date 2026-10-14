@@ -9,9 +9,13 @@ func extractWallpaperUUID(fromID id: Any?) -> UUID? {
 
 private func searchUUID(_ value: Any, depth: Int) -> UUID? {
     guard depth < 8 else { return nil }
-    if let u = value as? UUID { return u }
+    if let u = value as? UUID {
+        return u
+    }
     for child in Mirror(reflecting: value).children {
-        if let found = searchUUID(child.value, depth: depth + 1) { return found }
+        if let found = searchUUID(child.value, depth: depth + 1) {
+            return found
+        }
     }
     return nil
 }

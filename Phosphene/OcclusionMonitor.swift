@@ -127,7 +127,9 @@ final class OcclusionMonitor {
     /// Center's sidebar canvas (21). Counting those marks displays permanently —
     /// or, for the reveal overlay, exactly while the user admires the wallpaper.
     private static func isRegularApp(_ pid: pid_t, cache: inout [pid_t: Bool]) -> Bool {
-        if let cached = cache[pid] { return cached }
+        if let cached = cache[pid] {
+            return cached
+        }
         let regular = NSRunningApplication(processIdentifier: pid)?.activationPolicy == .regular
         cache[pid] = regular
         return regular
