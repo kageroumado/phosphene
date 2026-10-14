@@ -30,3 +30,4 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 - macOS 26+ · Apple silicon or Intel.
 - Homebrew: `brew install --cask phosphene`.
 - Uses private `WallpaperExtensionKit` APIs, which macOS updates can change. [Troubleshooting and implementation](REFERENCE.md).
+- [English](README.md) · [简体中文](README.zh-CN.md).
