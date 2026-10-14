@@ -19,12 +19,12 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     let addVideoMenu = ContextMenu(items: [
         ContextMenuItem(
             id: ContextMenuItemID(id: "add-video"),
-            localizedTitle: "Add Video\u{2026}",
+            localizedTitle: String(localized: "Add Video…"),
             isDestructive: false,
         ),
         ContextMenuItem(
             id: ContextMenuItemID(id: "manage-library"),
-            localizedTitle: "Manage Library\u{2026}",
+            localizedTitle: String(localized: "Manage Library…"),
             isDestructive: false,
         ),
     ])
@@ -55,7 +55,7 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
             provider: ChoiceProviderID(rawValue: bundleID),
             identifier: entry.id,
             name: entry.name,
-            localizedDescription: "Animated video wallpaper",
+            localizedDescription: String(localized: "Animated video wallpaper"),
             thumbnail: .image(url: thumbnailURL),
             isDownloaded: true,
             options: [],
@@ -100,7 +100,7 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     let group = SettingsGroup(
         id: groupID,
         items: items,
-        localizedName: "Phosphene \u{2014} Video Wallpapers",
+        localizedName: String(localized: "Phosphene — Video Wallpapers"),
         disposability: .none,
         sortOrder: -100,
         sortID: GroupSortID(id: "com.apple.wallpaper.aerials"),
@@ -140,13 +140,13 @@ enum ShuffleFrequencyID: String, CaseIterable {
 
     var localizedName: String {
         switch self {
-        case .onWakeup: "On Wake"
-        case .onLogin: "On Login"
-        case .fiveMinutes: "Every 5 Minutes"
-        case .fifteenMinutes: "Every 15 Minutes"
-        case .thirtyMinutes: "Every 30 Minutes"
-        case .oneHour: "Every Hour"
-        case .oneDay: "Every Day"
+        case .onWakeup: String(localized: "On Wake")
+        case .onLogin: String(localized: "On Login")
+        case .fiveMinutes: String(localized: "Every 5 Minutes")
+        case .fifteenMinutes: String(localized: "Every 15 Minutes")
+        case .thirtyMinutes: String(localized: "Every 30 Minutes")
+        case .oneHour: String(localized: "Every Hour")
+        case .oneDay: String(localized: "Every Day")
         }
     }
 
@@ -177,7 +177,7 @@ private func makeShuffleItem(bundleID: String, thumbnailURLs: [URL], contextMenu
     )
     let frequencyPicker = MenuPickerOption(
         id: "shuffleFrequency",
-        localizedLabel: "Change Video",
+        localizedLabel: String(localized: "Change Video"),
         defaultValueID: ShuffleFrequencyID.onWakeup.rawValue,
         accessibilityIdentifier: nil,
         localizedInformativeText: nil,
@@ -193,14 +193,14 @@ private func makeShuffleItem(bundleID: String, thumbnailURLs: [URL], contextMenu
     )
     return SettingsItem(
         id: choiceID,
-        localizedName: "Shuffle All",
+        localizedName: String(localized: "Shuffle All"),
         thumbnail: .shuffleImages(urls: thumbnailURLs),
         choice: ChoiceDescriptor(
             id: choiceID,
             provider: ChoiceProviderID(rawValue: bundleID),
             identifier: shuffleChoiceID,
-            name: "Shuffle All",
-            localizedDescription: "Rotate through your video wallpapers",
+            name: String(localized: "Shuffle All"),
+            localizedDescription: String(localized: "Rotate through your video wallpapers"),
             thumbnail: .shuffleImages(urls: thumbnailURLs),
             isDownloaded: true,
             options: [.picker(frequencyPicker)],
@@ -230,14 +230,14 @@ private func makeAddVideoItem(bundleID: String, contextMenu: ContextMenu) -> Set
     )
     return SettingsItem(
         id: choiceID,
-        localizedName: "Add Video\u{2026}",
+        localizedName: String(localized: "Add Video…"),
         thumbnail: .image(url: thumbnailURL),
         choice: ChoiceDescriptor(
             id: choiceID,
             provider: ChoiceProviderID(rawValue: bundleID),
             identifier: id,
-            name: "Add Video\u{2026}",
-            localizedDescription: "Right-click to add a video",
+            name: String(localized: "Add Video…"),
+            localizedDescription: String(localized: "Right-click to add a video"),
             thumbnail: .image(url: thumbnailURL),
             isDownloaded: true,
             options: [],
