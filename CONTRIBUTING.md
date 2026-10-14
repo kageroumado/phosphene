@@ -75,8 +75,9 @@ swiftlint
 
 The runtime quirks that keep this working — the `WallpaperSnapshotXPC` encoder
 swizzle, the `Mirror`-based XPC parsing, advisory variants — are documented in
-the README's "Quirks worth knowing". Read those before touching acquire,
-teardown, or snapshot code.
+[REFERENCE.md](REFERENCE.md) under "Quirks worth knowing". How playback decisions
+reach the renderer is in [PLAYBACK-STATE.md](PLAYBACK-STATE.md). Read both
+before touching acquire, teardown, snapshot, or playback-state code.
 
 ## Pull requests
 

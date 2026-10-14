@@ -115,8 +115,7 @@ final class OcclusionMonitor {
     /// Notification Center overlays, our own popover) and never count as occluding.
     /// Everything from 0 up to it does: ordinary windows sit at layer 0, and
     /// borderless fullscreen game windows land just above the menu bar — Wine
-    /// puts Genshin's at 26, invisible to a layer==0 filter (see
-    /// GAME-INTERFERENCE-FINDINGS.md).
+    /// puts Genshin's at 26, invisible to a layer==0 filter.
     private static let chromeLevelFloor = Int(CGWindowLevelForKey(.popUpMenuWindow))
 
     /// Only windows of regular applications (Dock-visible, cmd-tabbable — Wine

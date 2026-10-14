@@ -4,7 +4,7 @@ import SwiftUI
 /// The popover's hero card: the entry's first-frame thumbnail, like the tiles in
 /// Wallpaper Settings. A live player here spawns its own VTDecoderXPCService and
 /// software-scales full-resolution frames for as long as the popover is open
-/// (~50% CPU — see GAME-INTERFERENCE-FINDINGS.md), all to preview a video that
+/// (~50% CPU), all to preview a video that
 /// is already playing full-screen behind the popover.
 struct VideoPreviewCard: View {
     var videoID: String?

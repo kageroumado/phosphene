@@ -17,8 +17,8 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 <details>
 <summary>Full feature list</summary>
 
-- Import videos through **Manage Library** and select them in **System Settings → Wallpaper**.
-- Wallpaper selection per display or Space, plus **Only on Lock Screen**.
+- Import videos in the **Library** window and select them in **System Settings → Wallpaper**.
+- Wallpaper selection per display or Space, plus a **Lock Screen**-only playback mode.
 - Desktop and lock-screen playback through the macOS wallpaper pipeline.
 - MP4, MOV, and other AVFoundation-readable inputs; gapless looping and lock/unlock transitions.
 - Menu-bar preview, pause, display switching, and launch at login.
