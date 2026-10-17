@@ -132,7 +132,7 @@ each app it builds with LaunchServices, and WallpaperAgent may launch a register
 `PhospheneExtension.appex` for new wallpapers. A build made without signing cannot start there, so
 acquires time out after 32 s: a newly selected video does nothing, or a stale snapshot shows. The fix
 is the one REFERENCE.md gives for a deleted copy: unregister the stray copies,
-`lsregister -f /Applications/Phosphene.app`, `killall WallpaperAgent`.
+`lsregister -f /Applications/Phosphene.app`, `killall WallpaperAgent`. A release archive (`kagerou publish`) registers its own copy under `…/ArchiveIntermediates/…/Phosphene.app` the same way, so the same three steps follow every release.
 
 **Reading the extension's log**: its container refuses every process not signed by its team,
 terminals included. A Debug build signed as above copies the log and a listing of the library to
