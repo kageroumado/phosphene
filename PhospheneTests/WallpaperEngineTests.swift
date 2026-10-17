@@ -132,6 +132,20 @@ struct WallpaperEngineTests {
     }
 
     @Test
+    func `a shader that reads the audio spectrum is an audio visualizer`() throws {
+        let folder = try shaderFolder([
+            "shaders/bars.vert": "void main() {}",
+            "shaders/bars.frag": "uniform float g_AudioSpectrum32Left[32];\nvoid main() {}",
+            "shaders/still.vert": "void main() {}",
+            "shaders/still.frag": "void main() {}",
+        ])
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let files = try WEFileSystem(folder: folder, assets: nil)
+        #expect(try WEShaderSource(name: "bars", files: files).usesAudio)
+        #expect(try !WEShaderSource(name: "still", files: files).usesAudio)
+    }
+
+    @Test
     func `refuses includes nested past the limit`() throws {
         var files = ["shaders/deep.vert": "void main() {}", "shaders/deep.frag": "#include \"h0.h\"\nvoid main() {}"]
         for level in 0 ... WELimit.includeDepth + 1 {

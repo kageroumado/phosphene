@@ -515,6 +515,9 @@ struct WorkshopInspectorView: View {
             if !dropped.isEmpty {
                 lines.append(String(localized: "Drawn without \(dropped.formatted(.list(type: .and))), whose shader Phosphene couldn’t translate."))
             }
+            if record.omissions.contains("audio visualizer") {
+                lines.append(String(localized: "Its audio visualizer is left out: a video wallpaper hears nothing."))
+            }
         }
         return lines
     }

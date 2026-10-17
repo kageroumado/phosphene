@@ -24,6 +24,9 @@ nonisolated struct WEShaderSource {
     let annotations: [String: Annotation]
     /// Texture slots whose format the shader switches on (`TEXnFORMAT`).
     let formatSlots: Set<Int>
+    /// The shader reads Wallpaper Engine's audio spectrum: a visualizer, which
+    /// a video wallpaper has nothing to feed.
+    let usesAudio: Bool
 
     init(name: String, files: WEFileSystem) throws {
         guard let vertex = files.text("shaders/\(name).vert"), let fragment = files.text("shaders/\(name).frag")
@@ -63,6 +66,7 @@ nonisolated struct WEShaderSource {
         formatSlots = Set(
             unsafe (self.vertex + self.fragment).matches(of: Pattern.formatSlot).compactMap { Int($0.output.1) },
         )
+        usesAudio = self.vertex.contains("g_AudioSpectrum") || self.fragment.contains("g_AudioSpectrum")
     }
 
     /// The patterns, compiled once. `Regex` is not `Sendable`, and none of these is

@@ -44,6 +44,9 @@ final nonisolated class WERenderer {
     private var particles: [Int: (main: WEParticleSystem, early: WEParticleSystem)] = [:]
     private var crossfadeTarget: WERenderTarget?
     private let particleRenderer: WEParticleRenderer
+    /// Layers left out of every frame (``prepare()``), by index: the particle
+    /// simulations are keyed by index too, so layers are never removed.
+    private var hiddenLayers: Set<Int> = []
 
     /// Frame interval the particle simulation steps by.
     var frameDuration: Double = 1.0 / 30
@@ -91,6 +94,9 @@ final nonisolated class WERenderer {
     /// fails before any frame is encoded. An effect whose shader will not compile is
     /// dropped (its layer draws without it); a layer whose own image will not draw
     /// fails the render.
+    ///
+    /// A solid-color layer is a canvas for its effects: one whose every effect was
+    /// dropped would draw as a plain rectangle, so it is left out instead.
     private func prepare() throws {
         for (index, layer) in layers.enumerated() {
             switch layer {
@@ -98,8 +104,17 @@ final nonisolated class WERenderer {
                 if !image.copiesBackground {
                     _ = try program(for: image.base, slotFormats: slotFormats(image.base), sprite: isSprite(image.base))
                 }
+                var dropped = 0
                 image.effects = image.effects.filter { effect in
                     do {
+                        // An audio visualizer would draw silence; it is left out before compiling.
+                        if try effect.passes.contains(where: { try programs.source($0.shader).usesAudio }) {
+                            if !omissions.contains("audio visualizer") {
+                                omissions.append("audio visualizer")
+                            }
+                            dropped += 1
+                            return false
+                        }
                         for pass in effect.passes {
                             _ = try program(for: pass, slotFormats: slotFormats(pass, buffers: effect.buffers), sprite: false)
                         }
@@ -108,8 +123,14 @@ final nonisolated class WERenderer {
                         let name = effect.passes.first.map { ($0.shader as NSString).lastPathComponent } ?? "effect"
                         weLog.error("Dropping effect \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
                         omissions.append("the “\(name)” effect")
+                        dropped += 1
                         return false
                     }
+                }
+                let isCanvas = image.base.shader == "flat" && image.base.textures.compactMap(\.self).isEmpty
+                if isCanvas, dropped > 0, image.effects.isEmpty {
+                    weLog.error("Leaving out the solid layer \(image.name, privacy: .public): its only effects were dropped")
+                    hiddenLayers.insert(index)
                 }
                 layers[index] = .image(image)
             case let .particles(layer):
@@ -193,7 +214,7 @@ final nonisolated class WERenderer {
         let clear = scene.clearColor
         gl.clear(red: clear.x, green: clear.y, blue: clear.z, alpha: 1)
 
-        for (index, layer) in layers.enumerated() {
+        for (index, layer) in layers.enumerated() where !hiddenLayers.contains(index) {
             switch layer {
             case let .image(image):
                 try draw(image, index: index, time: time)

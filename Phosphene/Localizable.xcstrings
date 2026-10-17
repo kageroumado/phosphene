@@ -2710,6 +2710,16 @@
           }
         }
       }
+    },
+    "Its audio visualizer is left out: a video wallpaper hears nothing.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它的音频可视化效果已省略：视频墙纸听不到声音。"
+          }
+        }
+      }
     }
   },
   "version": "1.1"
