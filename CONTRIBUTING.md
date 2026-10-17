@@ -46,6 +46,32 @@ xcodebuild -project Phosphene.xcodeproj -scheme Phosphene -configuration Debug \
 The project uses synchronized filesystem groups, so adding or removing files in
 `Phosphene/` or `PhospheneExtension/` needs no pbxproj edits.
 
+**Unregister every build you make** (`lsregister -u <the built Phosphene.app>`; a release archive
+counts too, under `…/ArchiveIntermediates/…/Phosphene.app`). Xcode registers each app it builds
+with LaunchServices, and WallpaperAgent may launch a registered debug `PhospheneExtension.appex`
+for a new wallpaper; an unsigned one cannot start, so acquires time out after 32 s and a newly
+selected video does nothing. The repair is the one below under Pull requests.
+
+To try the library window without touching the installed extension, make a copy without it,
+under its own bundle id, signed by the team that owns the extension container (an ad-hoc copy
+cannot read it), and open the library at launch:
+
+```sh
+APP="/Volumes/Ugreen/Scratch/phosphene-wedev/Phosphene WE Prototype.app"
+cp -R /Volumes/Ugreen/Build/phosphene-wedev/Build/Products/Debug/Phosphene.app "$APP"
+trash "$APP/Contents/Extensions"
+plutil -replace CFBundleIdentifier -string glass.kagerou.phosphene.wedev "$APP/Contents/Info.plist"
+plutil -remove CFBundleURLTypes "$APP/Contents/Info.plist"
+codesign --force --deep -s "Developer ID Application: <your identity>" "$APP"
+defaults write glass.kagerou.phosphene.wedev launchAtLogin -bool false
+defaults write glass.kagerou.phosphene.wedev autoInstallUpdates -bool false
+open -n "$APP" --args -PHOSPHENE_OPEN_LIBRARY YES
+```
+
+The extension's container refuses every process not signed by its team, terminals included; a
+Debug build signed that way copies the extension's log and a listing of the library to
+`/tmp/phosphene-diagnostics` when launched with `--args -PHOSPHENE_EXPORT_DIAGNOSTICS YES`.
+
 ## Style
 
 SwiftFormat (`.swiftformat`) and SwiftLint (`.swiftlint.yml`). Run both before
