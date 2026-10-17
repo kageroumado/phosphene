@@ -68,6 +68,13 @@ struct LibraryWindow: View {
             importDropped(urls)
         }
         .focusedSceneValue(\.libraryActions, actions)
+        // `phosphene://library/wallpaper-engine`: Sevoflurane opens the window at
+        // the Wallpaper Engine section.
+        .onOpenURL { url in
+            if url.host == "library", url.path == "/wallpaper-engine" {
+                section = .workshopDownloads
+            }
+        }
         .onAppear {
             loadEntries()
             if !workshop.hasScanned {
