@@ -70,7 +70,7 @@ struct PhospheneApp: App {
         let string = NSMutableAttributedString()
         string.append(NSAttributedString(string: "kagerou.glass", attributes: [
             .font: NSFont.systemFont(ofSize: 11),
-            .link: URL(string: "https://kagerou.glass")!,
+            .link: URL(string: "https://kagerou.glass/phosphene/?from=app")!,
             .paragraphStyle: style,
         ]))
         string.append(NSAttributedString(string: "  ·  ", attributes: attributes))

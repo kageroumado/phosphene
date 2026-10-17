@@ -208,6 +208,66 @@
         }
       }
     },
+    "Count Me In": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "算我一个"
+          }
+        }
+      }
+    },
+    "Count this Mac": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "统计这台 Mac"
+          }
+        }
+      }
+    },
+    "Count yourself in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入统计"
+          }
+        }
+      }
+    },
+    "Counting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "统计"
+          }
+        }
+      }
+    },
+    "Counting and crash reports": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "统计并发送崩溃报告"
+          }
+        }
+      }
+    },
+    "Crash reports adds a report when Phosphene itself crashes, with your name, your Mac’s name and folder paths removed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“崩溃报告”会在 Phosphene 本身崩溃时添加一份报告，其中已移除你的姓名、Mac 的名称和文件夹路径。"
+          }
+        }
+      }
+    },
     "Create Variants": {
       "localizations": {
         "zh-Hans": {
@@ -244,6 +304,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "删除…"
+          }
+        }
+      }
+    },
+    "Deleting what this Mac sent…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在删除这台 Mac 发送的内容…"
           }
         }
       }
@@ -348,6 +418,16 @@
         }
       }
     },
+    "It never includes which videos you use, and nothing in it names you.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它从不包含你使用的是哪些视频，其中也没有任何能指认你的信息。"
+          }
+        }
+      }
+    },
     "It will install itself when your Mac is idle — the wallpaper keeps playing.": {
       "localizations": {
         "zh-Hans": {
@@ -448,6 +528,36 @@
         }
       }
     },
+    "Not Now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂不"
+          }
+        }
+      }
+    },
+    "Not sent yet: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未发送：%@"
+          }
+        }
+      }
+    },
+    "Nothing is sent.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不发送任何内容。"
+          }
+        }
+      }
+    },
     "Off": {
       "localizations": {
         "zh-Hans": {
@@ -464,6 +574,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开"
+          }
+        }
+      }
+    },
+    "On each day you use Phosphene, one anonymous check-in is sent:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在你使用 Phosphene 的每一天，会发送一次匿名签到："
+          }
+        }
+      }
+    },
+    "One anonymous check-in a day counts how many people use Phosphene. It never includes which videos you use. Settings lists what is sent.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天一次匿名签到，用于统计有多少人在使用 Phosphene。它从不包含你使用的是哪些视频。“设置”中列出了发送的内容。"
+          }
+        }
+      }
+    },
+    "One anonymous check-in a day, and a report when Phosphene crashes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天一次匿名签到，以及 Phosphene 崩溃时的一份报告。"
+          }
+        }
+      }
+    },
+    "One anonymous check-in on each day you use Phosphene.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在你使用 Phosphene 的每一天发送一次匿名签到。"
           }
         }
       }
@@ -851,6 +1001,16 @@
         }
       }
     },
+    "This Mac has no Secure Enclave, so nothing is sent.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 Mac 没有安全隔区，因此不会发送任何内容。"
+          }
+        }
+      }
+    },
     "This release shipped without notes.": {
       "localizations": {
         "zh-Hans": {
@@ -877,6 +1037,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "切换检查器"
+          }
+        }
+      }
+    },
+    "Turning this off deletes everything this Mac sent.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后会删除这台 Mac 发送过的所有内容。"
           }
         }
       }
@@ -991,6 +1161,16 @@
         }
       }
     },
+    "What is sent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送的内容"
+          }
+        }
+      }
+    },
     "What's New": {
       "localizations": {
         "zh-Hans": {
@@ -1011,6 +1191,34 @@
         }
       }
     },
+    "Yesterday, %lld Macs counted themselves in.": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Yesterday, %lld Mac counted itself in."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Yesterday, %lld Macs counted themselves in."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "昨天有 %lld 台 Mac 加入了统计。"
+          }
+        }
+      }
+    },
     "You don't have any wallpapers saved yet. Please add a video first.": {
       "localizations": {
         "zh-Hans": {
@@ -1026,6 +1234,16 @@
     },
     "•": {
       "shouldTranslate": false
+    },
+    "• Phosphene and macOS versions\n• chip family and memory size\n• language and the date\n• how many of the last 7 days you used it\n• whether you have your own videos, and how many displays": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• Phosphene 和 macOS 的版本\n• 芯片系列和内存大小\n• 语言和日期\n• 最近 7 天中使用了几天\n• 是否有自己的视频，以及显示器数量"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

@@ -25,6 +25,8 @@ struct MenuBarPopoverView: View {
             VStack(spacing: Theme.Space.md) {
                 PopoverHeader("Phosphene")
 
+                UsageQuestionCard()
+
                 if prefsService.selections.isEmpty {
                     emptyStateSection
                 } else {
@@ -39,7 +41,10 @@ struct MenuBarPopoverView: View {
         }
         .frame(width: Theme.popoverWidth)
         .fixedSize(horizontal: false, vertical: true)
-        .onAppear { SilentUpdates.shared.refresh() }
+        .onAppear {
+            SilentUpdates.shared.refresh()
+            UsageCounting.noteUse()
+        }
         .onChange(of: prefsService.selections.count) {
             selectedIndex = min(selectedIndex, max(0, prefsService.selections.count - 1))
         }
@@ -235,6 +240,8 @@ struct MenuBarPopoverView: View {
                     .help("Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.")
             }
             .toggleStyle(SettingPillToggleStyle())
+
+            UsageCountingSettings()
         }
     }
 

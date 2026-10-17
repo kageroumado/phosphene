@@ -27,6 +27,10 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 
 </details>
 
+## Counting
+
+Nothing is sent unless you say so. The menu bar asks once whether to count this Mac; if you count yourself in, Phosphene sends one anonymous check-in on each day you use it: the Phosphene and macOS versions, chip family and memory size, language and date, how many of the last 7 days you used it, whether you have your own videos, and how many displays. It never includes which videos you use, and nothing in it names you. A second tier adds a scrubbed report when Phosphene itself crashes. Turning it off deletes everything this Mac sent. Every field is listed in the [Digoxin reference](https://github.com/kageroumado/digoxin/blob/main/REFERENCE.md).
+
 ## Notes
 
 - macOS 26+ · Apple silicon or Intel.

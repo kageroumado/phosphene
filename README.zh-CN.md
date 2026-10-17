@@ -27,6 +27,10 @@ Phosphene 通过与 Apple 航拍墙纸相同的墙纸管线，把你的视频添
 
 </details>
 
+## 统计
+
+除非你同意，否则不会发送任何内容。菜单栏会询问一次是否统计这台 Mac；如果你选择加入，Phosphene 会在你使用它的每一天发送一次匿名签到：Phosphene 和 macOS 的版本、芯片系列和内存大小、语言和日期、最近 7 天中使用了几天、是否有自己的视频，以及显示器数量。它从不包含你使用的是哪些视频，其中也没有任何能指认你的信息。更高一档会在 Phosphene 本身崩溃时附上一份已清理的报告。关闭后会删除这台 Mac 发送过的所有内容。所有字段见 [Digoxin 参考文档](https://github.com/kageroumado/digoxin/blob/main/REFERENCE.md)（英文）。
+
 ## 其他信息
 
 - macOS 26+ · Apple 芯片或 Intel。

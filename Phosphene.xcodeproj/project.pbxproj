@@ -175,6 +175,7 @@
 			packageProductDependencies = (
 				7A0000000000000000000002 /* TiptoeGitHub */,
 				7B0000000000000000000002 /* Propofol */,
+				7C0000000000000000000002 /* Digoxin */,
 			);
 			productName = Phosphene;
 			productReference = AA9B91C92E900B9E008812A9 /* Phosphene.app */;
@@ -232,6 +233,7 @@
 			packageReferences = (
 				7A0000000000000000000001 /* XCRemoteSwiftPackageReference "Tiptoe" */,
 				7B0000000000000000000001 /* XCRemoteSwiftPackageReference "propofol" */,
+				7C0000000000000000000001 /* XCRemoteSwiftPackageReference "digoxin" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = AA9B91CA2E900B9E008812A9 /* Products */;
@@ -663,6 +665,14 @@
 				minimumVersion = 0.2.1;
 			};
 		};
+		7C0000000000000000000001 /* XCRemoteSwiftPackageReference "digoxin" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kageroumado/digoxin.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.2.0;
+			};
+		};
 		7A0000000000000000000001 /* XCRemoteSwiftPackageReference "Tiptoe" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/artginzburg/Tiptoe";
@@ -681,6 +691,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 7B0000000000000000000001 /* XCRemoteSwiftPackageReference "propofol" */;
 			productName = Propofol;
+		};
+		7C0000000000000000000002 /* Digoxin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7C0000000000000000000001 /* XCRemoteSwiftPackageReference "digoxin" */;
+			productName = Digoxin;
 		};
 		7A0000000000000000000002 /* TiptoeGitHub */ = {
 			isa = XCSwiftPackageProductDependency;
