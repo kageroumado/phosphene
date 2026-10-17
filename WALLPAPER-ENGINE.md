@@ -16,7 +16,7 @@ turns each one into a looping video, which then plays like any other video in yo
 4. Each video appears in the library and in **System Settings › Wallpaper** as it finishes.
 
 A wallpaper shows **Made** once its video exists. If its author updates it on the Workshop, it
-shows **Updated since**; **Make Video Again** renders it anew and swaps the video into the same
+shows **Updated since**; **Make Video Again** renders it again and swaps the video into the same
 entry, so a wallpaper chosen in System Settings keeps playing, now with the new version.
 
 Phosphene looks for downloads in Sevoflurane's, CrossOver's and Whisky's Steam folders and in
@@ -46,7 +46,7 @@ Everything a wallpaper ships is treated as untrusted input: the Workshop is open
 - `WorkshopDiscovery` finds the Steam libraries and reads each download's `project.json`;
   `WorkshopLibrary` keeps the list, the status of each item and the queue of videos to make.
 - A scene renders in a helper copy of Phosphene (`Phosphene --bake`), so a shader that hangs the
-  GPU ends the helper and the library reports a failed video, never a frozen app.
+  GPU ends the helper, and the library reports a failed video.
 - `WEScene` reads the scene and its materials; `WEShaderSource` turns Wallpaper Engine's GLSL
   dialect into GLSL 4.10; `WERenderer` draws the layers, effects and particles offscreen through
   OpenGL (`GL.swift` loads it at runtime); `WELoopFinder` picks the loop; `WEVideoEncoder` writes

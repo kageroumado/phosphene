@@ -33,7 +33,7 @@ Phosphene 通过与 Apple 航拍墙纸相同的墙纸管线，把你的视频添
 
 Steam 创意工坊里有几十万张为 Wallpaper Engine 制作的动态壁纸，而它是一个 Windows 程序。Phosphene 把它们变成视频墙纸：在 Steam 里订阅，在资料库的 Wallpaper Engine 分区里选中，然后点“制作视频”。
 
-Wallpaper Engine 在 Windows 版 Steam 里运行。[Sevoflurane](https://kagerou.glass/sevoflurane/zh-CN/?from=phosphene-readme) 能把这个 Steam 带到 Mac 上，免费，出自同一位开发者。哪些内容能呈现、哪些不能：[WALLPAPER-ENGINE.md](WALLPAPER-ENGINE.md)。
+Wallpaper Engine 在 Windows 版 Steam 里运行。[Sevoflurane](https://kagerou.glass/sevoflurane/zh-CN/?from=phosphene-readme) 能把这个 Steam 带到 Mac 上，免费，出自同一位开发者。视频保留什么、省略什么：[WALLPAPER-ENGINE.md](WALLPAPER-ENGINE.md)。
 
 Wallpaper Engine 是 Wallpaper Engine Team 的商标；Steam 是 Valve Corporation 的商标。Phosphene 是独立开发的 App。
 
