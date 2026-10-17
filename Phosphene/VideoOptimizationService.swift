@@ -2,7 +2,7 @@ import AVFoundation
 import CoreMedia
 
 /// Video variant descriptor matching the extension's VideoVariant type.
-struct VideoVariant: Codable {
+nonisolated struct VideoVariant: Codable, Sendable {
     let filename: String
     let fps: Int
     let resolution: CGSize

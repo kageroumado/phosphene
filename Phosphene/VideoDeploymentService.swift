@@ -32,8 +32,10 @@ enum VideoDeploymentService {
     /// Probes the video with AVFoundation to populate resolution, fps, and duration.
     /// Skips deployment if a video with the same filename already exists.
     /// Sends a Darwin notification so the extension re-scans its library.
+    /// Returns the new entry's id.
     @MainActor
-    static func deployVideo(url: URL, name: String? = nil) async {
+    @discardableResult
+    static func deployVideo(url: URL, name: String? = nil) async -> String? {
         let fileManager = FileManager.default
         let videosDir = videosFolderURL
         try? fileManager.createDirectory(at: videosDir, withIntermediateDirectories: true)
@@ -42,7 +44,7 @@ enum VideoDeploymentService {
         let existing = listEntries()
         if existing.contains(where: { $0.filename == url.lastPathComponent }) {
             Log.video.info("Video '\(url.lastPathComponent)' already in library, skipping deploy")
-            return
+            return nil
         }
 
         let id = UUID().uuidString
@@ -81,10 +83,81 @@ enum VideoDeploymentService {
 
             Log.video.info("Deployed video '\(url.lastPathComponent)' as \(id) to \(dir.path)")
             notifyExtensionLibraryChanged()
+            return id
         } catch {
             Log.video.error("Failed to deploy video: \(error.localizedDescription)")
             try? fileManager.removeItem(at: dir)
+            return nil
         }
+    }
+
+    /// Swap an entry's video for `url`, keeping its id, name and the wallpaper
+    /// selections that point at it. Variants of the old video are removed.
+    @MainActor
+    @discardableResult
+    static func replaceVideo(entryID: String, with url: URL) async -> Bool {
+        guard let dir = validatedEntryDir(entryID), PathSafety.isSafeComponent(url.lastPathComponent) else { return false }
+        let metadataURL = dir.appendingPathComponent("metadata.json")
+        guard let data = try? Data(contentsOf: metadataURL),
+              var metadata = try? JSONDecoder().decode(DeploymentMetadata.self, from: data)
+        else { return false }
+        let fileManager = FileManager.default
+        let destination = dir.appendingPathComponent(url.lastPathComponent)
+        // The new file lands beside the old one first, so a failed copy (a full disk)
+        // leaves the entry playing what it had.
+        let incoming = dir.appendingPathComponent(".incoming-\(UUID().uuidString)")
+        do {
+            try fileManager.copyItem(at: url, to: incoming)
+            if metadata.filename != destination.lastPathComponent, PathSafety.isSafeComponent(metadata.filename) {
+                try? fileManager.removeItem(at: dir.appendingPathComponent(metadata.filename))
+            }
+            _ = try fileManager.replaceItemAt(destination, withItemAt: incoming)
+        } catch {
+            try? fileManager.removeItem(at: incoming)
+            Log.video.error("Failed to replace video for \(entryID): \(error.localizedDescription)")
+            return false
+        }
+        for variant in metadata.variants ?? [] where PathSafety.isSafeComponent(variant.filename) {
+            try? fileManager.removeItem(at: dir.appendingPathComponent(variant.filename))
+        }
+        metadata.filename = url.lastPathComponent
+        metadata.variants = nil
+        let asset = AVURLAsset(url: destination)
+        if let track = try? await asset.loadTracks(withMediaType: .video).first {
+            metadata.fps = await Double((try? track.load(.nominalFrameRate)) ?? 0)
+            metadata.resolution = await (try? track.load(.naturalSize)) ?? .zero
+            metadata.duration = await (try? asset.load(.duration)).map { CMTimeGetSeconds($0) } ?? 0
+        }
+        if let updated = try? JSONEncoder().encode(metadata) {
+            try? updated.write(to: metadataURL, options: .atomic)
+        }
+        await generateThumbnail(for: destination, in: dir)
+        notifyExtensionLibraryChanged()
+        return true
+    }
+
+    // MARK: - Wallpaper Engine provenance
+
+    /// `workshop.json` beside an entry made from a Wallpaper Engine wallpaper. The
+    /// extension never reads it, and it goes when the entry's folder goes, so the
+    /// library's "already made" state cannot outlive the video.
+    private static let workshopRecordName = "workshop.json"
+
+    static func writeWorkshopRecord(_ record: WorkshopRecord, entryID: String) {
+        guard let dir = validatedEntryDir(entryID), let data = try? JSONEncoder().encode(record) else { return }
+        try? data.write(to: dir.appendingPathComponent(workshopRecordName), options: .atomic)
+    }
+
+    /// Workshop item id → the entry made from it and how.
+    static func workshopRecords() -> [String: (entryID: String, record: WorkshopRecord)] {
+        var records: [String: (entryID: String, record: WorkshopRecord)] = [:]
+        for entry in listEntries() {
+            let url = videosFolderURL.appendingPathComponent(entry.id).appendingPathComponent(workshopRecordName)
+            guard let data = try? Data(contentsOf: url),
+                  let record = try? JSONDecoder().decode(WorkshopRecord.self, from: data) else { continue }
+            records[record.publishedFileID] = (entry.id, record)
+        }
+        return records
     }
 
     /// Convert a video to HEVC and deploy to the extension.
@@ -209,7 +282,7 @@ enum VideoDeploymentService {
     }
 
     /// Metadata structure for reading entries (mirrors the extension's VideoEntry).
-    struct EntryInfo: Codable {
+    nonisolated struct EntryInfo: Codable, Sendable {
         let id: String
         var name: String
         var filename: String

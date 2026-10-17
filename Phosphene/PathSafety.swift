@@ -1,6 +1,6 @@
 import Foundation
 
-enum PathSafety {
+nonisolated enum PathSafety {
     /// True if `id` is a well-formed UUID string — the only form a library
     /// entry directory ever takes. Rejecting non-UUID names neutralizes `..`,
     /// absolute paths, and stray files.

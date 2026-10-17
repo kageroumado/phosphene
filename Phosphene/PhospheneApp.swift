@@ -1,6 +1,6 @@
 import SwiftUI
 
-@main
+/// Started from `main.swift`, which runs a bake helper instead when asked to.
 struct PhospheneApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var manager: PhospheneManager
@@ -18,6 +18,46 @@ struct PhospheneApp: App {
             if UserDefaults.standard.bool(forKey: "PHOSPHENE_GALLERY") {
                 DispatchQueue.main.async {
                     ScreenshotGallery.present(manager: manager)
+                }
+            }
+            // Copy the extension's log and library listing somewhere readable: its container
+            // refuses every process not signed by its team, a terminal included.
+            if UserDefaults.standard.bool(forKey: "PHOSPHENE_EXPORT_DIAGNOSTICS") {
+                let documents = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent("Library/Containers/glass.kagerou.phosphene.extension/Data/Documents")
+                let out = URL(fileURLWithPath: "/tmp/phosphene-diagnostics")
+                try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+                for name in ["extension.log", "extension.log.1"] {
+                    try? FileManager.default.removeItem(at: out.appendingPathComponent(name))
+                    try? FileManager.default.copyItem(at: documents.appendingPathComponent(name), to: out.appendingPathComponent(name))
+                }
+                var listing = ""
+                let videos = documents.appendingPathComponent("videos")
+                for dir in (try? FileManager.default.contentsOfDirectory(at: videos, includingPropertiesForKeys: nil)) ?? [] {
+                    listing += "== \(dir.lastPathComponent)\n"
+                    for file in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] {
+                        let attributes = try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent(file).path)
+                        listing += "  \(file) \(attributes?[.size] ?? 0)\n"
+                    }
+                    if let metadata = try? String(contentsOf: dir.appendingPathComponent("metadata.json"), encoding: .utf8) {
+                        listing += "  metadata: \(metadata)\n"
+                    }
+                }
+                try? listing.write(to: out.appendingPathComponent("videos.txt"), atomically: true, encoding: .utf8)
+            }
+            // The library at launch, for driving it without the menu bar (a locked
+            // screen never opens the popover): `--args -PHOSPHENE_OPEN_LIBRARY YES`.
+            if UserDefaults.standard.bool(forKey: "PHOSPHENE_OPEN_LIBRARY") {
+                DispatchQueue.main.async {
+                    let controller = NSHostingController(rootView: LibraryWindow(manager: manager))
+                    controller.sceneBridgingOptions = [.toolbars, .title]
+                    let window = NSWindow(contentViewController: controller)
+                    window.identifier = NSUserInterfaceItemIdentifier("library")
+                    window.title = "Phosphene"
+                    window.styleMask.insert(.fullSizeContentView)
+                    window.setContentSize(NSSize(width: 1_180, height: 820))
+                    window.center()
+                    window.makeKeyAndOrderFront(nil)
                 }
             }
         #endif
@@ -42,7 +82,8 @@ struct PhospheneApp: App {
         // context menu). Promotion to a regular app happens in LibraryWindow.onAppear
         // so every open path gets the Dock icon and activation.
         .handlesExternalEvents(matching: ["library"])
-        .defaultSize(width: 900, height: 600)
+        .defaultSize(width: 1_180, height: 760)
+        .commands { LibraryCommands() }
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Phosphene") {

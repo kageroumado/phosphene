@@ -211,8 +211,15 @@ struct MenuBarPopoverView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
-                Button("Open Library") {
-                    openLibrary()
+                HStack(spacing: Theme.Space.xs) {
+                    Button("Open Library") {
+                        openLibrary()
+                    }
+                    Button("Wallpaper Engine…") {
+                        UserDefaults.standard.set(LibrarySection.workshopDownloads.rawValue, forKey: LibrarySection.storageKey)
+                        openLibrary()
+                    }
+                    .help("Make wallpapers from Wallpaper Engine downloads")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

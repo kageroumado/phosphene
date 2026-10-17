@@ -53,6 +53,8 @@ final class PhospheneManager {
 
     let prefsService = WallpaperPrefsService.shared
     let occlusionMonitor = OcclusionMonitor()
+    /// Wallpaper Engine downloads and the queue that turns them into videos.
+    let workshop = WorkshopLibrary()
 
     // MARK: - Private
 
