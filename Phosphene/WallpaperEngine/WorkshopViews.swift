@@ -281,13 +281,10 @@ struct MakeVideoSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Make Videos")
                 .font(.system(size: 15, weight: .semibold))
-            Text("""
-            Phosphene draws each scene offscreen, finds where its motion repeats so the video loops, and adds \
-            it to your library. A scene takes about a minute. Video wallpapers are added as they are.
-            """)
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+            Text("Each wallpaper becomes a looping video in your library. A scene takes about a minute.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Form {
                 Picker("Size", selection: sizeBinding) {
@@ -315,13 +312,10 @@ struct MakeVideoSheet: View {
             .scrollDisabled(true)
             .frame(height: 196)
 
-            Text("""
-            Both formats are decoded in hardware on every Mac Phosphene runs on. HEVC files are about a quarter \
-            smaller at the same quality. 60 fps doubles the size and the decoding work.
-            """)
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+            Text("HEVC files are about a quarter smaller than H.264. 60 fps doubles the file size.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             let partial = stagedItems.compactMap { item -> String? in
                 guard case let .partial(omissions) = library.assessments[item.id] else { return nil }

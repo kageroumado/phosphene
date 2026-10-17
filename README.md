@@ -13,7 +13,7 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 - Select personal videos alongside Apple’s wallpapers in System Settings.
 - Keep desktop and lock-screen playback running after quitting Phosphene.
 - Pause playback under covered desktops and adjust decoding to power and thermal conditions.
-- Turn Wallpaper Engine wallpapers from the Steam Workshop into looping videos.
+- Use Wallpaper Engine wallpapers from the Steam Workshop.
 
 <details>
 <summary>Full feature list</summary>
@@ -25,13 +25,15 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 - Menu-bar preview, pause, display switching, and launch at login.
 - Visibility, power, and thermal-aware playback; optional lower-resolution variants.
 - **Restart Wallpaper Agent** from the menu bar for stuck playback.
-- A **Wallpaper Engine** section that finds Steam Workshop downloads in Sevoflurane, CrossOver or Whisky and renders scenes and videos into looping HEVC or H.264 videos, with the loop length found automatically.
+- A **Wallpaper Engine** section: Steam Workshop downloads from Sevoflurane, CrossOver or Whisky become looping videos.
 
 </details>
 
 ## Wallpaper Engine
 
-Wallpaper Engine's Workshop has hundreds of thousands of animated wallpapers, made for a Windows program. Phosphene reads the downloads and makes a looping video of each scene with Wallpaper Engine's own shaders, which then plays like any other video wallpaper. Wallpaper Engine itself runs in Windows Steam: [Sevoflurane](https://kagerou.glass/sevoflurane/?from=phosphene-readme) runs that Steam on a Mac, free, from the same developer. Subscribe to wallpapers there, and they appear in Phosphene's library. How it works and what it leaves out: [WALLPAPER-ENGINE.md](WALLPAPER-ENGINE.md).
+The Steam Workshop has hundreds of thousands of animated wallpapers made for Wallpaper Engine, a Windows program. Phosphene turns them into video wallpapers: subscribe in Steam, pick them in the library's Wallpaper Engine section, and choose Make Videos.
+
+Wallpaper Engine runs in Windows Steam. [Sevoflurane](https://kagerou.glass/sevoflurane/?from=phosphene-readme) brings that Steam to your Mac, free, from the same developer. What comes through and what doesn't: [WALLPAPER-ENGINE.md](WALLPAPER-ENGINE.md).
 
 Wallpaper Engine is a trademark of Wallpaper Engine Team; Steam is a trademark of Valve Corporation. Phosphene is an independent app.
 

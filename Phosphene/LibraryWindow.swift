@@ -198,15 +198,14 @@ struct LibraryWindow: View {
                 } description: {
                     if workshop.isSevofluraneInstalled {
                         Text("""
-                        Phosphene turns scenes and videos from the Steam Workshop into looping wallpapers. \
-                        Sevoflurane is installed: in its Steam, install Wallpaper Engine and subscribe to \
-                        wallpapers, and they appear here.
+                        Subscribe to wallpapers on the Steam Workshop and Phosphene makes them into video wallpapers. \
+                        In Sevoflurane’s Steam, install Wallpaper Engine first.
                         """)
                     } else {
                         Text("""
-                        Phosphene turns scenes and videos from the Steam Workshop into looping wallpapers. \
-                        Wallpaper Engine runs in Windows Steam, and Sevoflurane brings that Steam to your Mac: \
-                        free, from the maker of Phosphene. Subscribe to wallpapers there and they appear here.
+                        Subscribe to wallpapers on the Steam Workshop and Phosphene makes them into video wallpapers. \
+                        Wallpaper Engine runs in Windows Steam; Sevoflurane brings that Steam to your Mac, free, \
+                        from the maker of Phosphene.
                         """)
                     }
                 } actions: {

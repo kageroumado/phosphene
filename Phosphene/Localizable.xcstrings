@@ -1,2716 +1,2716 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "—" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "—"
-          }
-        }
-      }
+  "sourceLanguage": "en",
+  "strings": {
+    "%@": {
+      "shouldTranslate": false
     },
-    "%@" : {
-      "shouldTranslate" : false
-    },
-    "%@ · %lld waiting" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ · %2$lld waiting"
+    "%@ · %lld waiting": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ · %2$lld waiting"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ · %2$lld 个等待中"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · %2$lld 个等待中"
           }
         }
       }
     },
-    "%lld × %lld" : {
-      "shouldTranslate" : false
-    },
-    "%lld can become videos" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 个可以制作成视频"
+    "%lld Selected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已选择 %lld 项"
           }
         }
       }
     },
-    "%lld fps" : {
-      "shouldTranslate" : false
-    },
-    "%lld Selected" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已选择 %lld 项"
+    "%lld can become videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个可以制作成视频"
           }
         }
       }
     },
-    "%lld videos" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld video"
+    "%lld fps": {
+      "shouldTranslate": false
+    },
+    "%lld videos": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld videos"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videos"
                 }
               }
             }
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 个视频"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个视频"
           }
         }
       }
     },
-    "%lld videos · %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld videos · %2$@"
+    "%lld videos · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$lld videos · %2$@"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$lld 个视频 · %2$@"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld 个视频 · %2$@"
           }
         }
       }
     },
-    "%lld wallpapers" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 张壁纸"
+    "%lld wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 张壁纸"
           }
         }
       }
     },
-    "•" : {
-      "shouldTranslate" : false
+    "%lld × %lld": {
+      "shouldTranslate": false
     },
-    "• Phosphene and macOS versions\n• chip family and memory size\n• language and the date\n• how many of the last 7 days you used it\n• whether you have your own videos, and how many displays" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "• Phosphene 和 macOS 的版本\n• 芯片系列和内存大小\n• 语言和日期\n• 最近 7 天中使用了几天\n• 是否有自己的视频，以及显示器数量"
+    "10 seconds": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "10 秒"
           }
         }
       }
     },
-    "3D models" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "3D 模型"
+    "20 seconds": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "20 秒"
           }
         }
       }
     },
-    "10 seconds" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10 秒"
+    "30 fps": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30 fps"
           }
         }
       }
     },
-    "20 seconds" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "20 秒"
+    "30 seconds": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30 秒"
           }
         }
       }
     },
-    "30 fps" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "30 fps"
+    "3D models": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3D 模型"
           }
         }
       }
     },
-    "30 seconds" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "30 秒"
+    "60 fps": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "60 fps"
           }
         }
       }
     },
-    "60 fps" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "60 fps"
+    "60 seconds": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "60 秒"
           }
         }
       }
     },
-    "60 seconds" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "60 秒"
+    "A Steam folder from CrossOver or Whisky, or any folder of Wallpaper Engine wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CrossOver 或 Whisky 里的 Steam 文件夹，或任何存放 Wallpaper Engine 壁纸的文件夹"
           }
         }
       }
     },
-    "a %@ loop that crossfades into its start" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 的循环，结尾淡入开头"
+    "A newer version of Phosphene is ready when you are.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 的新版本已就绪，随时可以安装。"
           }
         }
       }
     },
-    "a %@ seamless loop" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 的无缝循环"
+    "About Phosphene": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关于 Phosphene"
           }
         }
       }
     },
-    "A newer version of Phosphene is ready when you are." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phosphene 的新版本已就绪，随时可以安装。"
+    "Add": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加"
           }
         }
       }
     },
-    "A Steam folder from CrossOver or Whisky, or any folder of Wallpaper Engine wallpapers" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CrossOver 或 Whisky 里的 Steam 文件夹，或任何存放 Wallpaper Engine 壁纸的文件夹"
+    "Add Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加文件夹"
           }
         }
       }
     },
-    "About Phosphene" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关于 Phosphene"
+    "Add Folder…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加文件夹…"
           }
         }
       }
     },
-    "Add" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加"
+    "Add Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加视频"
           }
         }
       }
     },
-    "Add a video or a folder of Wallpaper Engine wallpapers" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加视频，或一个存放 Wallpaper Engine 壁纸的文件夹"
+    "Add Video…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加视频…"
           }
         }
       }
     },
-    "Add a video to the library" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "把视频添加到资料库"
+    "Add Wallpaper Engine Folder…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加 Wallpaper Engine 文件夹…"
           }
         }
       }
     },
-    "Add a video to use as your wallpaper, or drop one here." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加一个视频作为墙纸，或把视频拖到这里。"
+    "Add a video or a folder of Wallpaper Engine wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加视频，或一个存放 Wallpaper Engine 壁纸的文件夹"
           }
         }
       }
     },
-    "Add a video to use as your wallpaper." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加一个视频用作墙纸。"
+    "Add a video to the library": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把视频添加到资料库"
           }
         }
       }
     },
-    "Add a video to your Library\nto get started" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将视频添加到资料库\n即可开始使用"
+    "Add a video to use as your wallpaper, or drop one here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加一个视频作为墙纸，或把视频拖到这里。"
           }
         }
       }
     },
-    "Add Folder" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加文件夹"
+    "Add a video to use as your wallpaper.": {
+      "extractionState": "stale",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加一个视频用作墙纸。"
           }
         }
       }
     },
-    "Add Folder…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加文件夹…"
+    "Add a video to your Library\nto get started": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将视频添加到资料库\n即可开始使用"
           }
         }
       }
     },
-    "Add Video" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加视频"
+    "Added": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加日期"
           }
         }
       }
     },
-    "Add Video…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加视频…"
+    "Added on %@, as it is.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "于 %@ 原样添加。"
           }
         }
       }
     },
-    "Add Wallpaper Engine Folder…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加 Wallpaper Engine 文件夹…"
+    "Adding": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在添加"
           }
         }
       }
     },
-    "Added" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加日期"
+    "All Videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有视频"
           }
         }
       }
     },
-    "Added on %@, as it is." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "于 %@ 原样添加。"
+    "Application": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用程序"
           }
         }
       }
     },
-    "Adding" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在添加"
+    "Application wallpapers are Windows programs.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用程序类壁纸是 Windows 程序。"
           }
         }
       }
     },
-    "All Videos" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所有视频"
+    "Are you sure you want to remove \"%@\" from your library?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确定要从资料库中移除“%@”吗？"
           }
         }
       }
     },
-    "Application" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "应用程序"
+    "Auto": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动"
           }
         }
       }
     },
-    "Application wallpapers are Windows programs." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "应用程序类壁纸是 Windows 程序。"
+    "Automatic": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动"
           }
         }
       }
     },
-    "Are you sure you want to remove \"%@\" from your library?" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "确定要从资料库中移除“%@”吗？"
+    "Balanced": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "平衡"
           }
         }
       }
     },
-    "as Icons" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为图标"
+    "Battery Saver": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "省电"
           }
         }
       }
     },
-    "as List" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为列表"
+    "Cancel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消"
           }
         }
       }
     },
-    "Auto" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自动"
+    "Cannot access the video file for '%@'. Please make sure the file still exists.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法访问“%@”的视频文件。请确保该文件仍然存在。"
           }
         }
       }
     },
-    "Automatic" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自动"
+    "Can’t be made": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法制作"
           }
         }
       }
     },
-    "Balanced" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平衡"
+    "Choose": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选取"
           }
         }
       }
     },
-    "Battery Saver" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "省电"
+    "Choose a Phosphene video in System Settings › Wallpaper.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“系统设置”›“墙纸”中选择一个 Phosphene 视频。"
           }
         }
       }
     },
-    "Both formats are decoded in hardware on every Mac Phosphene runs on. HEVC files are about a quarter smaller at the same quality. 60 fps doubles the size and the decoding work." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Phosphene 支持的每一台 Mac 上，两种格式都由硬件解码。相同画质下 HEVC 文件约小四分之一。60 fps 会让文件大小和解码负担翻倍。"
+    "Choose a Steam folder, or a folder of Wallpaper Engine wallpapers.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个 Steam 文件夹，或一个存放 Wallpaper Engine 壁纸的文件夹。"
           }
         }
       }
     },
-    "Can’t be made" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法制作"
+    "Choose the wallpaper in macOS Wallpaper Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 macOS“墙纸”设置中选取墙纸"
           }
         }
       }
     },
-    "Cancel" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取消"
+    "Click to rename — the name also shows in the System Settings wallpaper picker": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按以重命名——此名称也会显示在“系统设置”的墙纸选择器中"
           }
         }
       }
     },
-    "Cannot access the video file for '%@'. Please make sure the file still exists." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法访问“%@”的视频文件。请确保该文件仍然存在。"
+    "Couldn't download the update. Check your connection, or get it from the releases page.": {
+      "extractionState": "stale",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法下载更新。请检查网络连接，或从发布页面获取。"
           }
         }
       }
     },
-    "Choose" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选取"
+    "Couldn't find a download for this update. Get it from the releases page.": {
+      "extractionState": "stale",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到此更新的下载文件。请从发布页面获取。"
           }
         }
       }
     },
-    "Choose a Phosphene video in System Settings › Wallpaper." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在“系统设置”›“墙纸”中选择一个 Phosphene 视频。"
+    "Couldn't load the release notes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法载入更新说明。"
           }
         }
       }
     },
-    "Choose a Steam folder, or a folder of Wallpaper Engine wallpapers." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择一个 Steam 文件夹，或一个存放 Wallpaper Engine 壁纸的文件夹。"
+    "Count Me In": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "算我一个"
           }
         }
       }
     },
-    "Choose the wallpaper in macOS Wallpaper Settings" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 macOS“墙纸”设置中选取墙纸"
+    "Count this Mac": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "统计这台 Mac"
           }
         }
       }
     },
-    "Click to rename — the name also shows in the System Settings wallpaper picker" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点按以重命名——此名称也会显示在“系统设置”的墙纸选择器中"
+    "Count yourself in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入统计"
           }
         }
       }
     },
-    "Couldn't download the update. Check your connection, or get it from the releases page." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法下载更新。请检查网络连接，或从发布页面获取。"
+    "Counting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "统计"
           }
         }
       }
     },
-    "Couldn't find a download for this update. Get it from the releases page." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "找不到此更新的下载文件。请从发布页面获取。"
+    "Counting and crash reports": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "统计并发送崩溃报告"
           }
         }
       }
     },
-    "Couldn't load the release notes." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法载入更新说明。"
+    "Crash reports adds a report when Phosphene itself crashes, with your name, your Mac’s name and folder paths removed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“崩溃报告”会在 Phosphene 本身崩溃时添加一份报告，其中已移除你的姓名、Mac 的名称和文件夹路径。"
           }
         }
       }
     },
-    "Count Me In" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "算我一个"
+    "Create Variants": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建优化版本"
           }
         }
       }
     },
-    "Count this Mac" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "统计这台 Mac"
+    "Delete": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
           }
         }
       }
     },
-    "Count yourself in" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "加入统计"
+    "Delete %lld Videos?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除 %lld 个视频？"
           }
         }
       }
     },
-    "Counting" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "统计"
+    "Delete %lld Videos…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除 %lld 个视频…"
           }
         }
       }
     },
-    "Counting and crash reports" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "统计并发送崩溃报告"
+    "Delete Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除视频"
           }
         }
       }
     },
-    "Crash reports adds a report when Phosphene itself crashes, with your name, your Mac’s name and folder paths removed." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“崩溃报告”会在 Phosphene 本身崩溃时添加一份报告，其中已移除你的姓名、Mac 的名称和文件夹路径。"
+    "Delete “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除“%@”？"
           }
         }
       }
     },
-    "Create Variants" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创建优化版本"
+    "Delete…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除…"
           }
         }
       }
     },
-    "Delete" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除"
+    "Deleting what this Mac sent…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在删除这台 Mac 发送的内容…"
           }
         }
       }
     },
-    "Delete “%@”?" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除“%@”？"
+    "Display": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示器"
           }
         }
       }
     },
-    "Delete %lld Videos?" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除 %lld 个视频？"
+    "Done": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成"
           }
         }
       }
     },
-    "Delete %lld Videos…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除 %lld 个视频…"
+    "Downloads": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载内容"
           }
         }
       }
     },
-    "Delete Video" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除视频"
+    "Downscales to 1080p with reduced frame rate tiers. Best for laptops on battery.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "缩小到 1080p 并生成较低帧率的版本。最适合使用电池的笔记本电脑。"
           }
         }
       }
     },
-    "Delete…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "删除…"
+    "Drawn without %@, whose shader Phosphene couldn’t translate.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "渲染时省略了 %@，Phosphene 无法转换其着色器。"
           }
         }
       }
     },
-    "Deleting what this Mac sent…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在删除这台 Mac 发送的内容…"
+    "Duration": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "时长"
           }
         }
       }
     },
-    "Display" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示器"
+    "Each wallpaper becomes a looping video in your library. A scene takes about a minute.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每张壁纸都会变成资料库里的一个循环视频。一个场景大约需要一分钟。"
           }
         }
       }
     },
-    "Done" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "完成"
+    "Every Download Has a Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个下载都已有视频"
           }
         }
       }
     },
-    "Downloads" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下载内容"
+    "Everywhere": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部"
           }
         }
       }
     },
-    "Downscales to 1080p with reduced frame rate tiers. Best for laptops on battery." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "缩小到 1080p 并生成较低帧率的版本。最适合使用电池的笔记本电脑。"
+    "Failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "失败"
           }
         }
       }
     },
-    "Drawn without %@, whose shader Phosphene couldn’t translate." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "渲染时省略了 %@，Phosphene 无法转换其着色器。"
+    "Finding a loop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在寻找循环点"
           }
         }
       }
     },
-    "Duration" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "时长"
+    "Force-restart the system WallpaperAgent if the wallpaper is stuck or wrong.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果墙纸卡住或显示不正确，强制重新启动系统的 WallpaperAgent。"
           }
         }
       }
     },
-    "Every Download Has a Video" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每个下载都已有视频"
+    "Format": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "格式"
           }
         }
       }
     },
-    "Everywhere" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全部"
+    "Frame Rate": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帧率"
           }
         }
       }
     },
-    "Failed" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "失败"
+    "Frame rate": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帧率"
           }
         }
       }
     },
-    "Finding a loop" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在寻找循环点"
+    "From Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自创意工坊"
           }
         }
       }
     },
-    "Force-restart the system WallpaperAgent if the wallpaper is stuck or wrong." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "如果墙纸卡住或显示不正确，强制重新启动系统的 WallpaperAgent。"
+    "Get Sevoflurane": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获取 Sevoflurane"
           }
         }
       }
     },
-    "Format" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "格式"
+    "H.264": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "H.264"
           }
         }
       }
     },
-    "Frame rate" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "帧率"
+    "HEVC": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HEVC"
           }
         }
       }
     },
-    "Frame Rate" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "帧率"
+    "HEVC files are about a quarter smaller than H.264. 60 fps doubles the file size.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HEVC 文件比 H.264 小约四分之一。60 fps 会让文件大小翻倍。"
           }
         }
       }
     },
-    "From Workshop" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "来自创意工坊"
+    "Hide Inspector": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏检查器"
           }
         }
       }
     },
-    "Get Sevoflurane" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "获取 Sevoflurane"
+    "I couldn't find a wallpaper named '%@'. Available wallpapers: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到名为“%1$@”的墙纸。可用的墙纸：%2$@"
           }
         }
       }
     },
-    "H.264" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "H.264"
+    "Icon size": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图标大小"
           }
         }
       }
     },
-    "HEVC" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "HEVC"
+    "Icons": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图标"
           }
         }
       }
     },
-    "Hide Inspector" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "隐藏检查器"
+    "In Use": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用中"
           }
         }
       }
     },
-    "I couldn't find a wallpaper named '%@'. Available wallpapers: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "找不到名为“%1$@”的墙纸。可用的墙纸：%2$@"
+    "In use": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用中"
           }
         }
       }
     },
-    "Icon size" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "图标大小"
+    "In use as wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正用作墙纸"
           }
         }
       }
     },
-    "Icons" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "图标"
+    "In use on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在 %@ 上使用"
           }
         }
       }
     },
-    "In use" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用中"
+    "In your library": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在资料库中"
           }
         }
       }
     },
-    "In Use" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用中"
+    "Inspector": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查器"
           }
         }
       }
     },
-    "In use as wallpaper" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正用作墙纸"
+    "Install updates automatically": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动安装更新"
           }
         }
       }
     },
-    "In use on %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在 %@ 上使用"
+    "It never includes which videos you use, and nothing in it names you.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它从不包含你使用的是哪些视频，其中也没有任何能指认你的信息。"
           }
         }
       }
     },
-    "In your library" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已在资料库中"
+    "It will install itself when your Mac is idle — the wallpaper keeps playing.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它会在你的 Mac 空闲时自动安装——墙纸会持续播放。"
           }
         }
       }
     },
-    "Inspector" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "检查器"
+    "Keeps original resolution, creates lower frame rate tiers for power-saving modes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留原始分辨率，并为省电模式生成较低帧率的版本。"
           }
         }
       }
     },
-    "Install updates automatically" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自动安装更新"
+    "Later": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稍后"
           }
         }
       }
     },
-    "It never includes which videos you use, and nothing in it names you." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "它从不包含你使用的是哪些视频，其中也没有任何能指认你的信息。"
+    "Launch at Login": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录时打开"
           }
         }
       }
     },
-    "It will install itself when your Mac is idle — the wallpaper keeps playing." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "它会在你的 Mac 空闲时自动安装——墙纸会持续播放。"
+    "Left out of the videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频中省略的内容"
           }
         }
       }
     },
-    "Keeps original resolution, creates lower frame rate tiers for power-saving modes." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保留原始分辨率，并为省电模式生成较低帧率的版本。"
+    "Library": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "资料库"
           }
         }
       }
     },
-    "Later" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "稍后"
+    "List": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "列表"
           }
         }
       }
     },
-    "Launch at Login" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "登录时打开"
+    "Lock Screen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "锁定屏幕"
           }
         }
       }
     },
-    "Left out of the videos" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视频中省略的内容"
+    "Looking for Wallpaper Engine downloads": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找 Wallpaper Engine 下载内容"
           }
         }
       }
     },
-    "Library" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "资料库"
+    "Loop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "循环"
           }
         }
       }
     },
-    "List" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "列表"
+    "Made": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已制作"
           }
         }
       }
     },
-    "Lock Screen" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "锁定屏幕"
-          }
-        }
-      }
-    },
-    "Looking for Wallpaper Engine downloads" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在查找 Wallpaper Engine 下载内容"
-          }
-        }
-      }
-    },
-    "Loop" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "循环"
-          }
-        }
-      }
-    },
-    "Made" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已制作"
-          }
-        }
-      }
-    },
-    "Made on %@: %@, %lld fps, %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Made on %1$@: %2$@, %3$lld fps, %4$@."
+    "Made on %@: %@, %lld fps, %@.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Made on %1$@: %2$@, %3$lld fps, %4$@."
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "制作于 %1$@：%2$@，%3$lld fps，%4$@。"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "制作于 %1$@：%2$@，%3$lld fps，%4$@。"
           }
         }
       }
     },
-    "Make %lld Videos" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "制作 %lld 个视频"
+    "Make %lld Videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "制作 %lld 个视频"
           }
         }
       }
     },
-    "Make Icons Larger" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "放大图标"
+    "Make Icons Larger": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放大图标"
           }
         }
       }
     },
-    "Make Icons Smaller" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "缩小图标"
+    "Make Icons Smaller": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "缩小图标"
           }
         }
       }
     },
-    "Make Video" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "制作视频"
+    "Make Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "制作视频"
           }
         }
       }
     },
-    "Make Video Again" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新制作视频"
+    "Make Video Again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新制作视频"
           }
         }
       }
     },
-    "Make Videos" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "制作视频"
+    "Make Videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "制作视频"
           }
         }
       }
     },
-    "Make Videos…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "制作视频…"
+    "Make Videos…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "制作视频…"
           }
         }
       }
     },
-    "Make wallpapers from Wallpaper Engine downloads" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 Wallpaper Engine 下载内容制作墙纸"
+    "Make wallpapers from Wallpaper Engine downloads": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用 Wallpaper Engine 下载内容制作墙纸"
           }
         }
       }
     },
-    "Making “%@” · %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Making “%1$@” · %2$@"
+    "Making %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在制作 %@"
+          }
+        }
+      }
+    },
+    "Making its video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在制作它的视频"
+          }
+        }
+      }
+    },
+    "Making “%@” · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Making “%1$@” · %2$@"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在制作“%1$@” · %2$@"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在制作“%1$@” · %2$@"
           }
         }
       }
     },
-    "Making %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在制作 %@"
+    "Name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名称"
           }
         }
       }
     },
-    "Making its video" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在制作它的视频"
+    "No Downloads Yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有下载内容"
           }
         }
       }
     },
-    "Name" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "名称"
+    "No Selection": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未选择"
           }
         }
       }
     },
-    "No Downloads Yet" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "还没有下载内容"
+    "No Video Selected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未选择视频"
           }
         }
       }
     },
-    "No Selection" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未选择"
+    "No Videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有视频"
           }
         }
       }
     },
-    "No Video Selected" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未选择视频"
+    "No Videos from Wallpaper Engine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有来自 Wallpaper Engine 的视频"
           }
         }
       }
     },
-    "No Videos" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有视频"
+    "No Wallpaper in Use": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有正在使用的墙纸"
           }
         }
       }
     },
-    "No Videos from Wallpaper Engine" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有来自 Wallpaper Engine 的视频"
+    "Not Made Yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未制作"
           }
         }
       }
     },
-    "No Wallpaper in Use" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有正在使用的墙纸"
+    "Not Now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂不"
           }
         }
       }
     },
-    "Not made" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未制作"
+    "Not made": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未制作"
           }
         }
       }
     },
-    "Not Made Yet" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未制作"
+    "Not made yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未制作。"
           }
         }
       }
     },
-    "Not made yet." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未制作。"
+    "Not sent yet: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未发送：%@"
           }
         }
       }
     },
-    "Not Now" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂不"
+    "Nothing is sent.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不发送任何内容。"
           }
         }
       }
     },
-    "Not sent yet: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未发送：%@"
+    "Off": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
           }
         }
       }
     },
-    "Nothing is sent." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不发送任何内容。"
+    "On": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开"
           }
         }
       }
     },
-    "Off" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭"
+    "On each day you use Phosphene, one anonymous check-in is sent:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在你使用 Phosphene 的每一天，会发送一次匿名签到："
           }
         }
       }
     },
-    "On" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开"
+    "One anonymous check-in a day counts how many people use Phosphene. It never includes which videos you use. Settings lists what is sent.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天一次匿名签到，用于统计有多少人在使用 Phosphene。它从不包含你使用的是哪些视频。“设置”中列出了发送的内容。"
           }
         }
       }
     },
-    "On each day you use Phosphene, one anonymous check-in is sent:" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在你使用 Phosphene 的每一天，会发送一次匿名签到："
+    "One anonymous check-in a day, and a report when Phosphene crashes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天一次匿名签到，以及 Phosphene 崩溃时的一份报告。"
           }
         }
       }
     },
-    "One anonymous check-in a day counts how many people use Phosphene. It never includes which videos you use. Settings lists what is sent." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每天一次匿名签到，用于统计有多少人在使用 Phosphene。它从不包含你使用的是哪些视频。“设置”中列出了发送的内容。"
+    "One anonymous check-in on each day you use Phosphene.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在你使用 Phosphene 的每一天发送一次匿名签到。"
           }
         }
       }
     },
-    "One anonymous check-in a day, and a report when Phosphene crashes." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每天一次匿名签到，以及 Phosphene 崩溃时的一份报告。"
+    "Open Library": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开资料库"
           }
         }
       }
     },
-    "One anonymous check-in on each day you use Phosphene." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在你使用 Phosphene 的每一天发送一次匿名签到。"
+    "Open Steam Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Steam 创意工坊"
           }
         }
       }
     },
-    "Open Library" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开资料库"
+    "Open Wallpaper Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开墙纸设置"
           }
         }
       }
     },
-    "Open macOS Wallpaper Settings" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开 macOS“墙纸”设置"
+    "Open Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开创意工坊"
           }
         }
       }
     },
-    "Open Steam Workshop" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开 Steam 创意工坊"
+    "Open Workshop Page": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开创意工坊页面"
           }
         }
       }
     },
-    "Open the Wallpaper Engine Workshop in Steam" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Steam 中打开 Wallpaper Engine 创意工坊"
+    "Open macOS Wallpaper Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 macOS“墙纸”设置"
           }
         }
       }
     },
-    "Open Wallpaper Settings" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开墙纸设置"
+    "Open the Wallpaper Engine Workshop in Steam": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Steam 中打开 Wallpaper Engine 创意工坊"
           }
         }
       }
     },
-    "Open Workshop" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开创意工坊"
+    "Optimization": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "优化"
           }
         }
       }
     },
-    "Open Workshop Page" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开创意工坊页面"
+    "Optimized": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已优化"
           }
         }
       }
     },
-    "Optimization" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "优化"
+    "Optimizing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在优化"
           }
         }
       }
     },
-    "Optimized" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已优化"
+    "Optimizing…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在优化…"
           }
         }
       }
     },
-    "Optimizing" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在优化"
+    "Pause": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂停"
           }
         }
       }
     },
-    "Optimizing…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在优化…"
+    "Pause When Hidden": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "被遮挡时暂停"
           }
         }
       }
     },
-    "Pause" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂停"
+    "Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当显示器被窗口完全遮挡时暂停播放。全屏幕 App 和游戏始终会暂停其所在显示器的播放。"
           }
         }
       }
     },
-    "Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当显示器被窗口完全遮挡时暂停播放。全屏幕 App 和游戏始终会暂停其所在显示器的播放。"
+    "Paused": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂停"
           }
         }
       }
     },
-    "Pause When Hidden" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "被遮挡时暂停"
+    "Paused — Display Covered": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂停（显示器被遮挡）"
           }
         }
       }
     },
-    "Paused" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已暂停"
+    "Paused — Fullscreen App": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已暂停（全屏幕 App）"
           }
         }
       }
     },
-    "Paused — Display Covered" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已暂停（显示器被遮挡）"
-          }
-        }
-      }
-    },
-    "Paused — Fullscreen App" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已暂停（全屏幕 App）"
-          }
-        }
-      }
-    },
-    "Phosphene" : {
-      "shouldTranslate" : false
-    },
-    "Phosphene doesn’t recognize this wallpaper’s type." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phosphene 无法识别这个壁纸的类型。"
-          }
-        }
-      }
-    },
-    "Phosphene draws each scene offscreen, finds where its motion repeats so the video loops, and adds it to your library. A scene takes about a minute. Video wallpapers are added as they are." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phosphene 会在后台渲染每个场景，找出动画重复的位置让视频循环，然后添加到资料库。一个场景大约需要一分钟。视频类壁纸会原样添加。"
-          }
-        }
-      }
-    },
-    "Phosphene turns scenes and videos from the Steam Workshop into looping wallpapers. Sevoflurane is installed: in its Steam, install Wallpaper Engine and subscribe to wallpapers, and they appear here." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phosphene 能把 Steam 创意工坊里的场景和视频做成循环墙纸。Sevoflurane 已安装：在它的 Steam 里安装 Wallpaper Engine 并订阅壁纸，它们就会出现在这里。"
-          }
-        }
-      }
-    },
-    "Phosphene turns scenes and videos from the Steam Workshop into looping wallpapers. Wallpaper Engine runs in Windows Steam, and Sevoflurane brings that Steam to your Mac: free, from the maker of Phosphene. Subscribe to wallpapers there and they appear here." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phosphene 能把 Steam 创意工坊里的场景和视频做成循环墙纸。Wallpaper Engine 在 Windows 版 Steam 里运行，而 Sevoflurane 能把这个 Steam 带到你的 Mac 上：免费，出自 Phosphene 的开发者。在那里订阅壁纸，它们就会出现在这里。"
-          }
-        }
-      }
+    "Phosphene": {
+      "shouldTranslate": false
     },
-    "Phosphene updated itself at a quiet moment — here's what changed." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phosphene 已在空闲时自动更新——以下是更改内容。"
+    "Phosphene doesn’t recognize this wallpaper’s type.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 无法识别这个壁纸的类型。"
           }
         }
       }
     },
-    "Phosphene wallpapers are selected in System Settings → Wallpaper" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phosphene 墙纸在“系统设置”→“墙纸”中选择"
+    "Phosphene updated itself at a quiet moment — here's what changed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 已在空闲时自动更新——以下是更改内容。"
           }
         }
       }
     },
-    "Play" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "播放"
+    "Phosphene wallpapers are selected in System Settings → Wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 墙纸在“系统设置”→“墙纸”中选择"
           }
         }
       }
     },
-    "Playback" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "播放"
+    "Play": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放"
           }
         }
       }
     },
-    "Playing" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在播放"
+    "Playback": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放"
           }
         }
       }
     },
-    "Playing on Lock Screen" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在锁定屏幕上播放"
+    "Playing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在播放"
           }
         }
       }
     },
-    "Quality" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "画质"
+    "Playing on Lock Screen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在锁定屏幕上播放"
           }
         }
       }
     },
-    "Quit Phosphene" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "退出 Phosphene"
+    "Quality": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画质"
           }
         }
       }
     },
-    "Read them on GitHub" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 GitHub 上阅读"
+    "Quit Phosphene": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出 Phosphene"
           }
         }
       }
     },
-    "Remove" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除"
+    "Read them on GitHub": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 GitHub 上阅读"
           }
         }
       }
     },
-    "Remove Folder" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除文件夹"
+    "Remove": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除"
           }
         }
       }
     },
-    "Remove Variants" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除优化版本"
+    "Remove Folder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除文件夹"
           }
         }
       }
     },
-    "Rendering" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在渲染"
+    "Remove Variants": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除优化版本"
           }
         }
       }
     },
-    "Resolution" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分辨率"
+    "Rendering": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在渲染"
           }
         }
       }
     },
-    "Restart Wallpaper Agent" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新启动墙纸代理"
+    "Resolution": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分辨率"
           }
         }
       }
     },
-    "Scene" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "场景"
+    "Restart Wallpaper Agent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新启动墙纸代理"
           }
         }
       }
     },
-    "Scenes need OpenGL." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "场景需要 OpenGL。"
+    "Scene": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "场景"
           }
         }
       }
     },
-    "Scenes need Wallpaper Engine’s own files. Install Wallpaper Engine in the same Steam." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "场景需要 Wallpaper Engine 自身的文件。请在同一个 Steam 中安装 Wallpaper Engine。"
+    "Scenes need OpenGL.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "场景需要 OpenGL。"
           }
         }
       }
     },
-    "Search Downloads" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索下载内容"
+    "Scenes need Wallpaper Engine’s own files. Install Wallpaper Engine in the same Steam.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "场景需要 Wallpaper Engine 自身的文件。请在同一个 Steam 中安装 Wallpaper Engine。"
           }
         }
       }
     },
-    "Search Videos" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索视频"
+    "Search Downloads": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索下载内容"
           }
         }
       }
     },
-    "See what's new in version %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查看 %@ 版本的新功能"
+    "Search Videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索视频"
           }
         }
       }
     },
-    "Select a video to view its details." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择一个视频以查看其详细信息。"
+    "See what's new in version %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看 %@ 版本的新功能"
           }
         }
       }
     },
-    "Select a wallpaper in\nWallpaper Settings" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在“墙纸”设置中\n选择墙纸"
+    "Select Wallpaper Engine downloads and choose Make Videos.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 Wallpaper Engine 下载内容，然后选择“制作视频”。"
           }
         }
       }
     },
-    "Select Wallpaper Engine downloads and choose Make Videos." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择 Wallpaper Engine 下载内容，然后选择“制作视频”。"
+    "Select a video to view its details.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个视频以查看其详细信息。"
           }
         }
       }
     },
-    "Select wallpapers to see what Phosphene can make of them." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择壁纸，查看 Phosphene 能把它们做成什么。"
+    "Select a wallpaper in\nWallpaper Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在“墙纸”设置中\n选择墙纸"
           }
         }
       }
     },
-    "Selected" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已选择"
+    "Select wallpapers to see what Phosphene can make of them.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择壁纸，查看 Phosphene 能把它们做成什么。"
           }
         }
       }
     },
-    "Set ${videoName} as wallpaper" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将 ${videoName} 设定为墙纸"
+    "Selected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已选择"
           }
         }
       }
     },
-    "Set Video Wallpaper" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "设定视频墙纸"
+    "Set ${videoName} as wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将 ${videoName} 设定为墙纸"
           }
         }
       }
     },
-    "Set Wallpaper" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "设定墙纸"
+    "Set Video Wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设定视频墙纸"
           }
         }
       }
     },
-    "Set wallpaper to '%@'" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已将墙纸设定为“%@”"
+    "Set Wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设定墙纸"
           }
         }
       }
     },
-    "Sets a video as your desktop wallpaper" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将视频设定为桌面墙纸"
+    "Set wallpaper to '%@'": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已将墙纸设定为“%@”"
           }
         }
       }
     },
-    "Settings" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "设置"
+    "Sets a video as your desktop wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将视频设定为桌面墙纸"
           }
         }
       }
     },
-    "Sevoflurane runs Windows Steam on your Mac. It’s free, from the maker of Phosphene." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sevoflurane 能在你的 Mac 上运行 Windows 版 Steam。它是免费的，出自 Phosphene 的开发者。"
+    "Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置"
           }
         }
       }
     },
-    "Show as icons or as a list" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "以图标或列表显示"
+    "Sevoflurane runs Windows Steam on your Mac. It’s free, from the maker of Phosphene.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sevoflurane 能在你的 Mac 上运行 Windows 版 Steam。它是免费的，出自 Phosphene 的开发者。"
           }
         }
       }
     },
-    "Show Downloads" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示下载内容"
+    "Show Downloads": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示下载内容"
           }
         }
       }
     },
-    "Show in Finder" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在访达中显示"
+    "Show Inspector": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示检查器"
           }
         }
       }
     },
-    "Show in Library" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在资料库中显示"
+    "Show as icons or as a list": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以图标或列表显示"
           }
         }
       }
     },
-    "Show Inspector" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示检查器"
+    "Show in Finder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在访达中显示"
           }
         }
       }
     },
-    "Size" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "大小"
+    "Show in Library": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在资料库中显示"
           }
         }
       }
     },
-    "some particles" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "部分粒子效果"
+    "Size": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "大小"
           }
         }
       }
     },
-    "sound" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "声音"
+    "Source": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源"
           }
         }
       }
     },
-    "Source" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "来源"
+    "Space %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空间 %lld"
           }
         }
       }
     },
-    "Space %lld" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空间 %lld"
+    "Starting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在开始…"
           }
         }
       }
     },
-    "Starting…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在开始…"
+    "Steam Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 创意工坊"
           }
         }
       }
     },
-    "Steam Workshop" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Steam 创意工坊"
+    "Stop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止"
           }
         }
       }
     },
-    "Stop" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "停止"
+    "Stop Making Videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止制作视频"
           }
         }
       }
     },
-    "Stop Making Videos" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "停止制作视频"
+    "Subscribe on the Steam Workshop and downloads appear here. Select wallpapers, then choose Make Videos.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Steam 创意工坊订阅后，下载内容会出现在这里。选择壁纸，然后选择“制作视频”。"
           }
         }
       }
     },
-    "Subscribe on the Steam Workshop and downloads appear here. Select wallpapers, then choose Make Videos." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Steam 创意工坊订阅后，下载内容会出现在这里。选择壁纸，然后选择“制作视频”。"
+    "Subscribe to more wallpapers on the Steam Workshop and they appear here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Steam 创意工坊订阅更多壁纸，它们就会出现在这里。"
           }
         }
       }
     },
-    "Subscribe to more wallpapers on the Steam Workshop and they appear here." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Steam 创意工坊订阅更多壁纸，它们就会出现在这里。"
+    "Subscribe to wallpapers on the Steam Workshop and Phosphene makes them into video wallpapers. In Sevoflurane’s Steam, install Wallpaper Engine first.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Steam 创意工坊订阅壁纸，Phosphene 就能把它们做成视频墙纸。请先在 Sevoflurane 的 Steam 里安装 Wallpaper Engine。"
           }
         }
       }
     },
-    "text and clocks" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文字和时钟"
+    "Subscribe to wallpapers on the Steam Workshop and Phosphene makes them into video wallpapers. Wallpaper Engine runs in Windows Steam; Sevoflurane brings that Steam to your Mac, free, from the maker of Phosphene.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Steam 创意工坊订阅壁纸，Phosphene 就能把它们做成视频墙纸。Wallpaper Engine 在 Windows 版 Steam 里运行；Sevoflurane 能把这个 Steam 带到你的 Mac 上，免费，出自 Phosphene 的开发者。"
           }
         }
       }
     },
-    "The author has updated this wallpaper since. Make the video again to get the changes." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "作者此后更新了这张壁纸。重新制作视频即可获得更新。"
+    "The author has updated this wallpaper since. Make the video again to get the changes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "作者此后更新了这张壁纸。重新制作视频即可获得更新。"
           }
         }
       }
     },
-    "The download isn’t complete." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下载尚未完成。"
+    "The download isn’t complete.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载尚未完成。"
           }
         }
       }
     },
-    "The name of the video to set as wallpaper" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "要设定为墙纸的视频名称"
+    "The name of the video to set as wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要设定为墙纸的视频名称"
           }
         }
       }
     },
-    "The update couldn't be installed. Try again, or get it from the releases page." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法安装更新。请重试，或从发布页面获取。"
+    "The update couldn't be installed. Try again, or get it from the releases page.": {
+      "extractionState": "stale",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法安装更新。请重试，或从发布页面获取。"
           }
         }
       }
     },
-    "The video leaves out %@, which need Wallpaper Engine running." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视频省略了 %@，这些内容需要 Wallpaper Engine 运行。"
+    "The video leaves out %@, which need Wallpaper Engine running.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频省略了 %@，这些内容需要 Wallpaper Engine 运行。"
           }
         }
       }
     },
-    "The videos leave your library and System Settings." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这些视频会从资料库和“系统设置”中移除。"
+    "The videos leave your library and System Settings.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些视频会从资料库和“系统设置”中移除。"
           }
         }
       }
     },
-    "This Mac has no Secure Enclave, so nothing is sent." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这台 Mac 没有安全隔区，因此不会发送任何内容。"
+    "This Mac has no Secure Enclave, so nothing is sent.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 Mac 没有安全隔区，因此不会发送任何内容。"
           }
         }
       }
     },
-    "This Mac’s display (%lld × %lld)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This Mac’s display (%1$lld × %2$lld)"
+    "This Mac’s display (%lld × %lld)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "This Mac’s display (%1$lld × %2$lld)"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这台 Mac 的显示器（%1$lld × %2$lld）"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 Mac 的显示器（%1$lld × %2$lld）"
           }
         }
       }
     },
-    "This release shipped without notes." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此版本没有附带更新说明。"
+    "This release shipped without notes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此版本没有附带更新说明。"
           }
         }
       }
     },
-    "This will delete the optimized variants. The original video is not affected." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这将删除已优化的版本。原始视频不受影响。"
+    "This will delete the optimized variants. The original video is not affected.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这将删除已优化的版本。原始视频不受影响。"
           }
         }
       }
     },
-    "Toggle Inspector" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "切换检查器"
+    "Toggle Inspector": {
+      "extractionState": "stale",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换检查器"
           }
         }
       }
     },
-    "Turn the selected wallpapers into looping videos" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "把所选壁纸做成循环视频"
+    "Turn the selected wallpapers into looping videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把所选壁纸做成循环视频"
           }
         }
       }
     },
-    "Turning this off deletes everything this Mac sent." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭后会删除这台 Mac 发送过的所有内容。"
+    "Turning this off deletes everything this Mac sent.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后会删除这台 Mac 发送过的所有内容。"
           }
         }
       }
     },
-    "Type" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "类型"
+    "Type": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "类型"
           }
         }
       }
     },
-    "Unable to set wallpaper" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法设定墙纸"
+    "Unable to set wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法设定墙纸"
           }
         }
       }
     },
-    "Unknown" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未知"
+    "Unknown": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知"
           }
         }
       }
     },
-    "Update failed" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新失败"
+    "Update Now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即更新"
           }
         }
       }
     },
-    "Update Now" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "立即更新"
+    "Update failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新失败"
           }
         }
       }
     },
-    "Updated" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新日期"
+    "Updated": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新日期"
           }
         }
       }
     },
-    "Updated on the Workshop since its video was made" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "制作视频后，创意工坊上已有更新"
+    "Updated on the Workshop since its video was made": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "制作视频后，创意工坊上已有更新"
           }
         }
       }
     },
-    "Updated since" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此后已更新"
+    "Updated since": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此后已更新"
           }
         }
       }
     },
-    "Updated to %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已更新到 %@"
+    "Updated to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已更新到 %@"
           }
         }
       }
     },
-    "Updated to version %@ — see what changed" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已更新到 %@ 版本——查看更改内容"
+    "Updated to version %@ — see what changed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已更新到 %@ 版本——查看更改内容"
           }
         }
       }
     },
-    "Updating…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在更新…"
+    "Updating…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在更新…"
           }
         }
       }
     },
-    "Use as Wallpaper…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用作墙纸…"
+    "Use as Wallpaper…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用作墙纸…"
           }
         }
       }
     },
-    "Uses %@, which Phosphene can’t draw yet." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用了 %@，Phosphene 尚无法绘制。"
+    "Uses %@, which Phosphene can’t draw yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用了 %@，Phosphene 尚无法绘制。"
           }
         }
       }
     },
-    "v%@" : {
-      "shouldTranslate" : false
-    },
-    "Video" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视频"
+    "Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频"
           }
         }
       }
     },
-    "Video Name" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视频名称"
+    "Video Name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频名称"
           }
         }
       }
     },
-    "Video Wallpaper" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视频墙纸"
+    "Video Wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频墙纸"
           }
         }
       }
     },
-    "View" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示"
+    "View": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示"
           }
         }
       }
     },
-    "View on GitHub" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 GitHub 上查看"
+    "View on GitHub": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 GitHub 上查看"
           }
         }
       }
     },
-    "Waiting" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "等待中"
+    "Waiting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待中"
           }
         }
       }
     },
-    "Waiting for the videos ahead of it." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在等待前面的视频完成。"
+    "Waiting for the videos ahead of it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待前面的视频完成。"
           }
         }
       }
     },
-    "Waiting to be made" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "等待制作"
+    "Waiting to be made": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待制作"
           }
         }
       }
     },
-    "Wallpaper Engine" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wallpaper Engine"
+    "Wallpaper Engine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wallpaper Engine"
           }
         }
       }
     },
-    "Wallpaper Engine is a trademark of Wallpaper Engine Team; Steam is a trademark of Valve Corporation. Phosphene is an independent app." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wallpaper Engine 是 Wallpaper Engine Team 的商标；Steam 是 Valve Corporation 的商标。Phosphene 是独立开发的 App。"
+    "Wallpaper Engine Wallpapers on Your Mac": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Mac 上使用 Wallpaper Engine 壁纸"
           }
         }
       }
     },
-    "Wallpaper Engine is installed. Subscribe to wallpapers on the Steam Workshop and they appear here." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wallpaper Engine 已安装。在 Steam 创意工坊订阅壁纸，它们就会出现在这里。"
+    "Wallpaper Engine is a trademark of Wallpaper Engine Team; Steam is a trademark of Valve Corporation. Phosphene is an independent app.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wallpaper Engine 是 Wallpaper Engine Team 的商标；Steam 是 Valve Corporation 的商标。Phosphene 是独立开发的 App。"
           }
         }
       }
     },
-    "Wallpaper Engine Wallpapers on Your Mac" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Mac 上使用 Wallpaper Engine 壁纸"
+    "Wallpaper Engine is installed. Subscribe to wallpapers on the Steam Workshop and they appear here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wallpaper Engine 已安装。在 Steam 创意工坊订阅壁纸，它们就会出现在这里。"
           }
         }
       }
     },
-    "Wallpaper Engine…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wallpaper Engine…"
+    "Wallpaper Engine…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wallpaper Engine…"
           }
         }
       }
     },
-    "Wallpapers apply in System Settings %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在“系统设置”中应用墙纸 %@"
+    "Wallpapers apply in System Settings %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“系统设置”中应用墙纸 %@"
           }
         }
       }
     },
-    "Web" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "网页"
+    "Web": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网页"
           }
         }
       }
     },
-    "Web wallpapers aren’t supported yet." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚不支持网页类壁纸。"
+    "Web wallpapers aren’t supported yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚不支持网页类壁纸。"
           }
         }
       }
     },
-    "WebM videos aren’t supported yet." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚不支持 WebM 视频。"
+    "WebM videos aren’t supported yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚不支持 WebM 视频。"
           }
         }
       }
     },
-    "What is sent" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "发送的内容"
+    "What is sent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送的内容"
           }
         }
       }
     },
-    "What's New" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新功能"
+    "What's New": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新功能"
           }
         }
       }
     },
-    "What's new in %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 的新功能"
+    "What's new in %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的新功能"
           }
         }
       }
     },
-    "Workshop Page" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创意工坊页面"
+    "Workshop Page": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创意工坊页面"
           }
         }
       }
     },
-    "Yesterday, %lld Macs counted themselves in." : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Yesterday, %lld Mac counted itself in."
+    "Yesterday, %lld Macs counted themselves in.": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Yesterday, %lld Mac counted itself in."
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Yesterday, %lld Macs counted themselves in."
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Yesterday, %lld Macs counted themselves in."
                 }
               }
             }
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "昨天有 %lld 台 Mac 加入了统计。"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "昨天有 %lld 台 Mac 加入了统计。"
           }
         }
       }
     },
-    "You don't have any wallpapers saved yet. Please add a video first." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你还没有存储任何墙纸。请先添加一个视频。"
+    "You don't have any wallpapers saved yet. Please add a video first.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你还没有存储任何墙纸。请先添加一个视频。"
+          }
+        }
+      }
+    },
+    "a %@ loop that crossfades into its start": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的循环，结尾淡入开头"
+          }
+        }
+      }
+    },
+    "a %@ seamless loop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的无缝循环"
+          }
+        }
+      }
+    },
+    "as Icons": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为图标"
+          }
+        }
+      }
+    },
+    "as List": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为列表"
+          }
+        }
+      }
+    },
+    "some particles": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分粒子效果"
+          }
+        }
+      }
+    },
+    "sound": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "声音"
+          }
+        }
+      }
+    },
+    "text and clocks": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文字和时钟"
+          }
+        }
+      }
+    },
+    "v%@": {
+      "shouldTranslate": false
+    },
+    "—": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "—"
+          }
+        }
+      }
+    },
+    "•": {
+      "shouldTranslate": false
+    },
+    "• Phosphene and macOS versions\n• chip family and memory size\n• language and the date\n• how many of the last 7 days you used it\n• whether you have your own videos, and how many displays": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• Phosphene 和 macOS 的版本\n• 芯片系列和内存大小\n• 语言和日期\n• 最近 7 天中使用了几天\n• 是否有自己的视频，以及显示器数量"
           }
         }
       }
     }
   },
-  "version" : "1.1"
+  "version": "1.1"
 }
