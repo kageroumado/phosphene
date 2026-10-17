@@ -670,7 +670,7 @@
 			repositoryURL = "https://github.com/kageroumado/digoxin.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.2.0;
+				minimumVersion = 0.3.0;
 			};
 		};
 		7A0000000000000000000001 /* XCRemoteSwiftPackageReference "Tiptoe" */ = {
