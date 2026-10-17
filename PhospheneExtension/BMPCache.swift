@@ -49,7 +49,9 @@ func loadCachedSnapshotImage(forChoice videoID: String?) -> CGImage? {
 /// Write a BMP snapshot of the video's first frame to the Agent's cache directory.
 /// Each video gets its own BMP file (keyed by video ID hash) so the Agent shows
 /// the correct cached frame during transitions between videos.
-func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: Int, displayPixelHeight: Int) async {
+/// `replacing` writes a fresh still even when one of this size exists: the video
+/// behind it changed.
+func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: Int, displayPixelHeight: Int, replacing: Bool = false) async {
     guard let cacheDir = SurfaceRegistry.shared.cacheDirectoryURL else {
         traceLog("  [BMPCache] No cacheDirectoryURL, skipping")
         return
@@ -72,6 +74,10 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
     // Check if existing BMP for this video already matches requested dimensions
     if let existing = try? FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil) {
         for bmp in existing where bmp.pathExtension == "bmp" && bmp.lastPathComponent.hasPrefix(hashHex) {
+            if replacing {
+                try? FileManager.default.removeItem(at: bmp)
+                continue
+            }
             let components = bmp.deletingPathExtension().lastPathComponent.components(separatedBy: "-")
             // Filename format: <64-char-hash>-<width>-<height>-0-<timestamp>
             if components.count == 5,

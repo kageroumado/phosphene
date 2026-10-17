@@ -45,6 +45,9 @@ final class VideoRenderer: @unchecked Sendable {
     /// The task feeding this renderer its surface's targets (`PlaybackStore.follow`).
     private let followTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
+    /// The file as it was when the asset was opened. A video made again under the
+    /// same name is a new file the open readers never see.
+    private var openedFile: FileIdentity?
     private var currentReader: AVAssetReader?
     private var currentOutput: AVAssetReaderTrackOutput?
     private var nextReader: AVAssetReader?
@@ -117,6 +120,7 @@ final class VideoRenderer: @unchecked Sendable {
         self.renderer = displayLayer.sampleBufferRenderer
         self.asset = asset
         self.videoTrack = videoTrack
+        openedFile = FileIdentity(of: asset.url)
 
         var tb: CMTimebase?
         CMTimebaseCreateWithSourceClock(
@@ -268,16 +272,36 @@ final class VideoRenderer: @unchecked Sendable {
                 traceLog("  [switchVideo #\(debugID)] already on \(url.lastPathComponent)")
                 return
             }
-            let newAsset = AVURLAsset(url: url)
-            guard let track = Self.loadFirstVideoTrackBlocking(newAsset) else {
-                traceLog("  [switchVideo #\(debugID)] no video track in \(url.lastPathComponent)")
+            open(url, because: "switch")
+        }
+    }
+
+    /// Play `url` again when it is the file this renderer opened but replaced on
+    /// disk since (a video made again): the readers hold the old file. A different
+    /// URL switches as ``switchVideo(to:selector:)`` does.
+    func reload(to url: URL, selector: @escaping @Sendable (PlaybackPolicy) -> URL) {
+        queue.async { [self] in
+            variantSelector = selector
+            guard isRunning else { return }
+            if asset.url == url, openedFile == FileIdentity(of: url) {
                 return
             }
-            asset = newAsset
-            videoTrack = track
-            traceLog("  [switchVideo #\(debugID)] restarting from 0 → \(url.lastPathComponent)")
-            restartWithCurrentAsset()
+            open(url, because: "replaced")
         }
+    }
+
+    /// Open `url` as the current asset and restart from its first frame. On `queue`.
+    private func open(_ url: URL, because reason: String) {
+        let newAsset = AVURLAsset(url: url)
+        guard let track = Self.loadFirstVideoTrackBlocking(newAsset) else {
+            traceLog("  [switchVideo #\(debugID)] no video track in \(url.lastPathComponent)")
+            return
+        }
+        asset = newAsset
+        videoTrack = track
+        openedFile = FileIdentity(of: url)
+        traceLog("  [switchVideo #\(debugID)] \(reason): restarting from 0 → \(url.lastPathComponent)")
+        restartWithCurrentAsset()
     }
 
     /// Tag a sample buffer so the renderer displays it immediately, replacing all
@@ -854,5 +878,21 @@ final class VideoRenderer: @unchecked Sendable {
     private func recoverFromError() {
         recreatePlayback()
         CMTimebaseSetRate(timebase, rate: isPaused ? 0.0 : 1.0)
+    }
+}
+
+/// Which file a path names right now: its inode and modification date, which a
+/// replacement under the same name changes.
+struct FileIdentity: Equatable, Sendable {
+    let inode: UInt64
+    let modified: Date
+
+    init?(of url: URL) {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value,
+              let modified = attributes[.modificationDate] as? Date
+        else { return nil }
+        self.inode = inode
+        self.modified = modified
     }
 }

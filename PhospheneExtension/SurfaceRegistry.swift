@@ -114,6 +114,26 @@ final class SurfaceRegistry: Sendable {
         renderers.forEach(body)
     }
 
+    /// Play again every video whose file was replaced on disk since its renderer
+    /// opened it (a video made again under the same name), and refresh its
+    /// snapshot, which System Settings shows as the still.
+    func reloadReplacedVideos() {
+        let showing = lock.withLock { contents in
+            contents.surfaces.values.compactMap { surface in
+                surface.renderer.map { ($0, surface.videoID, surface.destSize, surface.scaleFactor) }
+            }
+        }
+        for (renderer, videoID, destSize, scaleFactor) in showing {
+            let choice = ShuffleController.shared.resolveChoice(videoID)
+            guard let url = findVideoURL(forChoice: choice) else { continue }
+            renderer.reload(to: url, selector: makeVariantSelector(choice: choice, fallback: url))
+            let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
+            Task { [url, videoID, w, h] in
+                await writeBMPSnapshot(videoURL: url, videoID: videoID, displayPixelWidth: w, displayPixelHeight: h, replacing: true)
+            }
+        }
+    }
+
     /// Whether any surface shows the given choice.
     func hasSurface(showing videoID: String) -> Bool {
         lock.withLock { $0.surfaces.values.contains { $0.videoID == videoID } }
