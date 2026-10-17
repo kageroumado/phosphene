@@ -165,8 +165,8 @@ extension UsageCounting {
 
     private static let activeCount = ActiveCount()
 
-    /// One plain GET of `v1/phosphene/active`, kept for the process once it has succeeded;
-    /// a failed request is tried again on the next ask.
+    /// Yesterday's count from the service's public summary, kept for the process once it has
+    /// arrived; a failed ask is tried again on the next ask.
     private actor ActiveCount {
         private var cached: Int?
         private var inFlight: Task<Int?, Never>?
@@ -186,25 +186,8 @@ extension UsageCounting {
             return result
         }
 
-        private struct Summary: Decodable {
-            var app: String
-            var day: String
-            var active: Int
-        }
-
         private static func fetch() async -> Int? {
-            let url = baseURL.appending(path: "v1/\(app)/active")
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 10
-            configuration.timeoutIntervalForResource = 10
-            let session = URLSession(configuration: configuration)
-            defer { session.invalidateAndCancel() }
-            guard let (data, response) = try? await session.data(from: url),
-                  (response as? HTTPURLResponse)?.statusCode == 200,
-                  let summary = try? JSONDecoder().decode(Summary.self, from: data),
-                  summary.app == app
-            else { return nil }
-            return summary.active
+            try? await client.activeCount().active
         }
     }
 }

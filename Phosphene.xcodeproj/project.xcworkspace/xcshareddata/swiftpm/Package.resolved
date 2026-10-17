@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/kageroumado/digoxin.git",
       "state" : {
-        "revision" : "586a21315812951232f1673fc227475c6f4a4c9d",
-        "version" : "0.2.0"
+        "revision" : "dda76c91c95001942d82e124cfc3f7a38595160e",
+        "version" : "0.3.0"
       }
     },
     {
