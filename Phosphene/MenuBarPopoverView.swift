@@ -12,6 +12,10 @@ struct MenuBarPopoverView: View {
         /// Tighter than `Theme.Space.sm`: the footer must still fit the popover's width while
         /// the version chip is widened into its Auto-Update switch.
         static let footerSpacing: CGFloat = 6
+        /// The rule between the version chip's two targets, shorter than the chip so it reads
+        /// as a divider rather than a seam.
+        static let chipDividerHeight: CGFloat = 12
+        static let chipIconSize: CGFloat = 11
     }
 
     private var prefsService: WallpaperPrefsService {
@@ -43,6 +47,7 @@ struct MenuBarPopoverView: View {
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             SilentUpdates.shared.refresh()
+            SilentUpdates.shared.checkIfStale()
             UsageCounting.noteUse()
         }
         .onChange(of: prefsService.selections.count) {
@@ -276,7 +281,10 @@ struct MenuBarPopoverView: View {
                 .buttonStyle(.footerChipProminent)
                 .help(message)
             case .idle:
+                // Hover lives on the chip's stable node, not on the resting branch: a branch that
+                // is replaced mid-hover (the check starts) never hears the mouse leave.
                 updateChip
+                    .onHover { isHoveringVersion = $0 }
 
                 FooterChip(text: String(localized: "Library"), systemImage: "film.stack") {
                     openLibrary()
@@ -304,8 +312,9 @@ struct MenuBarPopoverView: View {
     }
 
     /// The version chip is the whole update UI: it announces an update (click installs),
-    /// confirms one just landed (click acknowledges), and at rest flips into the
-    /// Auto-Update switch on hover so the setting costs no footer space.
+    /// confirms one just landed (click acknowledges), reports a check the user asked for, and at
+    /// rest flips into the Auto-Update switch and a check-now button on hover, so neither costs
+    /// footer space.
     @ViewBuilder
     private var updateChip: some View {
         let updates = SilentUpdates.shared
@@ -331,7 +340,27 @@ struct MenuBarPopoverView: View {
             }
             .buttonStyle(.footerChipProminent)
             .help("See what's new in version \(available)")
+        } else if updates.isChecking {
+            HStack(spacing: Theme.Space.xs) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Checking…")
+            }
+            .modifier(RestingChip())
+        } else if updates.checkedUpToDate {
+            Label("Up to date", systemImage: "checkmark")
+                .modifier(RestingChip())
         } else {
+            restingChip
+        }
+    }
+
+    /// One capsule, two targets: the version (the Auto-Update switch on hover) and, on hover,
+    /// the check-now button. VoiceOver reaches the check as a custom action on the version,
+    /// since it never hovers.
+    private var restingChip: some View {
+        let updates = SilentUpdates.shared
+        return HStack(spacing: 0) {
             Button {
                 manager.autoUpdate.toggle()
             } label: {
@@ -345,12 +374,36 @@ struct MenuBarPopoverView: View {
                         Text(versionString)
                     }
                 }
-                .foregroundStyle(.secondary)
+                .padding(.horizontal, Theme.Space.sm)
+                .frame(height: Theme.footerControlHeight)
+                .contentShape(Capsule())
             }
-            .buttonStyle(.footerChip)
-            .onHover { isHoveringVersion = $0 }
+            .buttonStyle(.plain)
             .help("Install updates automatically")
+            .accessibilityAction(named: Text("Check for updates")) {
+                Task { await updates.checkForUpdates() }
+            }
+
+            if isHoveringVersion {
+                Divider()
+                    .frame(height: Layout.chipDividerHeight)
+                Button {
+                    Task { await updates.checkForUpdates() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: Layout.chipIconSize, weight: .medium))
+                        .frame(width: Theme.footerControlHeight, height: Theme.footerControlHeight)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Check for updates now")
+                .accessibilityLabel("Check for updates")
+            }
         }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize()
+        .glassEffect(.regular.interactive(), in: Capsule())
     }
 
     private var versionString: String {
@@ -406,6 +459,21 @@ private extension WallpaperPrefsService {
 }
 
 // MARK: - Styles
+
+/// The version chip's quiet states — a check in progress, its "nothing newer" answer — in the
+/// same capsule as the resting chip, so the footer does not shift while they show.
+private struct RestingChip: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, Theme.Space.sm)
+            .frame(height: Theme.footerControlHeight)
+            .glassEffect(.regular, in: Capsule())
+    }
+}
 
 /// The miniature switch drawn inside chips and setting pills.
 private struct MiniSwitchPip: View {

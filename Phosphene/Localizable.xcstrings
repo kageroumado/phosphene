@@ -452,6 +452,36 @@
         }
       }
     },
+    "Check for updates": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查更新"
+          }
+        }
+      }
+    },
+    "Check for updates now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即检查更新"
+          }
+        }
+      }
+    },
+    "Checking…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查…"
+          }
+        }
+      }
+    },
     "Choose": {
       "localizations": {
         "zh-Hans": {
@@ -1000,6 +1030,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "它会在你的 Mac 空闲时自动安装——墙纸会持续播放。"
+          }
+        }
+      }
+    },
+    "Its audio visualizer is left out: a video wallpaper hears nothing.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它的音频可视化效果已省略：视频墙纸听不到声音。"
           }
         }
       }
@@ -2267,6 +2307,16 @@
         }
       }
     },
+    "Up to date": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已是最新"
+          }
+        }
+      }
+    },
     "Update Now": {
       "localizations": {
         "zh-Hans": {
@@ -2707,16 +2757,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "• Phosphene 和 macOS 的版本\n• 芯片系列和内存大小\n• 语言和日期\n• 最近 7 天中使用了几天\n• 是否有自己的视频，以及显示器数量"
-          }
-        }
-      }
-    },
-    "Its audio visualizer is left out: a video wallpaper hears nothing.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "它的音频可视化效果已省略：视频墙纸听不到声音。"
           }
         }
       }

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import os
@@ -15,10 +16,14 @@ import TiptoeGitHub
 /// that. The gate is a veto, not a preference: Tiptoe's own patience relaxes over days, this never
 /// does.
 ///
-/// One check loop serves both modes: with auto-update off the daily check still runs and still
+/// One check loop serves both modes: with auto-update off the check still runs and still
 /// answers ``availableVersion`` — the menu bar badge and version chip draw from it — but nothing
-/// downloads or installs except through ``updateNow()``. This is the app's single daily request
-/// to GitHub.
+/// downloads or installs except through ``updateNow()``.
+///
+/// The loop ticks every ``checkInterval``; between ticks, opening the popover or waking the Mac
+/// repeats the check once it is ``staleAfter`` old, and the version chip's refresh button makes
+/// one on demand. Each is a single GitHub metadata request, which GitHub itself caches for a
+/// minute.
 @MainActor
 @Observable
 final class SilentUpdates {
@@ -27,8 +32,20 @@ final class SilentUpdates {
     static let owner = "kageroumado"
     static let repo = "phosphene"
 
-    /// Finding an update sooner than daily would not install it sooner anyway.
-    private static let checkInterval: TimeInterval = 60 * 60 * 24
+    /// The chip announces a release within hours of it shipping, so a fix reaches people the
+    /// same day; the request is one cached metadata call.
+    private static let checkInterval: TimeInterval = 4 * 60 * 60
+
+    /// A check older than this is repeated when the popover opens or the Mac wakes: the loop's
+    /// tick may have landed while the Mac slept, or at a launch before the network was up.
+    private static let staleAfter: TimeInterval = 60 * 60
+
+    /// The network comes back a beat after the Mac does; asking at the wake notification itself
+    /// fails and leaves the next try to the loop.
+    private static let wakeGrace: Duration = .seconds(20)
+
+    /// How long ``checkedUpToDate`` stays true after a manual check that found nothing newer.
+    private static let upToDateNotice: Duration = .seconds(3)
 
     /// How often ``refresh()`` copies Tiptoe's in-memory state into the observable properties,
     /// so the menu bar badge appears without the popover being opened. No network involved.
@@ -60,15 +77,35 @@ final class SilentUpdates {
     /// notice. Read from Tiptoe's store at launch; cleared by ``acknowledgeUpdate()``.
     private(set) var justUpdatedVersion: String?
 
-    /// The updater: daily check loop, plus the quiet-moment install when auto-update is on.
+    /// True while a check the user asked for is in flight, for the version chip.
+    private(set) var isChecking = false
+
+    /// True for ``upToDateNotice`` after a check the user asked for found nothing newer. "Nothing
+    /// newer" and "couldn't reach GitHub" look the same from here, so this can be a beat
+    /// optimistic offline; the loop and the next popover open self-correct.
+    private(set) var checkedUpToDate = false
+
+    /// The updater: check loop, plus the quiet-moment install when auto-update is on.
     /// Created up front so its `Tiptoe` reconciles the recorded wait (and surfaces
-    /// `justUpdatedTo`) before the loop starts.
+    /// `justUpdatedTo`) before the loop starts. Notify-only until ``start(autoInstall:)``
+    /// applies the user's setting — which never happens in DEBUG, so a development build's
+    /// manual check stays a metadata request and cannot download a DMG on the side.
     @ObservationIgnored private let github: TiptoeGitHub
     @ObservationIgnored private var mirrorTask: Task<Void, Never>?
+    @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
+
+    /// When this object last asked GitHub itself. The loop's own ticks are not visible here, so
+    /// this is a floor on freshness: a stale check may repeat a tick made minutes ago, at the
+    /// cost of one cached metadata request.
+    @ObservationIgnored private var lastCheckedAt: Date?
+
+    /// The one metadata request in flight, shared by whoever asks while it runs.
+    @ObservationIgnored private var checkInFlight: Task<Void, Never>?
 
     private init() {
         github = TiptoeGitHub(owner: Self.owner, repo: Self.repo, checkInterval: Self.checkInterval)
             .gate("a video optimization is running") { await Self.noOptimizationRunning() }
+            .installsAutomatically(false)
         github.onChecksFailing = { error in
             Log.update.error("update checks have been failing: \(error.localizedDescription, privacy: .public)")
         }
@@ -93,6 +130,13 @@ final class SilentUpdates {
                     self?.refresh()
                 }
             }
+            wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main,
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.checkAfterWake()
+                }
+            }
         #endif
     }
 
@@ -100,8 +144,10 @@ final class SilentUpdates {
     /// quiet-moment watcher; a DMG already downloaded stays downloaded but installs only
     /// via ``updateNow()``.
     func setAutoInstall(_ enabled: Bool) {
-        github.installsAutomatically(enabled)
-        refresh()
+        #if !DEBUG
+            github.installsAutomatically(enabled)
+            refresh()
+        #endif
     }
 
     /// Copies Tiptoe's state into the observable properties. Called when the popover appears,
@@ -109,6 +155,60 @@ final class SilentUpdates {
     func refresh() {
         availableVersion = github.availableVersion
         pendingVersion = github.tiptoe.pending?.version
+    }
+
+    // MARK: - Checking
+
+    /// The user pressed the chip's refresh: the same request the loop makes, off-schedule, with
+    /// the chip saying what it is doing and, briefly, what it found.
+    func checkForUpdates() async {
+        guard !isChecking else { return }
+        isChecking = true
+        checkedUpToDate = false
+        await check()
+        isChecking = false
+        guard availableVersion == nil, pendingVersion == nil else { return }
+        checkedUpToDate = true
+        Task(name: "Clear the up-to-date notice") { [weak self] in
+            try? await Task.sleep(for: Self.upToDateNotice)
+            self?.checkedUpToDate = false
+        }
+    }
+
+    /// The check the popover's appearance and the Mac's waking make, when the last one is old
+    /// enough to be worth repeating. Quiet: the chip shows its result, never its progress.
+    func checkIfStale() {
+        // A development build does not poll GitHub on its own; the chip's refresh is the one
+        // request it makes, and only when asked.
+        #if !DEBUG
+            if let lastCheckedAt, Date.now.timeIntervalSince(lastCheckedAt) < Self.staleAfter {
+                return
+            }
+            Task(name: "Check for updates (stale)") { await check() }
+        #endif
+    }
+
+    private func checkAfterWake() {
+        Task(name: "Check for updates after wake") { [weak self] in
+            try? await Task.sleep(for: Self.wakeGrace)
+            self?.checkIfStale()
+        }
+    }
+
+    /// One metadata request; a second caller while it runs waits for the same answer.
+    private func check() async {
+        if let checkInFlight {
+            await checkInFlight.value
+            return
+        }
+        let task = Task(name: "Check for updates") { [github] in
+            await github.checkNow()
+        }
+        checkInFlight = task
+        await task.value
+        checkInFlight = nil
+        lastCheckedAt = .now
+        refresh()
     }
 
     // MARK: - Update Now
@@ -122,6 +222,13 @@ final class SilentUpdates {
             manualPhase = .failed("In-place updating is disabled in development builds.")
         #else
             manualPhase = .working
+
+            // Ask GitHub first. With automatic installs on, the DMG the loop downloaded may be
+            // days old and one release behind, and `github.updateNow()` installs what it holds
+            // as it stands; this check replaces a stale download with the newest release. With
+            // installs off it only refreshes `availableVersion`, and `updateNow()` downloads
+            // the newest itself.
+            await check()
 
             guard await github.updateNow() else {
                 // `availableVersion` is set only by a check that reached GitHub and found an
