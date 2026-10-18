@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-Phosphene adds your videos to System Settings → Wallpaper through the same wallpaper pipeline as Apple’s Aerials. macOS plays them on the desktop and lock screen, even after you quit the app.
+Phosphene adds your videos to System Settings → Wallpaper through the same wallpaper pipeline as Apple’s Aerials. macOS plays them on the desktop and lock screen, even after you quit the app. It also turns **Wallpaper Engine** wallpapers from the Steam Workshop into video wallpapers.
 
 <a href="https://kagerou.glass/get/phosphene?from=readme"><img src=".github/download.svg" alt="Download Phosphene for Mac" width="360" height="80"></a>
 
@@ -10,10 +10,10 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 
 ## Highlights
 
+- Use Wallpaper Engine wallpapers from the Steam Workshop: subscribe in Steam, and Phosphene makes a looping video of each.
 - Select personal videos alongside Apple’s wallpapers in System Settings.
 - Keep desktop and lock-screen playback running after quitting Phosphene.
 - Pause playback under covered desktops and adjust decoding to power and thermal conditions.
-- Use Wallpaper Engine wallpapers from the Steam Workshop.
 
 <details>
 <summary>Full feature list</summary>
@@ -30,6 +30,8 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 </details>
 
 ## Wallpaper Engine
+
+![Phosphene’s library at its Wallpaper Engine section, with Steam Workshop downloads ready to become videos](.github/phosphene-library.png)
 
 The Steam Workshop has hundreds of thousands of animated wallpapers made for Wallpaper Engine, a Windows program. Phosphene turns them into video wallpapers: subscribe in Steam, pick them in the library's Wallpaper Engine section, and choose Make Videos.
 
