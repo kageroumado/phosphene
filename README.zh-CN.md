@@ -31,7 +31,7 @@ Phosphene 通过与 Apple 航拍墙纸相同的墙纸管线，把你的视频添
 
 ## Wallpaper Engine
 
-![Phosphene 资料库的 Wallpaper Engine 分区，Steam 创意工坊的下载内容等待制作成视频](.github/phosphene-library.png)
+![Phosphene 资料库的 Wallpaper Engine 分区，Steam 创意工坊的下载内容等待制作成视频](.github/phosphene-library.zh-CN.png)
 
 Steam 创意工坊里有几十万张为 Wallpaper Engine 制作的动态壁纸，而它是一个 Windows 程序。Phosphene 把它们变成视频墙纸：在 Steam 里订阅，在资料库的 Wallpaper Engine 分区里选中，然后点“制作视频”。
 
