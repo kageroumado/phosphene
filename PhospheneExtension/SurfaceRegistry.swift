@@ -51,6 +51,11 @@ final class SurfaceRegistry: Sendable {
         lock.withLock { $0.surfaces[key] = surface }
     }
 
+    /// Every hosted surface's key, for a pass over all surfaces outside the lock.
+    var surfaceKeys: [SurfaceKey] {
+        lock.withLock { Array($0.surfaces.keys) }
+    }
+
     /// Claim the right to create this surface's renderer. True only when the surface
     /// has no renderer and no create in flight, in which case a create is marked
     /// pending. This is what keeps racing desktop + preview acquires to one renderer.

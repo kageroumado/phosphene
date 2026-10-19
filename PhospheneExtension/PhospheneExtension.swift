@@ -24,6 +24,7 @@ final class PhospheneExtension: NSObject, AppExtension {
                 Task { await SettingsPush.push() }
             }
             SystemEvents.start()
+            DisplayReconfiguration.start()
             PrefsSource.start()
             PowerMonitor.shared.startMonitoring()
             Task(name: "Power events") {

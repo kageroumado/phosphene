@@ -242,15 +242,10 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             // smaller display reconnected, or the display switched resolution. Re-frame
             // the root and renderer layers before re-hosting (issue #21).
             if let resized = registry.updateGeometryIfChanged(destSize: destSize, scaleFactor: scaleFactor, for: key) {
-                CATransaction.begin()
-                CATransaction.setDisableActions(true)
-                resized.rootLayer.frame = CGRect(origin: .zero, size: destSize)
-                resized.rootLayer.contentsScale = scaleFactor
-                CATransaction.commit()
-                CATransaction.flush()
-                resized.renderer?.resize(to: destSize, scale: scaleFactor)
+                layOutSurface(resized, destSize: destSize, scaleFactor: scaleFactor)
                 extensionLog("  [acquire] REUSE geometry changed → resized \(key) to \(destSize) @\(scaleFactor)x")
             }
+            reconcileSurfaceGeometry(for: key, because: "re-acquire")
 
             guard let replyObj = createRemoteContextXPC(contextId: existing.contextId) else {
                 reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
@@ -337,7 +332,8 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             HostedSurface(caContext: caContext, contextId: contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration, isPreview: isPreview, destSize: destSize, scaleFactor: scaleFactor),
             for: key,
         )
-        extensionLog("  Created context \(contextId) for \(key)")
+        extensionLog("  Created context \(contextId) for \(key) at \(destSize) @\(scaleFactor)x")
+        reconcileSurfaceGeometry(for: key, because: "acquire")
 
         // The XPC reply is deferred until the new context displays video. WallpaperAgent
         // hosts a context only after it receives the reply and keeps compositing the old
