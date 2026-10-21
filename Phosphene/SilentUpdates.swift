@@ -86,8 +86,9 @@ final class SilentUpdates {
     private(set) var checkedUpToDate = false
 
     /// The updater: check loop, plus the quiet-moment install when auto-update is on.
-    /// Created up front so its `Tiptoe` reconciles the recorded wait (and surfaces
-    /// `justUpdatedTo`) before the loop starts. Notify-only until ``start(autoInstall:)``
+    /// Created up front so its `Tiptoe` reconciles the recorded wait and the post-update notice
+    /// against the running bundle (a notice that outlived its version is dropped) before the
+    /// loop starts. Notify-only until ``start(autoInstall:)``
     /// applies the user's setting — which never happens in DEBUG, so a development build's
     /// manual check stays a metadata request and cannot download a DMG on the side.
     @ObservationIgnored private let github: TiptoeGitHub
@@ -109,11 +110,7 @@ final class SilentUpdates {
         github.onChecksFailing = { error in
             Log.update.error("update checks have been failing: \(error.localizedDescription, privacy: .public)")
         }
-        justUpdatedVersion = PostUpdateNotice.reconcile(
-            recordedVersion: github.tiptoe.justUpdatedTo,
-            runningVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-            acknowledge: { github.tiptoe.acknowledge() },
-        )
+        justUpdatedVersion = github.tiptoe.justUpdatedTo
     }
 
     // MARK: - Automatic installs
@@ -223,12 +220,10 @@ final class SilentUpdates {
         #else
             manualPhase = .working
 
-            // Ask GitHub first. With automatic installs on, the DMG the loop downloaded may be
-            // days old and one release behind, and `github.updateNow()` installs what it holds
-            // as it stands; this check replaces a stale download with the newest release. With
-            // installs off it only refreshes `availableVersion`, and `updateNow()` downloads
-            // the newest itself.
-            await check()
+            // `github.updateNow()` asks GitHub itself and replaces a download that fell behind,
+            // but answers a press during a running check with whatever is already held — with
+            // auto-install off, nothing. So a check this object started finishes first.
+            await checkInFlight?.value
 
             guard await github.updateNow() else {
                 // `availableVersion` is set only by a check that reached GitHub and found an
