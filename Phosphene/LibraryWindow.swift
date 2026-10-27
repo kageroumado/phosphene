@@ -29,7 +29,9 @@ struct LibraryWindow: View {
             LibrarySidebar(section: $section, counts: counts, workshop: workshop) {
                 manager.openVideoChooser()
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
+            .navigationSplitViewColumnWidth(
+                min: Layout.sidebarMin, ideal: Layout.sidebarIdeal, max: Layout.sidebarMax,
+            )
         } detail: {
             detail
                 .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
@@ -45,9 +47,11 @@ struct LibraryWindow: View {
         }
         .inspector(isPresented: $showInspector) {
             inspector
-                .inspectorColumnWidth(min: 260, ideal: 300, max: 380)
+                .inspectorColumnWidth(
+                    min: Layout.inspectorMin, ideal: Layout.inspectorIdeal, max: Layout.inspectorMax,
+                )
         }
-        .frame(minWidth: 860, minHeight: 520)
+        .frame(minWidth: Layout.windowMinWidth, minHeight: 520)
         .sheet(isPresented: $showingMakeVideos) {
             MakeVideoSheet(library: workshop)
         }
@@ -454,20 +458,31 @@ struct LibraryWindow: View {
                     openWallpaperSettings()
                 } label: {
                     Text("Wallpapers apply in System Settings \(Image(systemName: "arrow.up.right"))")
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
                 .buttonStyle(.plain)
+                .layoutPriority(-1)
                 .help("Open macOS Wallpaper Settings")
             }
-            Spacer()
+            Spacer(minLength: 0)
             if viewMode == .icons {
-                Image(systemName: "photo")
-                    .imageScale(.small)
-                Slider(value: $iconSize, in: LibraryIconSize.range)
-                    .controlSize(.mini)
-                    .frame(width: 96)
-                    .help("Icon size")
-                    .accessibilityLabel("Icon size")
-                Image(systemName: "photo")
+                // The slider goes when the column is too narrow for it, so the status bar
+                // never sets the detail column's minimum width.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "photo")
+                            .imageScale(.small)
+                        Slider(value: $iconSize, in: LibraryIconSize.range)
+                            .controlSize(.mini)
+                            .frame(width: 96)
+                            .help("Icon size")
+                            .accessibilityLabel("Icon size")
+                        Image(systemName: "photo")
+                    }
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                }
             }
         }
         .font(.system(size: 11))
@@ -543,6 +558,26 @@ struct LibraryWindow: View {
             videoSelection = [initialSelectionID]
         }
     }
+}
+
+/// Column widths, and a window minimum that holds them all at their widest.
+///
+/// Never let the window be narrower than the columns can be: SwiftUI leaves the split
+/// view's own minimum out of the window's `contentMinSize`, and a window below it sends
+/// AppKit into an endless Update Constraints loop that ends in an exception (#35).
+/// ``detailMin`` is what the detail column is left with when both side columns are at
+/// their widest; it is never applied as a `.frame(minWidth:)` on the detail, which
+/// starts the same loop at any window size.
+private enum Layout {
+    static let sidebarMin: CGFloat = 180
+    static let sidebarIdeal: CGFloat = 220
+    static let sidebarMax: CGFloat = 260
+    static let inspectorMin: CGFloat = 260
+    static let inspectorIdeal: CGFloat = 300
+    static let inspectorMax: CGFloat = 340
+    static let detailMin: CGFloat = 420
+    static let dividers: CGFloat = 2
+    static let windowMinWidth = sidebarMax + inspectorMax + detailMin + dividers
 }
 
 // MARK: - Pieces
