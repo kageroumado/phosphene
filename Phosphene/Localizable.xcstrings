@@ -211,6 +211,16 @@
         }
       }
     },
+    "Add ${video} to Phosphene": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将${video}添加到 Phosphene"
+          }
+        }
+      }
+    },
     "Add Folder": {
       "localizations": {
         "zh-Hans": {
@@ -237,6 +247,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "添加视频"
+          }
+        }
+      }
+    },
+    "Add Video to Phosphene": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将视频添加到 Phosphene"
           }
         }
       }
@@ -332,12 +352,32 @@
         }
       }
     },
+    "Added “%@” to your Phosphene library. Choose it in System Settings › Wallpaper.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已将“%@”添加到 Phosphene 资料库。请在“系统设置”›“墙纸”中选择它。"
+          }
+        }
+      }
+    },
     "Adding": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "正在添加"
+          }
+        }
+      }
+    },
+    "Adds a video to your Phosphene library. Choose it as your wallpaper in System Settings › Wallpaper.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将视频添加到 Phosphene 资料库。请在“系统设置”›“墙纸”中把它选为墙纸。"
           }
         }
       }
@@ -428,16 +468,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "取消"
-          }
-        }
-      }
-    },
-    "Cannot access the video file for '%@'. Please make sure the file still exists.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法访问“%@”的视频文件。请确保该文件仍然存在。"
           }
         }
       }
@@ -784,6 +814,16 @@
         }
       }
     },
+    "Every display": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有显示器"
+          }
+        }
+      }
+    },
     "Everywhere": {
       "localizations": {
         "zh-Hans": {
@@ -910,16 +950,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "隐藏检查器"
-          }
-        }
-      }
-    },
-    "I couldn't find a wallpaper named '%@'. Available wallpapers: %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "找不到名为“%1$@”的墙纸。可用的墙纸：%2$@"
           }
         }
       }
@@ -1466,6 +1496,26 @@
         }
       }
     },
+    "One desktop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "单个桌面"
+          }
+        }
+      }
+    },
+    "One display": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "单个显示器"
+          }
+        }
+      }
+    },
     "Open Library": {
       "localizations": {
         "zh-Hans": {
@@ -1638,6 +1688,46 @@
     },
     "Phosphene": {
       "shouldTranslate": false
+    },
+    "Phosphene adds videos to your library. System Settings › Wallpaper chooses which one plays on each display and desktop.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 负责把视频添加到资料库；每个显示器和桌面播放哪个视频，由“系统设置”›“墙纸”决定。"
+          }
+        }
+      }
+    },
+    "Phosphene can’t add a file named “%@”.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 无法添加名为“%@”的文件。"
+          }
+        }
+      }
+    },
+    "Phosphene couldn’t add “%@” to the library.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 无法将“%@”添加到资料库。"
+          }
+        }
+      }
+    },
+    "Phosphene couldn’t read “%@”.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 无法读取“%@”。"
+          }
+        }
+      }
     },
     "Phosphene doesn’t recognize this wallpaper’s type.": {
       "localizations": {
@@ -1909,56 +1999,6 @@
         }
       }
     },
-    "Set ${videoName} as wallpaper": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "将 ${videoName} 设定为墙纸"
-          }
-        }
-      }
-    },
-    "Set Video Wallpaper": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "设定视频墙纸"
-          }
-        }
-      }
-    },
-    "Set Wallpaper": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "设定墙纸"
-          }
-        }
-      }
-    },
-    "Set wallpaper to '%@'": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已将墙纸设定为“%@”"
-          }
-        }
-      }
-    },
-    "Sets a video as your desktop wallpaper": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "将视频设定为桌面墙纸"
-          }
-        }
-      }
-    },
     "Settings": {
       "localizations": {
         "zh-Hans": {
@@ -2159,16 +2199,6 @@
         }
       }
     },
-    "The name of the video to set as wallpaper": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "要设定为墙纸的视频名称"
-          }
-        }
-      }
-    },
     "The update couldn't be installed. Try again, or get it from the releases page.": {
       "extractionState": "stale",
       "localizations": {
@@ -2176,6 +2206,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法安装更新。请重试，或从发布页面获取。"
+          }
+        }
+      }
+    },
+    "The video file to add": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要添加的视频文件"
           }
         }
       }
@@ -2257,6 +2297,26 @@
         }
       }
     },
+    "Turn off “Show on all Spaces”, move the System Settings window onto that display, then choose the video.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭“在所有空间中显示”，把“系统设置”窗口移到该显示器上，然后选择视频。"
+          }
+        }
+      }
+    },
+    "Turn on “Show on all Spaces”, then choose the video. Displays without a wallpaper of their own show it too, including ones you connect later.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开“在所有空间中显示”，然后选择视频。没有单独设定墙纸的显示器也会显示它，包括之后连接的显示器。"
+          }
+        }
+      }
+    },
     "Turn the selected wallpapers into looping videos": {
       "localizations": {
         "zh-Hans": {
@@ -2283,16 +2343,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "类型"
-          }
-        }
-      }
-    },
-    "Unable to set wallpaper": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法设定墙纸"
           }
         }
       }
@@ -2417,32 +2467,22 @@
         }
       }
     },
+    "Using a video on each display and desktop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在每个显示器和桌面上使用视频"
+          }
+        }
+      }
+    },
     "Video": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "视频"
-          }
-        }
-      }
-    },
-    "Video Name": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "视频名称"
-          }
-        }
-      }
-    },
-    "Video Wallpaper": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "视频墙纸"
           }
         }
       }
@@ -2617,6 +2657,26 @@
         }
       }
     },
+    "Where Each Video Plays": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频在哪里播放"
+          }
+        }
+      }
+    },
+    "With “Show on all Spaces” off, switch to that desktop, then choose the video.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保持“在所有空间中显示”关闭，切换到该桌面，然后选择视频。"
+          }
+        }
+      }
+    },
     "Workshop Page": {
       "localizations": {
         "zh-Hans": {
@@ -2651,16 +2711,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "昨天有 %lld 台 Mac 加入了统计。"
-          }
-        }
-      }
-    },
-    "You don't have any wallpapers saved yet. Please add a video first.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你还没有存储任何墙纸。请先添加一个视频。"
           }
         }
       }
@@ -2744,6 +2794,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "—"
+          }
+        }
+      }
+    },
+    "“%@” is already in your Phosphene library. Choose it in System Settings › Wallpaper.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”已在 Phosphene 资料库中。请在“系统设置”›“墙纸”中选择它。"
           }
         }
       }

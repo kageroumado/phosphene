@@ -1,42 +1,22 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "Set my wallpaper in ${applicationName}": {
+    "Add a video to ${applicationName}": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "用${applicationName}设定我的墙纸"
+            "value": "向${applicationName}添加视频"
           }
         }
       }
     },
-    "Change my wallpaper with ${applicationName}": {
+    "Add a wallpaper video to ${applicationName}": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "用${applicationName}更换我的墙纸"
-          }
-        }
-      }
-    },
-    "Set video wallpaper in ${applicationName}": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在${applicationName}中设定视频墙纸"
-          }
-        }
-      }
-    },
-    "Change desktop background in ${applicationName}": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "用${applicationName}更换桌面背景"
+            "value": "向${applicationName}添加墙纸视频"
           }
         }
       }

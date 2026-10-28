@@ -5,13 +5,11 @@ struct PhospheneShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: SetWallpaperIntent(),
             phrases: [
-                "Set my wallpaper in \(.applicationName)",
-                "Change my wallpaper with \(.applicationName)",
-                "Set video wallpaper in \(.applicationName)",
-                "Change desktop background in \(.applicationName)",
+                "Add a video to \(.applicationName)",
+                "Add a wallpaper video to \(.applicationName)",
             ],
-            shortTitle: "Set Wallpaper",
-            systemImageName: "photo.fill",
+            shortTitle: "Add Video",
+            systemImageName: "plus.rectangle.on.rectangle",
         )
     }
 }

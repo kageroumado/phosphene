@@ -464,6 +464,7 @@ struct LibraryWindow: View {
                 .buttonStyle(.plain)
                 .layoutPriority(-1)
                 .help("Open macOS Wallpaper Settings")
+                WallpaperPlacementHelpButton()
             }
             Spacer(minLength: 0)
             if viewMode == .icons {

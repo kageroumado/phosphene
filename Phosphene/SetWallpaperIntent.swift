@@ -1,85 +1,58 @@
 import AppIntents
-import AppKit
+import Foundation
+import UniformTypeIdentifiers
 
+/// Adds a video file to the Phosphene library. Choosing it as the wallpaper happens
+/// in System Settings › Wallpaper, per display and per desktop.
+///
+/// Keep the type name: App Intents identifies an action by it, so renaming the type
+/// would break every shortcut that already uses this action.
 struct SetWallpaperIntent: AppIntent {
-    static let title: LocalizedStringResource = "Set Video Wallpaper"
-    static let description = IntentDescription("Sets a video as your desktop wallpaper")
+    static let title: LocalizedStringResource = "Add Video to Phosphene"
+    static let description = IntentDescription(
+        "Adds a video to your Phosphene library. Choose it as your wallpaper in System Settings › Wallpaper.",
+    )
 
-    @Parameter(title: "Video Name", description: "The name of the video to set as wallpaper")
-    var videoName: String?
+    @Parameter(title: "Video", description: "The video file to add", supportedContentTypes: [.movie])
+    var video: IntentFile
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Set \(\.$videoName) as wallpaper") {
-            \.$videoName
-        }
+        Summary("Add \(\.$video) to Phosphene")
     }
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let history = WallpaperHistory.shared
+        let filename = video.fileURL?.lastPathComponent ?? video.filename
+        guard PathSafety.isSafeComponent(filename) else {
+            return .result(dialog: "Phosphene can’t add a file named “\(filename)”.")
+        }
+        if let existing = VideoDeploymentService.listEntries().first(where: { $0.filename == filename }) {
+            return .result(dialog: "“\(existing.name)” is already in your Phosphene library. Choose it in System Settings › Wallpaper.")
+        }
 
-        let wallpaper: WallpaperHistoryItem?
-        if let videoName, !videoName.isEmpty {
-            wallpaper = history.items.first { $0.name.localizedCaseInsensitiveContains(videoName) }
-
-            if wallpaper == nil {
-                let availableNames = history.items.map(\.name).joined(separator: ", ")
-                return .result(dialog: "I couldn't find a wallpaper named '\(videoName)'. Available wallpapers: \(availableNames)")
-            }
+        let id: String?
+        if let url = video.fileURL {
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            id = await VideoDeploymentService.deployVideo(url: url)
         } else {
-            wallpaper = history.items.first
-
-            if wallpaper == nil {
-                return .result(dialog: "You don't have any wallpapers saved yet. Please add a video first.")
+            // A file shared as data (from another action or app) is written out under its
+            // own name, so the library dedups it by filename like any other video.
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let url = folder.appendingPathComponent(filename)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try video.data.write(to: url)
+            } catch {
+                return .result(dialog: "Phosphene couldn’t read “\(filename)”.")
             }
+            id = await VideoDeploymentService.deployVideo(url: url)
         }
 
-        guard let wallpaper else {
-            return .result(dialog: "Unable to set wallpaper")
+        guard let id, let entry = VideoDeploymentService.listEntries().first(where: { $0.id == id }) else {
+            return .result(dialog: "Phosphene couldn’t add “\(filename)” to the library.")
         }
-
-        guard let videoURL = history.resolveAndAccessBookmark(for: wallpaper) else {
-            return .result(dialog: "Cannot access the video file for '\(wallpaper.name)'. Please make sure the file still exists.")
-        }
-
-        await VideoDeploymentService.deployVideo(url: videoURL)
-        history.releaseAccess(to: videoURL)
-
-        return .result(dialog: "Set wallpaper to '\(wallpaper.name)'")
-    }
-}
-
-// MARK: - App Entity
-
-struct WallpaperEntity: AppEntity {
-    let id: String
-    let name: String
-
-    var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(name)")
-    }
-
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Video Wallpaper"
-    static let defaultQuery = WallpaperQuery()
-
-    init(wallpaper: WallpaperHistoryItem) {
-        self.id = wallpaper.id.uuidString
-        self.name = wallpaper.name
-    }
-}
-
-struct WallpaperQuery: EntityQuery {
-    @MainActor
-    func entities(for identifiers: [WallpaperEntity.ID]) async throws -> [WallpaperEntity] {
-        WallpaperHistory.shared.items
-            .filter { identifiers.contains($0.id.uuidString) }
-            .map { WallpaperEntity(wallpaper: $0) }
-    }
-
-    @MainActor
-    func suggestedEntities() async throws -> [WallpaperEntity] {
-        WallpaperHistory.shared.items
-            .prefix(5)
-            .map { WallpaperEntity(wallpaper: $0) }
+        return .result(dialog: "Added “\(entry.name)” to your Phosphene library. Choose it in System Settings › Wallpaper.")
     }
 }
