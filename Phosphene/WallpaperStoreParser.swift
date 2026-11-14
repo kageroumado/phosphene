@@ -92,7 +92,9 @@ enum WallpaperStoreParser {
                       let spaceInfo = spaceMap[spaceUUID],
                       let perDisplays = space["Displays"] as? [String: Any] else { continue }
                 for (displayUUID, displayValue) in perDisplays {
-                    if let owner = spaceInfo.displayUUID, owner != displayUUID { continue }
+                    if let owner = spaceInfo.displayUUID, owner != displayUUID {
+                        continue
+                    }
                     guard let display = displayValue as? [String: Any],
                           let videoID = videoID(in: display, provider: provider),
                           let info = displayMap[displayUUID] else { continue }
