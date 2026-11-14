@@ -333,7 +333,7 @@ final class WallpaperPrefsService {
         let parsed = WallpaperStoreParser.parseSelections(
             plist: plist,
             displayMap: displayMap,
-            spaceMap: resolveSpaceMap(),
+            spaceMap: resolveSpaceMap(displayMap: displayMap),
             provider: Self.extensionBundleID,
         )
 
@@ -386,7 +386,9 @@ final class WallpaperPrefsService {
 
     // MARK: - Space Resolution
 
-    private func resolveSpaceMap() -> [String: String] {
+    private func resolveSpaceMap(
+        displayMap: [String: WallpaperStoreParser.DisplayInfo],
+    ) -> [String: WallpaperStoreParser.SpaceInfo] {
         guard let data = try? Data(contentsOf: Self.spacesConfigURL),
               let plist = try? unsafe PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let config = plist["SpacesDisplayConfiguration"] as? [String: Any],
@@ -395,12 +397,27 @@ final class WallpaperPrefsService {
             return [:]
         }
 
-        var map: [String: String] = [:]
+        // Each monitor record is keyed by its display's UUID, except the primary
+        // display's, which is "Main". When Spaces span every display, "Main" is the
+        // only record holding Spaces and its Spaces belong to all displays.
+        let separateSpaces = monitors.contains { monitor in
+            (monitor["Display Identifier"] as? String) != "Main"
+                && !((monitor["Spaces"] as? [[String: Any]]) ?? []).isEmpty
+        }
+        let mainDisplayID = CGMainDisplayID()
+        let mainDisplayUUID = displayMap.first { $0.value.displayID == mainDisplayID }?.key
+
+        var map: [String: WallpaperStoreParser.SpaceInfo] = [:]
         for monitor in monitors {
             guard let spaces = monitor["Spaces"] as? [[String: Any]] else { continue }
+            let identifier = monitor["Display Identifier"] as? String
+            let owner = identifier == "Main" ? (separateSpaces ? mainDisplayUUID : nil) : identifier?.uppercased()
             for (index, space) in spaces.enumerated() {
                 if let uuid = space["uuid"] as? String {
-                    map[uuid] = String(localized: "Space \(index + 1)")
+                    map[uuid] = WallpaperStoreParser.SpaceInfo(
+                        name: String(localized: "Space \(index + 1)"),
+                        displayUUID: owner,
+                    )
                 }
             }
         }
