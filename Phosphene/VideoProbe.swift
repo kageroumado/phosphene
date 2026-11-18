@@ -29,8 +29,12 @@ nonisolated struct VideoProbe {
             let transfer = CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_TransferFunction) as? String
             if [kCVImageBufferTransferFunction_ITU_R_2100_HLG as String, kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ as String].contains(transfer) {
                 classifications.insert(true)
-            } else if [kCVImageBufferTransferFunction_ITU_R_709_2 as String, kCVImageBufferTransferFunction_sRGB as String,
-                       kCVImageBufferTransferFunction_SMPTE_240M_1995 as String, kCVImageBufferTransferFunction_ITU_R_2020 as String].contains(transfer) {
+            } else if [
+                kCVImageBufferTransferFunction_ITU_R_709_2 as String,
+                kCVImageBufferTransferFunction_sRGB as String,
+                kCVImageBufferTransferFunction_SMPTE_240M_1995 as String,
+                kCVImageBufferTransferFunction_ITU_R_2020 as String,
+            ].contains(transfer) {
                 guard !markedHDR else { return nil }
                 classifications.insert(false)
             } else if transfer == nil, markedHDR {

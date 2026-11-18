@@ -130,8 +130,6 @@ final class WallpaperPrefsService {
         var fullscreenDisplays: Set<UInt32>?
         var pausedDisplays: Set<UInt32>?
         var screenSaverIsOurs: Bool?
-
-
     }
 
     private struct ContextState: Codable {
@@ -242,7 +240,11 @@ final class WallpaperPrefsService {
 
     // MARK: - Prefs Persistence
 
+    @ObservationIgnored private var loadingPrefs = false
+
     private func loadPrefs() {
+        loadingPrefs = true
+        defer { loadingPrefs = false }
         let data: Data
         do {
             data = try Data(contentsOf: Self.prefsURL)
@@ -265,6 +267,7 @@ final class WallpaperPrefsService {
     }
 
     private func savePrefs() {
+        guard !loadingPrefs else { return }
         let prefs = PrefsFile(
             hdrMode: hdrMode.rawValue,
             userPaused: userPaused,

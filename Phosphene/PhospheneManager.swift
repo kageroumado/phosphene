@@ -119,7 +119,9 @@ final class PhospheneManager {
     func importVideo(_ url: URL) async {
         let scoped = url.startAccessingSecurityScopedResource()
         defer {
-            if scoped { url.stopAccessingSecurityScopedResource() }
+            if scoped {
+                url.stopAccessingSecurityScopedResource()
+            }
         }
 
         let name = url.deletingPathExtension().lastPathComponent
@@ -164,7 +166,9 @@ final class PhospheneManager {
                     progress: { @MainActor in self.optimizationProgress = $0 },
                 )
                 defer {
-                    for (url, _) in variants { try? FileManager.default.removeItem(at: url) }
+                    for (url, _) in variants {
+                        try? FileManager.default.removeItem(at: url)
+                    }
                 }
                 try await VideoDeploymentService.deployVariants(entryID: entryID, source: identity, variants: variants)
             } catch is CancellationError {
@@ -204,9 +208,13 @@ final class PhospheneManager {
         Task {
             var changed = false
             for entry in needsProbing {
-                if await VideoDeploymentService.probeAndUpdateMetadata(for: entry) { changed = true }
+                if await VideoDeploymentService.probeAndUpdateMetadata(for: entry) {
+                    changed = true
+                }
             }
-            if changed { VideoDeploymentService.notifyExtensionLibraryChanged() }
+            if changed {
+                VideoDeploymentService.notifyExtensionLibraryChanged()
+            }
         }
     }
 

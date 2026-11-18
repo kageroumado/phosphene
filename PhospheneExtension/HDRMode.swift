@@ -1,7 +1,10 @@
 import QuartzCore
 
 nonisolated enum HDRMode: String, Sendable {
-    case automatic, standard, constrainedHigh, high
+    case automatic
+    case standard
+    case constrainedHigh
+    case high
 
     var dynamicRange: CALayer.DynamicRange {
         switch self {

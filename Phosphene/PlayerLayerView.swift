@@ -28,7 +28,9 @@ struct PlayerLayerView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         if let playerLayer = context.coordinator.playerLayer {
-            if playerLayer.player !== player { playerLayer.player = player }
+            if playerLayer.player !== player {
+                playerLayer.player = player
+            }
             playerLayer.preferredDynamicRange = hdrMode.dynamicRange
             let newFrame = nsView.bounds
             if newFrame != playerLayer.frame {

@@ -28,8 +28,7 @@ enum VideoDeploymentService {
         let videosDir = videosFolderURL
 
         // Dedup: skip if a video with the same filename already exists in the library
-        let existing = listEntries()
-        if existing.contains(where: { $0.filename == url.lastPathComponent }) {
+        if listEntries().contains(where: { $0.filename == url.lastPathComponent }) {
             Log.video.info("Video '\(url.lastPathComponent)' already in library, skipping deploy")
             return nil
         }
@@ -43,6 +42,7 @@ enum VideoDeploymentService {
             try fileManager.copyItem(at: url.resolvingSymlinksInPath(), to: destURL)
 
             let probe = await VideoProbe.inspect(destURL)
+            guard probe.resolution != nil else { throw CocoaError(.fileReadCorruptFile) }
             let metadata = EntryInfo(
                 id: id,
                 name: name ?? VideoDisplayName.pretty(from: url.deletingPathExtension().lastPathComponent),
@@ -93,6 +93,7 @@ enum VideoDeploymentService {
             try fm.createDirectory(at: staged, withIntermediateDirectories: false)
             try fm.copyItem(at: url.resolvingSymlinksInPath(), to: media)
             let probe = await VideoProbe.inspect(media)
+            guard probe.resolution != nil else { throw CocoaError(.fileReadCorruptFile) }
             await generateThumbnail(for: media, in: staged)
 
             var current = try JSONDecoder().decode(EntryInfo.self, from: Data(contentsOf: metadataURL))
@@ -377,6 +378,7 @@ enum VideoDeploymentService {
     static func generateThumbnail(for videoURL: URL, in directory: URL) async {
         let asset = AVURLAsset(url: videoURL)
         let generator = AVAssetImageGenerator(asset: asset)
+        generator.dynamicRangePolicy = .forceSDR
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 640, height: 360)
 
