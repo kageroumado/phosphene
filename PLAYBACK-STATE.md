@@ -30,6 +30,7 @@ How the extension decides whether each wallpaper surface plays, and how that dec
 - **Presentation is per surface.** Each WallpaperID (Space, lock screen, Settings preview) keeps its own `mode` and `activity`, taken from the `update` addressed to it. A preview's `idle` cannot pause the desktop.
 - **Everything is an input to the policy.** Display sleep, the loginwindow lock, per-display prefs and power are all read by `PlaybackReducer.target`, so no path can resume playback that another input requires paused.
 - **Level-triggered renderers.** A renderer never receives commands, only its surface's current target, via `Observations`. `PlaybackStore.follow` applies the current target before `start()`, so a renderer attached after a lock, pause or sleep starts in the right state. Bursts coalesce: the renderer sees the latest target, not every intermediate one.
+- **Dynamic range follows each surface.** A prefs change carries `hdrMode` in `SurfaceTarget`, including while the display sleeps. The renderer queue updates the attached layer independently of playback rate and reader lifetime.
 - **Ramps are part of the target.** The event that changed a surface decides whether the change ramps: a presentation change in lock-screen-only mode, or a window-coverage change. Everything else cuts.
 - **Published state is derived.** The current video is the choice of the newest live desktop surface, falling back to the last one seen. The agent does not send `selectedChoicesDidChange` to third-party providers on macOS 27.
 

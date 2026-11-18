@@ -23,7 +23,8 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 - Desktop and lock-screen playback through the macOS wallpaper pipeline.
 - MP4, MOV, and other AVFoundation-readable inputs; gapless looping and lock/unlock transitions.
 - Menu-bar preview, pause, display switching, and launch at login.
-- Visibility, power, and thermal-aware playback; optional lower-resolution variants.
+- Power and thermal settings can select lower-resolution variants for confirmed SDR videos. HDR videos and videos with unknown dynamic range play from the imported original, including on battery.
+- In the menu bar, **Settings → Dynamic Range** controls the wallpaper and Library previews. Choose **Constrained High** for more subdued highlights or **Automatic** to restore the system preference.
 - **Restart Wallpaper Agent** from the menu bar for stuck playback.
 - A **Wallpaper Engine** section: Steam Workshop downloads from Sevoflurane, CrossOver or Whisky become looping videos.
 

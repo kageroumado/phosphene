@@ -11,7 +11,7 @@
 │                         │         │                              │
 │  • Library management   │  Darwin │  • XPC handler                │
 │  • Per-video metadata   │ ──────▶ │  • AVSampleBufferDisplayLayer │
-│  • Optimization (HEVC)  │  notif. │  • Power / thermal monitor    │
+│  • Optimization (H.264)  │  notif. │  • Power / thermal monitor    │
 │  • Preferences          │         │  • Snapshot generator         │
 └─────────────────────────┘         └──────────────────────────────┘
                   │                              │
@@ -21,7 +21,7 @@
                   (~/Library/Containers/glass.kagerou.phosphene.extension
                        /Data/Documents)
                   • Video library + variants
-                  • WallpaperPrefs.plist
+                  • phosphene-prefs.json
                   • BMP snapshot cache
 ```
 
@@ -38,6 +38,10 @@
 **`PlaybackPolicy`** is the single source of truth for playback behavior. Inputs (thermal state, battery, presentation mode, user pause, occlusion, etc.) collapse to one of `full / reduced / minimal / paused`. Events reach it through a reducer and one observable target per surface; see [PLAYBACK-STATE.md](PLAYBACK-STATE.md).
 
 **`VideoRenderer`** owns the decode pipeline. Instead of `AVPlayerLayer` — which silently fails inside a remote `CAContext` — it drives `AVSampleBufferDisplayLayer` manually: one `AVAssetReader` for the current loop, a preloaded one for the next, and a PTS offset that grows across loops to keep the timeline monotonically increasing. Result is glitch-free looping without flushing the renderer.
+
+Each `videos/<UUID>/metadata.json` can include `sourceIsHDR`. The host inspects the original on import, replacement and startup enrichment. Only an explicit `false` permits H.264 optimization or playback of existing variants. Pausing still saves decoding work for every source. The optional global `hdrMode` in `phosphene-prefs.json` accepts `automatic`, `standard`, `constrainedHigh` and `high`. An absent or unknown value selects `automatic`.
+
+Wallpaper snapshots request an SDR frame at source time zero. Unprofiled BMPs use sRGB pixels. A matching wallpaper ID, source-file identity and display size are required to reuse a cached BMP. The extension keeps its freshness records in its own Caches directory. HDR highlight luminance is outside the SDR still’s range.
 
 ## Quirks worth knowing
 
