@@ -23,6 +23,26 @@ struct VariantSelectionTests {
         }
     }
 
+    @Test
+    func `cached frame belongs to one source and display size`() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let source = dir.appendingPathComponent("video.mov")
+        try Data([1]).write(to: source)
+        let old = try #require(FileIdentity(of: source))
+        let name = CachedFrame.prefix("A", 64, 48) + "1234.bmp"
+        let bmp = dir.appendingPathComponent(name)
+        try Data().write(to: bmp)
+        let record = CachedFrame(choice: "A", source: old, width: 64, height: 48, filename: name)
+        let decoded = try JSONDecoder().decode(CachedFrame.self, from: JSONEncoder().encode(record))
+        #expect(decoded.imageURL(choice: "A", source: old, width: 64, height: 48, directory: dir) == bmp)
+        #expect(decoded.imageURL(choice: "A", source: old, width: 32, height: 24, directory: dir) == nil)
+        try Data([2, 3]).write(to: source, options: .atomic)
+        let new = try #require(FileIdentity(of: source))
+        #expect(decoded.imageURL(choice: "A", source: new, width: 64, height: 48, directory: dir) == nil)
+    }
+
     /// The shipped regression: a Balanced-optimized 60fps video silently played
     /// its 30fps tier forever at full policy. Full must fall back to the original.
     @Test

@@ -264,6 +264,7 @@ final class VideoLibrary: Sendable {
 
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
+        generator.dynamicRangePolicy = .forceSDR
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 480, height: 270)
 

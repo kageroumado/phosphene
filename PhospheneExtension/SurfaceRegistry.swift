@@ -134,7 +134,7 @@ final class SurfaceRegistry: Sendable {
             renderer.reload(to: url, selector: makeVariantSelector(choice: choice, fallback: url))
             let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
             Task { [url, videoID, w, h] in
-                await writeBMPSnapshot(videoURL: url, videoID: videoID, displayPixelWidth: w, displayPixelHeight: h, replacing: true)
+                await writeBMPSnapshot(videoURL: url, videoID: videoID, displayPixelWidth: w, displayPixelHeight: h)
             }
         }
     }

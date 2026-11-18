@@ -21,6 +21,7 @@ final class VideoRenderer: @unchecked Sendable {
     private static let idCounter = OSAllocatedUnfairLock(initialState: 0)
     let debugID: Int = VideoRenderer.idCounter.withLock { $0 += 1; return $0 }
 
+    let seededStill: Bool
     let displayLayer: AVSampleBufferDisplayLayer
     let timebase: CMTimebase
     private let renderer: AVSampleBufferVideoRenderer
@@ -73,7 +74,8 @@ final class VideoRenderer: @unchecked Sendable {
     static func create(
         rootLayer: CALayer,
         videoURL: URL,
-        stillImage: CGImage? = nil,
+        stillImage: CGImage?,
+        seedSource: FileIdentity?,
     ) async throws -> VideoRenderer {
         let asset = AVURLAsset(url: videoURL)
         let tracks = try await asset.loadTracks(withMediaType: .video)
@@ -105,7 +107,7 @@ final class VideoRenderer: @unchecked Sendable {
             displayLayer: displayLayer,
             asset: asset,
             videoTrack: track,
-            stillImage: stillImage,
+            stillImage: seedSource != nil && seedSource == FileIdentity(of: videoURL) ? stillImage : nil,
         )
     }
 
@@ -116,6 +118,8 @@ final class VideoRenderer: @unchecked Sendable {
         videoTrack: AVAssetTrack,
         stillImage: CGImage?,
     ) {
+        let stillBuffer = stillImage.flatMap(makeStillSampleBuffer(from:))
+        self.seededStill = stillBuffer != nil
         self.displayLayer = displayLayer
         self.renderer = displayLayer.sampleBufferRenderer
         self.asset = asset
@@ -147,7 +151,7 @@ final class VideoRenderer: @unchecked Sendable {
         CATransaction.setDisableActions(true)
         rootLayer.addSublayer(displayLayer)
         traceLog("  [Renderer #\(debugID)] CREATED for \(asset.url.lastPathComponent), displayLayer=\(ObjectIdentifier(displayLayer)), rootLayer sublayers=\((rootLayer.sublayers?.count ?? 0))")
-        if let stillImage, let stillBuffer = makeStillSampleBuffer(from: stillImage) {
+        if let stillImage, let stillBuffer {
             // Tag DisplayImmediately so the still is shown the instant it's enqueued,
             // rather than waiting on the control timebase (which is frozen at rate 0 here).
             // Without this the frame can sit undisplayed → the layer reads empty → black.
@@ -209,7 +213,8 @@ final class VideoRenderer: @unchecked Sendable {
         // Enqueue the first frame and flush it to the render server inside an
         // action-free transaction, so the context is displaying video before the
         // acquire reply is released.
-        if let firstSample = output.copyNextSampleBuffer() {
+        let first = output.copyNextSampleBuffer()
+        if let firstSample = first {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             renderer.enqueue(firstSample)
@@ -246,6 +251,20 @@ final class VideoRenderer: @unchecked Sendable {
         CATransaction.commit()
         CATransaction.flush()
         traceLog("  [resize #\(debugID)] → \(destSize) @\(scale)x")
+    }
+
+    /// Resolve a still against the file this surface opened. A pending decoder reset
+    /// or a replaced file has no reliable on-disk source for the retained image.
+    func snapshotURL() async -> URL? {
+        await withCheckedContinuation { reply in
+            queue.async { [self] in
+                guard isRunning, !flushInFlight, let openedFile, openedFile == FileIdentity(of: asset.url) else {
+                    reply.resume(returning: nil)
+                    return
+                }
+                reply.resume(returning: asset.url)
+            }
+        }
     }
 
     /// Replace the loop-boundary variant selector.
@@ -757,6 +776,7 @@ final class VideoRenderer: @unchecked Sendable {
         if let nr = nextReader, let no = nextOutput {
             if let nrAsset = nr.asset as? AVURLAsset, nrAsset.url != asset.url {
                 asset = nrAsset
+                openedFile = FileIdentity(of: nrAsset.url)
                 videoTrack = no.track
                 traceLog("  [Renderer] Switched variant: \(nrAsset.url.lastPathComponent)")
             }

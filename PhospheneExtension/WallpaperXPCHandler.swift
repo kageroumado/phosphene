@@ -152,10 +152,8 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                         }
                     } else if prop.label == "isPreview", let preview = prop.value as? Bool {
                         isPreview = preview
-                    } else if prop.label == "cacheDirectory" {
-                        if let url = prop.value as? URL {
-                            SurfaceRegistry.shared.cacheDirectoryURL = url
-                        }
+                    } else if prop.label == "cacheDirectory", let url = prop.value as? URL {
+                        SurfaceRegistry.shared.cacheDirectoryURL = url
                     }
                 }
             }
@@ -175,10 +173,8 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                             if let data = descProp.value as? Data, !data.isEmpty {
                                 choiceConfiguration = String(data: data, encoding: .utf8)
                             }
-                        } else if descProp.label == "files" {
-                            if let urls = descProp.value as? [URL] {
-                                choiceFiles = urls
-                            }
+                        } else if descProp.label == "files", let urls = descProp.value as? [URL] {
+                            choiceFiles = urls
                         }
                     }
                 }
@@ -225,7 +221,11 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // its pending teardown, so a brief invalidate→re-acquire flicker doesn't drop it.
         cancelTeardown(for: key)
         let videoURL = findVideoURL(forChoice: renderChoice)
-        let cachedStill = loadCachedSnapshotImage(forChoice: choiceConfiguration)
+        let seedSource = videoURL.flatMap(FileIdentity.init(of:))
+        let cachedStill = loadCachedSnapshotImage(
+            forChoice: choiceConfiguration, source: videoURL,
+            width: Int(destSize.width * scaleFactor), height: Int(destSize.height * scaleFactor),
+        )
 
         // Diagnostic bisection: host a still only (no video pipeline). Same context
         // reuse/create/reply as below, but no renderer.
@@ -276,7 +276,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 Task(name: "Attach renderer \(key)") { [boxedRoot, videoURL, cachedStill, selector, key, choiceConfiguration] in
                     let renderer: VideoRenderer
                     do {
-                        renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill)
+                        renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill, seedSource: seedSource)
                     } catch {
                         extensionLog("  [Renderer] swap create failed: \(error)")
                         SurfaceRegistry.shared.clearRendererPending(for: key)
@@ -389,7 +389,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             Task(name: "Create renderer \(key)") { [coldStart, boxedRoot, boxedReply, videoURL, cachedStill, selector, key, choiceConfiguration] in
                 let renderer: VideoRenderer
                 do {
-                    renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill)
+                    renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill, seedSource: seedSource)
                 } catch {
                     extensionLog("  [Renderer] Failed to create: \(error)")
                     SurfaceRegistry.shared.clearRendererPending(for: key)
@@ -398,7 +398,8 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 }
                 // Cold start: the IOSurface still is seeded and flushed, so the agent can
                 // host our context without a black gap while the video comes up over it.
-                if coldStart {
+                let repliedWithStill = coldStart && renderer.seededStill && seedSource == FileIdentity(of: videoURL)
+                if repliedWithStill {
                     reply(boxedReply.value, nil)
                     traceLog("  [acquire] cold start → replied after still seeded for \(videoURL.lastPathComponent)")
                 }
@@ -408,7 +409,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 await renderer.start()
                 // Switch: reply once the first frame is composited. Either way, stop the
                 // old renderer once the agent has been told to swap off it.
-                if !coldStart {
+                if !repliedWithStill {
                     reply(boxedReply.value, nil)
                 }
                 old?.stop()
@@ -531,18 +532,22 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         reply(nil)
     }
 
-    func snapshot(withId _: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
+    func snapshot(withId id: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
         markServed()
         traceLog("=== SNAPSHOT ===")
 
-        // Get current time from any active renderer for a more representative snapshot
-        var currentTime: CMTime?
-        SurfaceRegistry.shared.forEachRenderer { renderer in
-            currentTime = CMTimebaseGetTime(renderer.timebase)
-        }
-
+        let registry = SurfaceRegistry.shared
+        let surface = extractWallpaperUUID(fromID: id).flatMap { registry.key(forWallpaperID: $0) }.flatMap { registry.surface(for: $0) }
         Task {
-            if let snapshotXPC = await createSnapshotViaRuntime(currentTime: currentTime) {
+            let videoURL: URL? = if let renderer = surface?.renderer {
+                await renderer.snapshotURL()
+            } else if let choice = ShuffleController.shared.resolveChoice(surface?.videoID) {
+                VideoLibrary.shared.videoURL(for: choice)
+            } else {
+                // Context-free requests use the last selected logical wallpaper.
+                findVideoURL()
+            }
+            if let videoURL, let snapshotXPC = await createSnapshotViaRuntime(videoURL: videoURL) {
                 reply(snapshotXPC, nil)
                 traceLog("  Snapshot replied (IOSurface)")
             } else {

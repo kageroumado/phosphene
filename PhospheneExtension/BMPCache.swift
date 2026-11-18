@@ -1,120 +1,98 @@
 import AVFoundation
-import CryptoKit
 import Foundation
 import ImageIO
+import os
 
-/// Load the most recent cached BMP from the Agent's cache directory as a CGImage.
-/// Used to set rootLayer.contents as immediate visual content during transitions,
-/// matching Apple's "Using existing snapshot as initial wallpaper contents" pattern.
-///
-/// - Parameter videoID: per-context choice identifier. Each display's acquire
-///   passes its own choice so the right cached frame is shown during transitions.
-///   Reading the process-wide "current" selection here would race across displays.
-func loadCachedSnapshotImage(forChoice videoID: String?) -> CGImage? {
-    guard let cacheDir = SurfaceRegistry.shared.cacheDirectoryURL else { return nil }
+private let pendingFrames = OSAllocatedUnfairLock(initialState: [String: (source: FileIdentity, ticket: UUID)]())
 
-    let gained = cacheDir.startAccessingSecurityScopedResource()
+func loadCachedSnapshotImage(forChoice choice: String?, source: URL?, width: Int, height: Int) -> CGImage? {
+    guard let choice, let source, let identity = FileIdentity(of: source),
+          let directory = SurfaceRegistry.shared.cacheDirectoryURL else { return nil }
+    let scoped = directory.startAccessingSecurityScopedResource()
     defer {
-        if gained {
-            cacheDir.stopAccessingSecurityScopedResource()
+        if scoped {
+            directory.stopAccessingSecurityScopedResource()
         }
     }
-
-    guard let contents = try? FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil) else {
-        return nil
-    }
-
-    let bmpFiles = contents.filter { $0.pathExtension == "bmp" }
-
-    let bmpURL: URL?
-    if let videoID {
-        let hash = videoHash(for: videoID)
-        bmpURL = bmpFiles.first { $0.lastPathComponent.hasPrefix(hash) } ?? bmpFiles.first
-    } else {
-        bmpURL = bmpFiles.first
-    }
-
-    guard let url = bmpURL else { return nil }
-
-    guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
-          let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
-        traceLog("  [InitContent] Failed to decode cached BMP: \(url.lastPathComponent)")
-        return nil
-    }
-
-    traceLog("  [InitContent] Loaded cached snapshot: \(url.lastPathComponent) (\(cgImage.width)x\(cgImage.height))")
-    return cgImage
+    guard let url = CachedFrame.lookup(choice: choice, source: identity, width: width, height: height, directory: directory),
+          let image = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    return CGImageSourceCreateImageAtIndex(image, 0, nil)
 }
 
-/// Write a BMP snapshot of the video's first frame to the Agent's cache directory.
-/// Each video gets its own BMP file (keyed by video ID hash) so the Agent shows
-/// the correct cached frame during transitions between videos.
-/// `replacing` writes a fresh still even when one of this size exists: the video
-/// behind it changed.
-func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: Int, displayPixelHeight: Int, replacing: Bool = false) async {
-    guard let cacheDir = SurfaceRegistry.shared.cacheDirectoryURL else {
-        traceLog("  [BMPCache] No cacheDirectoryURL, skipping")
-        return
-    }
-
-    let gained = cacheDir.startAccessingSecurityScopedResource()
+func writeBMPSnapshot(videoURL: URL, videoID: String?, displayPixelWidth: Int, displayPixelHeight: Int) async {
+    guard let videoID, let source = FileIdentity(of: videoURL),
+          let cacheDir = SurfaceRegistry.shared.cacheDirectoryURL else { return }
+    let scoped = cacheDir.startAccessingSecurityScopedResource()
     defer {
-        if gained {
+        if scoped {
             cacheDir.stopAccessingSecurityScopedResource()
         }
     }
+    guard scoped else { return }
 
-    guard gained else {
-        traceLog("  [BMPCache] Failed to acquire security-scoped access")
-        return
+    let prefix = CachedFrame.prefix(videoID, displayPixelWidth, displayPixelHeight)
+    let ticket = UUID()
+    let needed = pendingFrames.withLock { pending in
+        guard let currentID = ShuffleController.shared.resolveChoice(videoID),
+              VideoLibrary.shared.videoURL(for: currentID) == videoURL, FileIdentity(of: videoURL) == source,
+              pending[prefix]?.source != source,
+              CachedFrame.lookup(choice: videoID, source: source, width: displayPixelWidth, height: displayPixelHeight, directory: cacheDir) == nil else { return false }
+        pending[prefix] = (source, ticket)
+        return true
     }
-
-    let hashHex = videoHash(for: videoID ?? videoURL.lastPathComponent)
-
-    // Check if existing BMP for this video already matches requested dimensions
-    if let existing = try? FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil) {
-        for bmp in existing where bmp.pathExtension == "bmp" && bmp.lastPathComponent.hasPrefix(hashHex) {
-            if replacing {
-                try? FileManager.default.removeItem(at: bmp)
-                continue
-            }
-            let components = bmp.deletingPathExtension().lastPathComponent.components(separatedBy: "-")
-            // Filename format: <64-char-hash>-<width>-<height>-0-<timestamp>
-            if components.count == 5,
-               let existingW = Int(components[1]),
-               let existingH = Int(components[2]),
-               existingW == displayPixelWidth,
-               existingH == displayPixelHeight {
-                traceLog("  [BMPCache] Existing BMP matches \(displayPixelWidth)x\(displayPixelHeight) for \(videoID ?? "?"), skipping")
-                return
-            }
+    guard needed else { return }
+    defer { pendingFrames.withLock {
+        if $0[prefix]?.ticket == ticket {
+            $0[prefix] = nil
         }
-    }
+    } }
 
-    let asset = AVURLAsset(url: videoURL)
-    let generator = AVAssetImageGenerator(asset: asset)
+    let generator = AVAssetImageGenerator(asset: AVURLAsset(url: videoURL))
+    generator.dynamicRangePolicy = .forceSDR
     generator.appliesPreferredTrackTransform = true
+    guard let cgImage = try? await generator.image(at: .zero).image,
+          let bmp = makeBMP(from: cgImage) else { return }
 
-    let cgImage: CGImage
+    let timestamp = String(format: "%016llx", Date.timeIntervalSinceReferenceDate.bitPattern)
+    let filename = prefix + timestamp + ".bmp"
+    let record = CachedFrame(choice: videoID, source: source, width: displayPixelWidth, height: displayPixelHeight, filename: filename)
     do {
-        cgImage = try await generator.image(at: .zero).image
+        try pendingFrames.withLock { pending in
+            guard pending[prefix]?.ticket == ticket, FileIdentity(of: videoURL) == source,
+                  let currentID = ShuffleController.shared.resolveChoice(videoID),
+                  VideoLibrary.shared.videoURL(for: currentID) == videoURL else { return }
+            try FileManager.default.createDirectory(at: URL.cachesDirectory, withIntermediateDirectories: true)
+            let url = cacheDir.appendingPathComponent(filename)
+            try bmp.write(to: url, options: .atomic)
+            do {
+                try JSONEncoder().encode(record).write(to: CachedFrame.recordURL(prefix), options: .atomic)
+            } catch {
+                try? FileManager.default.removeItem(at: url)
+                throw error
+            }
+            let files = try FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil)
+            for old in files where old.lastPathComponent.hasPrefix(prefix) && old.pathExtension == "bmp" && old.lastPathComponent != filename {
+                try? FileManager.default.removeItem(at: old)
+            }
+            try Data(#"{"version":2}"#.utf8).write(to: cacheDir.appendingPathComponent("cacheVersion.db"), options: .atomic)
+        }
     } catch {
-        traceLog("  [BMPCache] Failed to get video frame: \(error)")
-        return
+        traceLog("  [BMPCache] Publish failed: \(error)")
     }
+}
 
+private func makeBMP(from cgImage: CGImage) -> Data? {
     let width = cgImage.width
     let height = cgImage.height
     let bytesPerPixel = 3 // 24bpp BGR
-    let rawRowBytes = width * bytesPerPixel
-    let paddedRowBytes = (rawRowBytes + 3) & ~3
+    let paddedRowBytes = (width * bytesPerPixel + 3) & ~3
     let pixelDataSize = paddedRowBytes * height
 
     traceLog("  [BMPCache] Rendering \(width)x\(height) BGR24 (\(pixelDataSize) bytes, row=\(paddedRowBytes))")
 
     let bgraRowBytes = width * 4
     var bgraData = Data(count: bgraRowBytes * height)
-    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
 
     let rendered = bgraData.withUnsafeMutableBytes { rawBuf -> Bool in
         guard let ctx = CGContext(
@@ -132,7 +110,7 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
 
     guard rendered else {
         traceLog("  [BMPCache] CGContext render failed")
-        return
+        return nil
     }
 
     // Convert BGRA → BGR24 with row padding
@@ -176,38 +154,7 @@ func writeBMPSnapshot(videoURL: URL, videoID: String? = nil, displayPixelWidth: 
 
     bmp.append(pixelData)
 
-    let timestamp = Date().timeIntervalSinceReferenceDate
-    let timestampHex = String(format: "%016llx", timestamp.bitPattern)
-    let filename = "\(hashHex)-\(displayPixelWidth)-\(displayPixelHeight)-0-\(timestampHex).bmp"
-
-    // Remove old BMP files for this video from cache
-    if let contents = try? FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil) {
-        for file in contents where file.pathExtension == "bmp" && file.lastPathComponent.hasPrefix(hashHex) {
-            try? FileManager.default.removeItem(at: file)
-        }
-    }
-
-    let bmpURL = cacheDir.appendingPathComponent(filename)
-    do {
-        try bmp.write(to: bmpURL, options: .atomic)
-        traceLog("  [BMPCache] Wrote \(bmp.count) bytes → \(filename)")
-    } catch {
-        traceLog("  [BMPCache] Write failed: \(error)")
-    }
-
-    // Write cacheVersion.db
-    let versionURL = cacheDir.appendingPathComponent("cacheVersion.db")
-    do {
-        try Data("{\"version\":2}".utf8).write(to: versionURL, options: .atomic)
-    } catch {
-        traceLog("  [BMPCache] cacheVersion.db failed: \(error)")
-    }
-}
-
-/// Generate a consistent hash prefix for a video identifier.
-private func videoHash(for identifier: String) -> String {
-    let hash = SHA256.hash(data: Data(identifier.utf8))
-    return hash.map { String(format: "%02x", $0) }.joined()
+    return bmp
 }
 
 private func bmpWriteLE32(_ data: inout Data, offset: Int, value: UInt32) {

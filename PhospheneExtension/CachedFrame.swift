@@ -1,0 +1,31 @@
+import CryptoKit
+import Foundation
+
+struct CachedFrame: Codable {
+    let choice: String
+    let source: FileIdentity
+    let width: Int
+    let height: Int
+    let filename: String
+
+    static func prefix(_ choice: String, _ width: Int, _ height: Int) -> String {
+        "\(SHA256.hash(data: Data(choice.utf8)).map { String(format: "%02x", $0) }.joined())-\(width)-\(height)-0-"
+    }
+
+    static func recordURL(_ prefix: String) -> URL {
+        URL.cachesDirectory.appendingPathComponent("snapshot-" + prefix + "frame.json")
+    }
+
+    static func lookup(choice: String, source: FileIdentity, width: Int, height: Int, directory: URL) -> URL? {
+        guard let data = try? Data(contentsOf: recordURL(prefix(choice, width, height))),
+              let record = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+        return record.imageURL(choice: choice, source: source, width: width, height: height, directory: directory)
+    }
+
+    func imageURL(choice: String, source: FileIdentity, width: Int, height: Int, directory: URL) -> URL? {
+        guard self.source == source, self.choice == choice, self.width == width, self.height == height,
+              PathSafety.isSafeComponent(filename), filename.hasPrefix(Self.prefix(choice, width, height)), filename.hasSuffix(".bmp") else { return nil }
+        let url = directory.appendingPathComponent(filename)
+        return PathSafety.contained(url, in: directory) && FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+}

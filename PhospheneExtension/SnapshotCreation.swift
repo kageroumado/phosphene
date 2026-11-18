@@ -3,40 +3,15 @@ import CoreMedia
 @preconcurrency import IOSurface
 
 /// Create a WallpaperSnapshotXPC containing an IOSurface with a video frame.
-///
-/// - Parameter currentTime: If provided, captures the frame at this time (e.g. from an
-///   active renderer's timebase). Falls back to a random time within the video duration,
-///   avoiding always returning frame 0.
-func createSnapshotViaRuntime(currentTime: CMTime? = nil) async -> AnyObject? {
-    guard let videoURL = findVideoURL() else {
-        extensionLog("  [Snapshot] No video file found")
-        return nil
-    }
-
+func createSnapshotViaRuntime(videoURL: URL) async -> AnyObject? {
     let asset = AVURLAsset(url: videoURL)
     let generator = AVAssetImageGenerator(asset: asset)
+    generator.dynamicRangePolicy = .forceSDR
     generator.appliesPreferredTrackTransform = true
-
-    let requestTime: CMTime
-    if let currentTime, currentTime.isValid, currentTime.seconds > 0 {
-        requestTime = currentTime
-    } else {
-        do {
-            let duration = try await asset.load(.duration)
-            if duration.isValid, duration.seconds > 0 {
-                let randomOffset = Double.random(in: 0 ..< duration.seconds)
-                requestTime = CMTime(seconds: randomOffset, preferredTimescale: duration.timescale)
-            } else {
-                requestTime = .zero
-            }
-        } catch {
-            requestTime = .zero
-        }
-    }
 
     let image: CGImage
     do {
-        let result = try await generator.image(at: requestTime)
+        let result = try await generator.image(at: .zero)
         image = result.image
     } catch {
         extensionLog("  [Snapshot] Failed to get video frame: \(error)")
@@ -69,7 +44,10 @@ private func renderSnapshotToIOSurface(image: CGImage) -> AnyObject? {
     }
 
     surface.lock(options: [], seed: nil)
-    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    if let profile = colorSpace.copyICCData() {
+        IOSurfaceSetValue(surface, kIOSurfaceICCProfile, profile)
+    }
     if let ctx = CGContext(
         data: surface.baseAddress,
         width: width,
