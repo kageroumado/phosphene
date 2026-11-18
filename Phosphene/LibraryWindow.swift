@@ -35,6 +35,11 @@ struct LibraryWindow: View {
         } detail: {
             detail
                 .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
+                .alert("Library Error", isPresented: $manager.showOptimizationAlert) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(manager.optimizationAlertMessage)
+                }
                 .navigationTitle(sectionTitle)
                 .navigationSubtitle(sectionSubtitle)
                 .searchable(

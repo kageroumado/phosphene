@@ -175,7 +175,11 @@ struct WallpaperStoreParserTests {
             "Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-all")])],
             "Spaces": [space: ["Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-space")])]]],
         ]
-        let result = parse(plist, displayMap: [Self.displayA: DisplayInfo(displayID: 1, name: "Display A")], spaceMap: [space: SpaceInfo(name: "Space 1", displayUUID: Self.displayA)])
+        let result = parse(
+            plist,
+            displayMap: [Self.displayA: DisplayInfo(displayID: 1, name: "Display A")],
+            spaceMap: [space: SpaceInfo(name: "Space 1", displayUUID: Self.displayA)],
+        )
         #expect(result.count == 1)
         #expect(result.first?.videoID == "vid-space")
         #expect(result.first?.spaceUUID == space)

@@ -35,10 +35,9 @@ enum VideoDeploymentService {
     /// Returns the new entry's id.
     @MainActor
     @discardableResult
-    static func deployVideo(url: URL, name: String? = nil) async -> String? {
+    static func deployVideo(url: URL, name: String? = nil, onError: ((any Error) -> Void)? = nil) async -> String? {
         let fileManager = FileManager.default
         let videosDir = videosFolderURL
-        try? fileManager.createDirectory(at: videosDir, withIntermediateDirectories: true)
 
         // Dedup: skip if a video with the same filename already exists in the library
         let existing = listEntries()
@@ -87,6 +86,7 @@ enum VideoDeploymentService {
         } catch {
             Log.video.error("Failed to deploy video: \(error.localizedDescription)")
             try? fileManager.removeItem(at: dir)
+            onError?(error)
             return nil
         }
     }

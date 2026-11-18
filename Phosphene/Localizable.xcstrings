@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Library Error": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "资料库错误"
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好"
+          }
+        }
+      }
+    },
     "%@": {
       "shouldTranslate": false
     },

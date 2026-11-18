@@ -117,14 +117,16 @@ final class PhospheneManager {
     /// Import a video into the extension library.
     /// Does NOT set it as the active wallpaper — the user selects in System Settings.
     func importVideo(_ url: URL) async {
-        guard url.startAccessingSecurityScopedResource() else {
-            Log.general.error("Failed to access security-scoped resource for \(url.lastPathComponent)")
-            return
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if scoped { url.stopAccessingSecurityScopedResource() }
         }
-        defer { url.stopAccessingSecurityScopedResource() }
 
         let name = url.deletingPathExtension().lastPathComponent
-        await VideoDeploymentService.deployVideo(url: url, name: name)
+        await VideoDeploymentService.deployVideo(url: url, name: name) { error in
+            self.optimizationAlertMessage = error.localizedDescription
+            self.showOptimizationAlert = true
+        }
     }
 
     func removeVideo(entryID: String) {

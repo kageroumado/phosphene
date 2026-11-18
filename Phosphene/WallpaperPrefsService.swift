@@ -417,13 +417,7 @@ final class WallpaperPrefsService {
             return [:]
         }
 
-        // Each monitor record is keyed by its display's UUID, except the primary
-        // display's, which is "Main". When Spaces span every display, "Main" is the
-        // only record holding Spaces and its Spaces belong to all displays.
-        let separateSpaces = monitors.contains { monitor in
-            (monitor["Display Identifier"] as? String) != "Main"
-                && !((monitor["Spaces"] as? [[String: Any]]) ?? []).isEmpty
-        }
+        let separateSpaces = NSScreen.screensHaveSeparateSpaces
         let mainDisplayID = CGMainDisplayID()
         let mainDisplayUUID = displayMap.first { $0.value.displayID == mainDisplayID }?.key
 
@@ -431,7 +425,9 @@ final class WallpaperPrefsService {
         for monitor in monitors {
             guard let spaces = monitor["Spaces"] as? [[String: Any]] else { continue }
             let identifier = monitor["Display Identifier"] as? String
-            let owner = identifier == "Main" ? (separateSpaces ? mainDisplayUUID : nil) : identifier?.uppercased()
+            let displayUUID = identifier == "Main" ? mainDisplayUUID : identifier?.uppercased()
+            if separateSpaces, displayUUID == nil { continue }
+            let owner = separateSpaces ? displayUUID : nil
             for (index, space) in spaces.enumerated() {
                 if let uuid = space["uuid"] as? String {
                     map[uuid] = WallpaperStoreParser.SpaceInfo(
