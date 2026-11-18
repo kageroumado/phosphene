@@ -5,12 +5,14 @@ import SwiftUI
 /// (hover playback in the grid, the inspector player).
 struct PlayerLayerView: NSViewRepresentable {
     let player: AVPlayer
+    var hdrMode: HDRMode = WallpaperPrefsService.shared.hdrMode
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         view.wantsLayer = true
 
         let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.preferredDynamicRange = hdrMode.dynamicRange
         playerLayer.videoGravity = .resizeAspect
         playerLayer.frame = view.bounds
         playerLayer.backgroundColor = NSColor.clear.cgColor
@@ -26,6 +28,8 @@ struct PlayerLayerView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         if let playerLayer = context.coordinator.playerLayer {
+            if playerLayer.player !== player { playerLayer.player = player }
+            playerLayer.preferredDynamicRange = hdrMode.dynamicRange
             let newFrame = nsView.bounds
             if newFrame != playerLayer.frame {
                 playerLayer.frame = newFrame

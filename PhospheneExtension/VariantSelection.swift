@@ -19,10 +19,11 @@ enum VariantSelection {
     /// variant list resolve to the original.
     static func variant(
         for policy: PlaybackPolicy,
+        sourceIsHDR: Bool?,
         sourceFPS: Int,
         variants: [VideoVariant],
     ) -> VideoVariant? {
-        guard !variants.isEmpty else { return nil }
+        guard sourceIsHDR == false, !variants.isEmpty else { return nil }
         let sorted = variants.sorted { $0.fps > $1.fps }
 
         switch policy {

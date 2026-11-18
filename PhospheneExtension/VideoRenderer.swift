@@ -368,7 +368,11 @@ final class VideoRenderer: @unchecked Sendable {
     }
 
     private func reconcile(to target: SurfaceTarget) {
-        guard isRunning, target.policy != currentPolicy else { return }
+        guard isRunning else { return }
+        if displayLayer.preferredDynamicRange != target.hdrMode.dynamicRange {
+            displayLayer.preferredDynamicRange = target.hdrMode.dynamicRange
+        }
+        guard target.policy != currentPolicy else { return }
         extensionLog("  [target #\(debugID)] \(currentPolicy) → \(target.policy)\(target.ramps ? " (ramp)" : "") asset=\(asset.url.lastPathComponent)")
         currentPolicy = target.policy
         switch (target.policy, target.ramps) {
@@ -878,21 +882,5 @@ final class VideoRenderer: @unchecked Sendable {
     private func recoverFromError() {
         recreatePlayback()
         CMTimebaseSetRate(timebase, rate: isPaused ? 0.0 : 1.0)
-    }
-}
-
-/// Which file a path names right now: its inode and modification date, which a
-/// replacement under the same name changes.
-struct FileIdentity: Equatable, Sendable {
-    let inode: UInt64
-    let modified: Date
-
-    init?(of url: URL) {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value,
-              let modified = attributes[.modificationDate] as? Date
-        else { return nil }
-        self.inode = inode
-        self.modified = modified
     }
 }

@@ -11,6 +11,7 @@ struct VideoEntry: Codable {
     var fps: Double
     var resolution: CGSize
     var dateAdded: Date
+    var sourceIsHDR: Bool?
     var variants: [VideoVariant]?
 }
 
@@ -70,6 +71,7 @@ final class VideoLibrary: Sendable {
         guard let entry = entry(for: id) else { return nil }
         guard let chosen = VariantSelection.variant(
             for: policy,
+            sourceIsHDR: entry.sourceIsHDR,
             sourceFPS: Int(entry.fps.rounded()),
             variants: entry.variants ?? [],
         ) else {

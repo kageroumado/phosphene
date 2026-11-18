@@ -26,6 +26,7 @@ nonisolated enum SurfaceRole: Equatable, Sendable {
 
 /// Playback preferences written by the app to `phosphene-prefs.json`.
 nonisolated struct PlaybackPrefs: Decodable, Equatable, Sendable {
+    var hdrMode: HDRMode = .automatic
     var userPaused = false
     var alwaysPauseDesktop = false
     var pauseWhenOccluded = false
@@ -43,6 +44,7 @@ nonisolated struct PlaybackPrefs: Decodable, Equatable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        hdrMode = (try? container.decode(String.self, forKey: .hdrMode)).flatMap(HDRMode.init(rawValue:)) ?? .automatic
         userPaused = try container.decodeIfPresent(Bool.self, forKey: .userPaused) ?? false
         alwaysPauseDesktop = try container.decodeIfPresent(Bool.self, forKey: .alwaysPauseDesktop) ?? false
         pauseWhenOccluded = try container.decodeIfPresent(Bool.self, forKey: .pauseWhenOccluded) ?? false
@@ -54,6 +56,7 @@ nonisolated struct PlaybackPrefs: Decodable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case hdrMode
         case userPaused
         case alwaysPauseDesktop
         case pauseWhenOccluded
@@ -152,6 +155,7 @@ nonisolated struct SurfaceTarget: Equatable, Sendable {
     var policy: PlaybackPolicy
     /// Reach `policy` with a rate ramp rather than a cut.
     var ramps: Bool
+    var hdrMode: HDRMode = .automatic
 
     static let paused = SurfaceTarget(policy: .paused, ramps: false)
 }
@@ -205,7 +209,7 @@ nonisolated enum PlaybackReducer {
 
     static func target(for surface: Surface, in state: PlaybackState) -> SurfaceTarget {
         if state.displaysAsleep {
-            return .paused
+            return SurfaceTarget(policy: .paused, ramps: false, hdrMode: state.prefs.hdrMode)
         }
         // loginwindow reports the lock before the agent updates the surfaces, and the
         // agent may leave a hidden desktop surface on `default` for the whole lock.
@@ -223,7 +227,7 @@ nonisolated enum PlaybackReducer {
             screenSaverIsOurs: prefs.screenSaverIsOurs,
             power: state.power,
         )
-        return SurfaceTarget(policy: policy, ramps: surface.ramps)
+        return SurfaceTarget(policy: policy, ramps: surface.ramps, hdrMode: prefs.hdrMode)
     }
 
     static func published(_ state: PlaybackState) -> PublishedState {

@@ -253,6 +253,16 @@ struct MenuBarPopoverView: View {
             }
             .toggleStyle(SettingPillToggleStyle())
 
+            @Bindable var playback = prefsService
+            Picker("Dynamic Range", selection: $playback.hdrMode) {
+                Text("Automatic").tag(HDRMode.automatic)
+                Text("Standard").tag(HDRMode.standard)
+                Text("Constrained High").tag(HDRMode.constrainedHigh)
+                Text("High").tag(HDRMode.high)
+            }
+            .help("Choose Constrained High for more subdued desktop highlights.")
+            .controlSize(.small)
+
             UsageCountingSettings()
         }
     }

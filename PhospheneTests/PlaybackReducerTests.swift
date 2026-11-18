@@ -33,6 +33,20 @@ struct PlaybackReducerTests {
         .surfaceAcquired(key, displayID: key.displayID, role: role, choice: choice)
     }
 
+    @Test
+    func `HDR preference follows running sleeping and late surfaces`() throws {
+        for json in [#"{"userPaused":true}"#, #"{"userPaused":true,"hdrMode":"future"}"#] {
+            let old = try JSONDecoder().decode(PlaybackPrefs.self, from: Data(json.utf8))
+            #expect(old.hdrMode == .automatic && old.userPaused)
+        }
+        let running = run([acquire(desktop), prefs { $0.hdrMode = .standard }])
+        #expect(PlaybackReducer.targets(running)[desktop]?.hdrMode == .standard)
+        let asleep = run([.displaysAsleepChanged(true), prefs { $0.hdrMode = .high }, acquire(otherDisplay)], from: running)
+        for target in PlaybackReducer.targets(asleep).values {
+            #expect(target.policy == .paused && target.hdrMode == .high)
+        }
+    }
+
     // MARK: - Display sleep
 
     /// Sleep used to pause renderers directly while the policy ignored it, so the next

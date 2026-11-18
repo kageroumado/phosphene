@@ -147,6 +147,13 @@ final class PhospheneManager {
         }
 
         let sourceURL = VideoDeploymentService.videoURL(for: entry)
+        guard entry.sourceIsHDR == false, let identity = FileIdentity(of: sourceURL) else {
+            isOptimizing = false
+            optimizingEntryID = nil
+            optimizationAlertMessage = VideoOptimizationService.OptimizationError.requiresSDR.localizedDescription
+            showOptimizationAlert = true
+            return
+        }
         let target = preset.targetResolution(source: entry.resolution)
 
         optimizationTask = Task.detached {
@@ -156,12 +163,10 @@ final class PhospheneManager {
                     targetResolution: target,
                     progress: { @MainActor in self.optimizationProgress = $0 },
                 )
-                await MainActor.run {
-                    VideoDeploymentService.deployVariants(entryID: entryID, variants: variants)
+                defer {
+                    for (url, _) in variants { try? FileManager.default.removeItem(at: url) }
                 }
-                for (url, _) in variants {
-                    try? FileManager.default.removeItem(at: url)
-                }
+                try await VideoDeploymentService.deployVariants(entryID: entryID, source: identity, variants: variants)
             } catch is CancellationError {
                 // user cancelled
             } catch {
@@ -194,13 +199,14 @@ final class PhospheneManager {
     private func migrateEntryMetadata() {
         _ = VideoDeploymentService.prettifyLegacyNames()
         let entries = VideoDeploymentService.listEntries()
-        let needsProbing = entries.filter { $0.resolution == .zero && $0.fps == 0 }
+        let needsProbing = entries.filter { $0.sourceIsHDR == nil || ($0.resolution == .zero && $0.fps == 0) }
         guard !needsProbing.isEmpty else { return }
         Task {
+            var changed = false
             for entry in needsProbing {
-                await VideoDeploymentService.probeAndUpdateMetadata(for: entry.id)
+                if await VideoDeploymentService.probeAndUpdateMetadata(for: entry) { changed = true }
             }
-            NotificationCenter.default.post(name: VideoDeploymentService.libraryChangedNotification, object: nil)
+            if changed { VideoDeploymentService.notifyExtensionLibraryChanged() }
         }
     }
 

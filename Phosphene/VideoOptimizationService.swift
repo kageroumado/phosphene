@@ -50,11 +50,14 @@ enum OptimizationPreset: String, CaseIterable, Identifiable {
 
 enum VideoOptimizationService {
     enum OptimizationError: LocalizedError {
+        case requiresSDR
         case noVideoTrack
         case encodingFailed(String)
 
         var errorDescription: String? {
             switch self {
+            case .requiresSDR:
+                String(localized: "Optimization requires a video with confirmed standard dynamic range.")
             case .noVideoTrack:
                 "Source video contains no video track"
             case let .encodingFailed(reason):
@@ -91,6 +94,8 @@ enum VideoOptimizationService {
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
             throw OptimizationError.noVideoTrack
         }
+
+        guard await VideoProbe.classify(videoTrack) == false, try await asset.loadTracks(withMediaType: .video).count == 1 else { throw OptimizationError.requiresSDR }
 
         let sourceRate = try await videoTrack.load(.nominalFrameRate)
         let sourceSize = try await videoTrack.load(.naturalSize)

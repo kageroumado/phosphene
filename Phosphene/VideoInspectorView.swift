@@ -297,7 +297,10 @@ struct VideoInspectorView: View {
                 .textCase(.uppercase)
                 .foregroundStyle(.tertiary)
 
-            if isOptimizingThis {
+            if entry.sourceIsHDR != false {
+                Text("Optimization requires a video with confirmed standard dynamic range.")
+                    .font(.caption)
+            } else if isOptimizingThis {
                 optimizingView
             } else if let variants = entry.variants, !variants.isEmpty {
                 optimizedView(variants)

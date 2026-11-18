@@ -3,18 +3,6 @@ import AVFoundation
 import Foundation
 import os
 
-/// Metadata structure matching the extension's VideoEntry Codable format.
-private struct DeploymentMetadata: Codable {
-    let id: String
-    var name: String
-    var filename: String
-    var duration: Double
-    var fps: Double
-    var resolution: CGSize
-    var dateAdded: Date
-    var variants: [VideoVariant]?
-}
-
 enum VideoDeploymentService {
     /// Extension container where the wallpaper extension looks for video files.
     private static var extensionDocsURL: URL {
@@ -47,40 +35,35 @@ enum VideoDeploymentService {
         }
 
         let id = UUID().uuidString
-        let dir = videosDir.appendingPathComponent(id)
+        let dir = videosDir.appendingPathComponent(".import-" + id)
 
         do {
             try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
             let destURL = dir.appendingPathComponent(url.lastPathComponent)
-            try fileManager.copyItem(at: url, to: destURL)
+            try fileManager.copyItem(at: url.resolvingSymlinksInPath(), to: destURL)
 
-            var fps: Double = 0
-            var resolution: CGSize = .zero
-            var duration: Double = 0
-
-            let asset = AVURLAsset(url: destURL)
-            if let track = try? await asset.loadTracks(withMediaType: .video).first {
-                fps = await Double((try? track.load(.nominalFrameRate)) ?? 0)
-                resolution = await (try? track.load(.naturalSize)) ?? .zero
-                let cmDuration = try? await asset.load(.duration)
-                duration = cmDuration.map { CMTimeGetSeconds($0) } ?? 0
-            }
-
-            let metadata = DeploymentMetadata(
+            let probe = await VideoProbe.inspect(destURL)
+            let metadata = EntryInfo(
                 id: id,
                 name: name ?? VideoDisplayName.pretty(from: url.deletingPathExtension().lastPathComponent),
                 filename: url.lastPathComponent,
-                duration: duration,
-                fps: fps,
-                resolution: resolution,
+                duration: probe.duration ?? 0,
+                fps: probe.fps ?? 0,
+                resolution: probe.resolution ?? .zero,
                 dateAdded: Date(),
+                sourceIsHDR: probe.isHDR,
             )
             let data = try JSONEncoder().encode(metadata)
             try data.write(to: dir.appendingPathComponent("metadata.json"))
 
             await generateThumbnail(for: destURL, in: dir)
 
-            Log.video.info("Deployed video '\(url.lastPathComponent)' as \(id) to \(dir.path)")
+            if listEntries().contains(where: { $0.filename == url.lastPathComponent }) {
+                try fileManager.removeItem(at: dir)
+                return nil
+            }
+            try fileManager.moveItem(at: dir, to: videosDir.appendingPathComponent(id))
+            Log.video.info("Deployed video '\(url.lastPathComponent)' as \(id)")
             notifyExtensionLibraryChanged()
             return id
         } catch {
@@ -97,41 +80,41 @@ enum VideoDeploymentService {
     @discardableResult
     static func replaceVideo(entryID: String, with url: URL) async -> Bool {
         guard let dir = validatedEntryDir(entryID), PathSafety.isSafeComponent(url.lastPathComponent) else { return false }
+        let fm = FileManager.default
         let metadataURL = dir.appendingPathComponent("metadata.json")
-        guard let data = try? Data(contentsOf: metadataURL),
-              var metadata = try? JSONDecoder().decode(DeploymentMetadata.self, from: data)
-        else { return false }
-        let fileManager = FileManager.default
-        let destination = dir.appendingPathComponent(url.lastPathComponent)
-        // The new file lands beside the old one first, so a failed copy (a full disk)
-        // leaves the entry playing what it had.
-        let incoming = dir.appendingPathComponent(".incoming-\(UUID().uuidString)")
+        guard let old = try? JSONDecoder().decode(EntryInfo.self, from: Data(contentsOf: metadataURL)),
+              old.id == entryID, PathSafety.isSafeComponent(old.filename),
+              let identity = FileIdentity(of: dir.appendingPathComponent(old.filename)) else { return false }
+
+        let staged = videosFolderURL.appendingPathComponent(".replace-" + UUID().uuidString)
+        let media = staged.appendingPathComponent(url.lastPathComponent)
+        defer { try? fm.removeItem(at: staged) }
         do {
-            try fileManager.copyItem(at: url, to: incoming)
-            if metadata.filename != destination.lastPathComponent, PathSafety.isSafeComponent(metadata.filename) {
-                try? fileManager.removeItem(at: dir.appendingPathComponent(metadata.filename))
+            try fm.createDirectory(at: staged, withIntermediateDirectories: false)
+            try fm.copyItem(at: url.resolvingSymlinksInPath(), to: media)
+            let probe = await VideoProbe.inspect(media)
+            await generateThumbnail(for: media, in: staged)
+
+            var current = try JSONDecoder().decode(EntryInfo.self, from: Data(contentsOf: metadataURL))
+            guard current.filename == old.filename, current.id == entryID,
+                  FileIdentity(of: dir.appendingPathComponent(current.filename)) == identity else { return false }
+            let retired = Set((current.variants ?? []).map(\.filename) + [current.filename, "thumbnail.jpg", "metadata.json"])
+            for file in try fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) where !retired.contains(file.lastPathComponent) {
+                try fm.linkItem(at: file, to: staged.appendingPathComponent(file.lastPathComponent))
             }
-            _ = try fileManager.replaceItemAt(destination, withItemAt: incoming)
+            current.filename = media.lastPathComponent
+            current.sourceIsHDR = probe.isHDR
+            current.fps = probe.fps ?? 0
+            current.resolution = probe.resolution ?? .zero
+            current.duration = probe.duration ?? 0
+            current.variants = nil
+            try JSONEncoder().encode(current).write(to: staged.appendingPathComponent("metadata.json"))
+            // Publish media and metadata together. Open readers can finish on their old inodes.
+            guard unsafe renamex_np(staged.path, dir.path, UInt32(RENAME_SWAP)) == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
         } catch {
-            try? fileManager.removeItem(at: incoming)
             Log.video.error("Failed to replace video for \(entryID): \(error.localizedDescription)")
             return false
         }
-        for variant in metadata.variants ?? [] where PathSafety.isSafeComponent(variant.filename) {
-            try? fileManager.removeItem(at: dir.appendingPathComponent(variant.filename))
-        }
-        metadata.filename = url.lastPathComponent
-        metadata.variants = nil
-        let asset = AVURLAsset(url: destination)
-        if let track = try? await asset.loadTracks(withMediaType: .video).first {
-            metadata.fps = await Double((try? track.load(.nominalFrameRate)) ?? 0)
-            metadata.resolution = await (try? track.load(.naturalSize)) ?? .zero
-            metadata.duration = await (try? asset.load(.duration)).map { CMTimeGetSeconds($0) } ?? 0
-        }
-        if let updated = try? JSONEncoder().encode(metadata) {
-            try? updated.write(to: metadataURL, options: .atomic)
-        }
-        await generateThumbnail(for: destination, in: dir)
         notifyExtensionLibraryChanged()
         return true
     }
@@ -188,49 +171,26 @@ enum VideoDeploymentService {
     /// Deploy optimized variants into an existing entry's directory in the extension container.
     /// Updates metadata.json with the variants array and notifies the extension.
     @MainActor
-    static func deployVariants(entryID: String, variants: [(url: URL, variant: VideoVariant)]) {
-        let fileManager = FileManager.default
-        guard let entryDir = validatedEntryDir(entryID) else { return }
-
-        let metadataURL = entryDir.appendingPathComponent("metadata.json")
-        guard fileManager.fileExists(atPath: metadataURL.path) else {
-            Log.video.error("Cannot deploy variants: entry \(entryID) not found")
-            return
+    static func deployVariants(entryID: String, source: FileIdentity, variants: [(url: URL, variant: VideoVariant)]) throws {
+        guard !variants.isEmpty else { return }
+        guard let dir = validatedEntryDir(entryID) else { throw CocoaError(.fileNoSuchFile) }
+        let metadataURL = dir.appendingPathComponent("metadata.json")
+        var metadata = try JSONDecoder().decode(EntryInfo.self, from: Data(contentsOf: metadataURL))
+        guard metadata.id == entryID, metadata.filename == source.basename, metadata.sourceIsHDR == false,
+              FileIdentity(of: dir.appendingPathComponent(metadata.filename)) == source else {
+            throw VideoOptimizationService.OptimizationError.requiresSDR
         }
-
-        var deployedVariants: [VideoVariant] = []
-
-        for (sourceURL, variant) in variants {
-            // Reject any variant whose filename isn't a safe basename.
-            guard PathSafety.isSafeComponent(variant.filename) else {
-                Log.video.error("Skipping variant with unsafe filename: \(variant.filename)")
-                continue
-            }
-            let destURL = entryDir.appendingPathComponent(variant.filename)
-            do {
-                if fileManager.fileExists(atPath: destURL.path) {
-                    try fileManager.removeItem(at: destURL)
-                }
-                try fileManager.copyItem(at: sourceURL, to: destURL)
-                deployedVariants.append(variant)
-            } catch {
-                Log.video.error("Failed to deploy variant \(variant.filename): \(error.localizedDescription)")
-            }
+        for (url, variant) in variants {
+            let target = dir.appendingPathComponent(variant.filename)
+            guard PathSafety.isSafeComponent(variant.filename), variant.filename.caseInsensitiveCompare(metadata.filename) != .orderedSame,
+                  PathSafety.contained(target, in: dir) else { throw CocoaError(.fileWriteInvalidFileName) }
+            let incoming = dir.appendingPathComponent(".variant-" + UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: incoming) }
+            try FileManager.default.copyItem(at: url, to: incoming)
+            guard unsafe rename(incoming.path, target.path) == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
         }
-
-        guard !deployedVariants.isEmpty else { return }
-
-        do {
-            let data = try Data(contentsOf: metadataURL)
-            var metadata = try JSONDecoder().decode(DeploymentMetadata.self, from: data)
-            metadata.variants = deployedVariants
-            let updated = try JSONEncoder().encode(metadata)
-            try updated.write(to: metadataURL, options: .atomic)
-            Log.video.info("Deployed \(deployedVariants.count) variant(s) for entry \(entryID)")
-        } catch {
-            Log.video.error("Failed to update metadata for variants: \(error.localizedDescription)")
-        }
-
+        metadata.variants = variants.map(\.variant)
+        try JSONEncoder().encode(metadata).write(to: metadataURL, options: .atomic)
         notifyExtensionLibraryChanged()
     }
 
@@ -242,11 +202,11 @@ enum VideoDeploymentService {
         let fm = FileManager.default
 
         guard let data = try? Data(contentsOf: metadataURL),
-              var metadata = try? JSONDecoder().decode(DeploymentMetadata.self, from: data)
+              var metadata = try? JSONDecoder().decode(EntryInfo.self, from: data)
         else { return }
 
         for variant in metadata.variants ?? [] {
-            guard PathSafety.isSafeComponent(variant.filename) else { continue }
+            guard PathSafety.isSafeComponent(variant.filename), variant.filename.caseInsensitiveCompare(metadata.filename) != .orderedSame else { continue }
             let variantURL = entryDir.appendingPathComponent(variant.filename)
             try? fm.removeItem(at: variantURL)
         }
@@ -290,6 +250,7 @@ enum VideoDeploymentService {
         var fps: Double
         var resolution: CGSize
         var dateAdded: Date
+        var sourceIsHDR: Bool?
         var variants: [VideoVariant]?
     }
 
@@ -349,7 +310,7 @@ enum VideoDeploymentService {
         guard !trimmed.isEmpty, let entryDir = validatedEntryDir(entryID) else { return }
         let metadataURL = entryDir.appendingPathComponent("metadata.json")
         guard let data = try? Data(contentsOf: metadataURL),
-              var metadata = try? JSONDecoder().decode(DeploymentMetadata.self, from: data),
+              var metadata = try? JSONDecoder().decode(EntryInfo.self, from: data),
               metadata.name != trimmed
         else { return }
         metadata.name = trimmed
@@ -377,27 +338,34 @@ enum VideoDeploymentService {
 
     /// Re-probe an existing entry's video and update its metadata.json.
     /// Useful for migrating entries imported before probing was added.
-    static func probeAndUpdateMetadata(for entryID: String) async {
-        guard let entryDir = validatedEntryDir(entryID) else { return }
-        let metadataURL = entryDir.appendingPathComponent("metadata.json")
-
-        guard let data = try? Data(contentsOf: metadataURL),
-              var metadata = try? JSONDecoder().decode(DeploymentMetadata.self, from: data)
-        else { return }
-
-        let videoFile = entryDir.appendingPathComponent(metadata.filename)
-        let asset = AVURLAsset(url: videoFile)
-        if let track = try? await asset.loadTracks(withMediaType: .video).first {
-            metadata.fps = await Double((try? track.load(.nominalFrameRate)) ?? 0)
-            metadata.resolution = await (try? track.load(.naturalSize)) ?? .zero
-            let cmDuration = try? await asset.load(.duration)
-            metadata.duration = cmDuration.map { CMTimeGetSeconds($0) } ?? 0
+    @MainActor
+    static func probeAndUpdateMetadata(for entry: EntryInfo) async -> Bool {
+        guard let dir = validatedEntryDir(entry.id), PathSafety.isSafeComponent(entry.filename) else { return false }
+        let url = dir.appendingPathComponent(entry.filename)
+        guard PathSafety.contained(url, in: dir), let identity = FileIdentity(of: url) else { return false }
+        let probe = await VideoProbe.inspect(url)
+        let metadataURL = dir.appendingPathComponent("metadata.json")
+        guard identity == FileIdentity(of: url),
+              var current = try? JSONDecoder().decode(EntryInfo.self, from: Data(contentsOf: metadataURL)),
+              current.id == entry.id, current.filename == entry.filename else { return false }
+        if probe.isHDR == nil {
+            Log.video.info("Dynamic range unresolved for \(entry.id)")
         }
-
-        if let updated = try? JSONEncoder().encode(metadata) {
-            try? updated.write(to: metadataURL, options: .atomic)
+        let duration = probe.duration ?? current.duration
+        let fps = probe.fps ?? current.fps
+        let resolution = probe.resolution ?? current.resolution
+        guard current.sourceIsHDR != probe.isHDR || current.duration != duration || current.fps != fps || current.resolution != resolution else { return false }
+        current.sourceIsHDR = probe.isHDR
+        current.duration = duration
+        current.fps = fps
+        current.resolution = resolution
+        do {
+            try JSONEncoder().encode(current).write(to: metadataURL, options: .atomic)
+            return true
+        } catch {
+            Log.video.error("Failed to enrich \(entry.id): \(error.localizedDescription)")
+            return false
         }
-        Log.video.info("Re-probed metadata for entry \(entryID)")
     }
 
     /// Notification posted in-process when the library changes.
@@ -434,7 +402,7 @@ enum VideoDeploymentService {
         }
     }
 
-    private static func notifyExtensionLibraryChanged() {
+    static func notifyExtensionLibraryChanged() {
         invalidateHostViewModelCache()
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterPostNotification(

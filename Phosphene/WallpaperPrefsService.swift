@@ -25,6 +25,10 @@ final class WallpaperPrefsService {
 
     // MARK: - Prefs (app → extension)
 
+    var hdrMode: HDRMode = .automatic {
+        didSet { guard hdrMode != oldValue else { return }; savePrefs() }
+    }
+
     var userPaused = false {
         didSet { guard userPaused != oldValue else { return }; savePrefs() }
     }
@@ -117,6 +121,7 @@ final class WallpaperPrefsService {
     }
 
     private struct PrefsFile: Codable {
+        var hdrMode: String?
         var userPaused: Bool
         var alwaysPauseDesktop: Bool
         var pauseWhenOccluded: Bool
@@ -126,16 +131,7 @@ final class WallpaperPrefsService {
         var pausedDisplays: Set<UInt32>?
         var screenSaverIsOurs: Bool?
 
-        init(userPaused: Bool, alwaysPauseDesktop: Bool, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, occludedDisplays: Set<UInt32>? = nil, fullscreenDisplays: Set<UInt32>? = nil, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
-            self.userPaused = userPaused
-            self.alwaysPauseDesktop = alwaysPauseDesktop
-            self.pauseWhenOccluded = pauseWhenOccluded
-            self.desktopOccluded = desktopOccluded
-            self.occludedDisplays = occludedDisplays
-            self.fullscreenDisplays = fullscreenDisplays
-            self.pausedDisplays = pausedDisplays
-            self.screenSaverIsOurs = screenSaverIsOurs
-        }
+
     }
 
     private struct ContextState: Codable {
@@ -255,6 +251,7 @@ final class WallpaperPrefsService {
         }
         do {
             let prefs = try JSONDecoder().decode(PrefsFile.self, from: data)
+            hdrMode = prefs.hdrMode.flatMap(HDRMode.init(rawValue:)) ?? .automatic
             userPaused = prefs.userPaused
             alwaysPauseDesktop = prefs.alwaysPauseDesktop
             pauseWhenOccluded = prefs.pauseWhenOccluded
@@ -269,6 +266,7 @@ final class WallpaperPrefsService {
 
     private func savePrefs() {
         let prefs = PrefsFile(
+            hdrMode: hdrMode.rawValue,
             userPaused: userPaused,
             alwaysPauseDesktop: alwaysPauseDesktop,
             pauseWhenOccluded: pauseWhenOccluded,
