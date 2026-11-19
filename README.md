@@ -6,12 +6,15 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 
 <a href="https://kagerou.glass/get/phosphene?from=readme"><img src=".github/download.svg" alt="Download Phosphene for Mac" width="360" height="80"></a>
 
+The download above is the upstream release. To try the pairing and conversion tools in this fork, [build from source](CONTRIBUTING.md#build).
+
 ![Phosphene videos in System Settings → Wallpaper](.github/phosphene-settings.png)
 
 ## Highlights
 
 - Use Wallpaper Engine wallpapers from the Steam Workshop: subscribe in Steam, and Phosphene makes a looping video of each.
-- Select personal videos alongside Apple’s wallpapers in System Settings.
+- Pair two videos into one wallpaper that follows your Mac’s light or dark appearance. [Create a light/dark pair](#lightdark-wallpaper-pairs).
+- Play HDR video with bright or subdued highlights, or export an SDR copy. [HDR and SDR](#hdr-and-sdr).
 - Keep desktop and lock-screen playback running after quitting Phosphene.
 - Pause playback under covered desktops and adjust decoding to power and thermal conditions.
 
@@ -19,18 +22,46 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 <summary>Full feature list</summary>
 
 - Import videos in the **Library** window and select them in **System Settings → Wallpaper**.
-- Pair light and dark versions of the same animation to show them as one wallpaper. In Wallpaper settings, choose **Automatic** to follow the system appearance, or select **Light** or **Dark**.
 - Wallpaper selection per display or Space, plus a **Lock Screen**-only playback mode.
 - Desktop and lock-screen playback through the macOS wallpaper pipeline.
 - MP4, MOV, and other AVFoundation-readable inputs; gapless looping and lock/unlock transitions.
 - Menu-bar preview, pause, display switching, and launch at login.
-- **Optimize** creates lower-power versions of a video or light/dark pair. HLG and PQ videos keep HDR by default. Select **Convert to SDR** before choosing a preset to create SDR versions. The originals stay in the Library.
-- **Tools → Custom Conversion** exports a video from the Library or a file as SDR, HLG, or PQ. **Light/Dark Pair Converter** converts two sources to the same dimensions, frame rate, duration, and color format, then adds the validated pair to the Library.
-- In Phosphene, **Settings → Playback → Dynamic Range** controls the wallpaper and Library previews. Choose **Constrained High** for more subdued highlights or **Automatic** to restore the system preference.
 - **Restart Wallpaper Agent** from the menu bar for stuck playback.
 - A **Wallpaper Engine** section: Steam Workshop downloads from Sevoflurane, CrossOver or Whisky become looping videos.
 
 </details>
+
+## Light/dark wallpaper pairs
+
+A pair appears as one item in both the Library and macOS Wallpaper settings. For example, you can use two renders of the same scene, one lit for day and one for night. Changing appearance switches the video at the current point in the animation.
+
+1. Import both videos. In **Library → All Videos**, select them together and choose **Pair…**.
+2. Check that the preview shows the light video on the left and the dark video on the right. Swap the assignments if needed, then choose **Create Pair**. Direct pairing uses the two existing files without re-encoding them.
+3. In **System Settings → Wallpaper**, select the pair. **Automatic** follows the Mac’s appearance. Choose **Light** or **Dark** to keep that version even when the system appearance changes.
+
+Direct pairing needs matching dimensions, orientation, constant frame rate, frame count, duration, and encoding (including color format). Both videos need a shared keyframe at the start and at least every half second. The **?** button lists the export requirements.
+
+If the videos don’t match, **Open Pair Converter…** carries both files and their light/dark assignments into **Tools → Light/Dark Pair Converter…**. Choose a common resolution, frame rate, and color format. The converter aligns keyframes, uses the shorter clip’s duration, and adds the new pair to the Library.
+
+You can find pairs under **Light/Dark Pairs** in the Library. **Split Pair…** returns both members to the Library as separate videos. For a moving scene, the optional **Settings → Playback → Blend Matching Frames** blends frames with the same timestamp during an appearance change. This briefly increases GPU and memory use, especially with high-frame-rate HDR video.
+
+## HDR and SDR
+
+**Phosphene → Settings → Playback → Dynamic Range** controls how macOS displays video highlights in the wallpaper and its previews. This preference applies at playback time. A pair’s **Light** and **Dark** settings select which video plays. For example, a night scene can still use HDR for bright stars.
+
+| Playback setting | Effect on HDR video |
+| --- | --- |
+| Automatic (default) | Lets macOS choose the display range. |
+| Standard | Displays the video within the SDR brightness range. |
+| Constrained High | Allows HDR highlights but keeps them more subdued alongside desktop windows. |
+| High | Requests the full HDR range currently available on the display. |
+
+Visible highlights depend on both the source video and the display’s available brightness above SDR white. [Apple’s guide to HDR rendering](https://developer.apple.com/documentation/coregraphics/adopting-advancements-in-hdr-image-rendering).
+
+### Encoding a video
+
+- **Optimize** creates lower-power playback versions of a single video or a pair and keeps the originals. Phosphene can select one of these copies as power and thermal conditions change. Supported HLG and PQ sources retain HDR by default. To make SDR copies, enable **Convert to SDR** before choosing a preset.
+- **Tools → Custom Conversion…** takes a Library video or an external file. Choose **SDR · Rec. 709**, **HDR · HLG**, or **HDR · PQ** as the output. The pair converter offers the same targets for both videos. HDR output uses 10-bit HEVC. Converting HDR to SDR maps bright highlights into the SDR range. An SDR-to-HDR export can only preserve the highlight detail present in the source.
 
 ## Wallpaper Engine
 
