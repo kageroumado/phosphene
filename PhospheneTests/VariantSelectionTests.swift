@@ -24,6 +24,21 @@ struct VariantSelectionTests {
     }
 
     @Test
+    func `variant color metadata must agree with its source`() {
+        let hdr = VideoVariant(filename: "hdr.mp4", fps: 60, resolution: hd, isHDR: true)
+        let sdr = VideoVariant(filename: "sdr.mp4", fps: 30, resolution: hd, isHDR: false)
+        let mapped = VideoVariant(filename: "mapped.mp4", fps: 15, resolution: hd, isHDR: false, toneMappedToSDR: true)
+        let unverified = VideoVariant(filename: "unverified.mp4", fps: 15, resolution: hd, toneMappedToSDR: true)
+        let variants = [hdr, sdr, mapped, unverified]
+        #expect(VariantSelection.variant(for: .full, sourceIsHDR: true, sourceFPS: 60, variants: variants) == hdr)
+        #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: true, sourceFPS: 60, variants: variants) == mapped)
+        #expect(VariantSelection.variant(for: .minimal, sourceIsHDR: true, sourceFPS: 60, variants: [sdr, unverified]) == nil)
+        #expect(VariantSelection.variant(for: .minimal, sourceIsHDR: false, sourceFPS: 60, variants: variants) == sdr)
+        #expect(VariantSelection.variant(for: .full, sourceIsHDR: nil, sourceFPS: 60, variants: variants) == nil)
+        #expect(VariantSelection.variant(for: .paused, sourceIsHDR: true, sourceFPS: 60, variants: variants) == nil)
+    }
+
+    @Test
     func `cached frame belongs to one source and display size`() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

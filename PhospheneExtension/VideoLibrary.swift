@@ -18,7 +18,7 @@ struct VideoEntry: Codable {
 final class VideoLibrary: Sendable {
     static let shared = VideoLibrary()
 
-    private let videosDir: URL
+    let videosDir: URL
     private let indexURL: URL
     private let lock = OSAllocatedUnfairLock(initialState: [VideoEntry]())
 
@@ -32,9 +32,23 @@ final class VideoLibrary: Sendable {
 
     // MARK: - Public API
 
-    /// All videos currently in the library.
+    /// The choices offered by the picker and shuffle. A pair keeps its owner's ID.
     var entries: [VideoEntry] {
-        lock.withLock { $0 }
+        choices.map(\.entry)
+    }
+
+    var choices: [(entry: VideoEntry, pair: AppearancePair?)] {
+        let physical = lock.withLock { $0 }
+        let ids = Set(physical.map(\.id))
+        let pairs = ((try? AppearancePair.read(in: videosDir)) ?? []).filter { ids.contains($0.owner) && ids.contains($0.counterpart) }
+        let owners = Dictionary(uniqueKeysWithValues: pairs.map { ($0.owner, $0) })
+        let hidden = Set(pairs.map(\.counterpart))
+        return physical.compactMap { hidden.contains($0.id) ? nil : ($0, owners[$0.id]) }
+    }
+
+    func pairRendition(for id: String) -> PairRendition? {
+        guard let pair = try? AppearancePair.read(in: videosDir).first(where: { $0.contains(id) }) else { return nil }
+        return PairRendition(pair, library: self)
     }
 
     /// Find a video entry by its UUID string.
@@ -69,15 +83,32 @@ final class VideoLibrary: Sendable {
     /// resolves to no variant. Returns `nil` only if the entry doesn't exist.
     func bestVariantURL(for id: String, policy: PlaybackPolicy) -> URL? {
         guard let entry = entry(for: id) else { return nil }
-        guard let chosen = VariantSelection.variant(
+        guard policy != .paused, let sourceFPS = Int(exactly: entry.fps.rounded()), sourceFPS > 0, let chosen = VariantSelection.variant(
             for: policy,
             sourceIsHDR: entry.sourceIsHDR,
-            sourceFPS: Int(entry.fps.rounded()),
-            variants: entry.variants ?? [],
+            sourceFPS: sourceFPS,
+            variants: availableVariants(for: entry),
         ) else {
             return videoURL(for: entry)
         }
         return variantURL(for: id, variant: chosen)
+    }
+
+    func hasPlayableVariant(_ url: URL, for id: String) -> Bool {
+        guard let entry = entry(for: id) else { return false }
+        return availableVariants(for: entry).contains {
+            $0.supports(sourceIsHDR: entry.sourceIsHDR) && variantURL(for: id, variant: $0) == url
+        }
+    }
+
+    private func availableVariants(for entry: VideoEntry) -> [VideoVariant] {
+        guard let variants = entry.variants, !variants.isEmpty,
+              (try? AppearancePair.requireSingle(entry.id, in: videosDir)) != nil else { return [] }
+        return variants.filter { variant in
+            guard PathSafety.isSafeComponent(variant.filename), variant.fps > 0 else { return false }
+            let url = variantURL(for: entry.id, variant: variant)
+            return PathSafety.contained(url, in: videosDir) && FileManager.default.fileExists(atPath: url.path)
+        }
     }
 
     /// Update the variants array for an entry and persist to metadata.json.
@@ -97,19 +128,33 @@ final class VideoLibrary: Sendable {
 
     /// Scan the videos directory and rebuild the in-memory index.
     /// Also migrates any legacy `wallpaper.{mp4,mov,m4v}` from Documents root.
-    func scan() {
-        migrateLegacyVideo()
-
-        var discovered = [VideoEntry]()
-        let fm = FileManager.default
-        guard let subdirs = try? fm.contentsOfDirectory(
-            at: videosDir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles,
-        ) else {
-            lock.withLock { $0 = [] }
-            saveIndex([])
-            return
+    @discardableResult
+    func scan() -> Bool {
+        for pair in (try? AppearancePair.read(in: videosDir)) ?? [] where pair.deletionPending == true {
+            do {
+                try pair.finishDeletion(in: videosDir)
+            } catch {
+                extensionLog("[VideoLibrary] Could not finish deleting pair \(pair.owner): \(error)")
+            }
         }
 
+        do {
+            try AppearancePair.withLibraryLock(in: videosDir) {
+                migrateLegacyVideo()
+                try scanEntries()
+            }
+            return true
+        } catch {
+            extensionLog("[VideoLibrary] Scan failed: \(error)")
+            return false
+        }
+    }
+
+    /// Read, prune and publish one index while replacements are excluded.
+    private func scanEntries() throws {
+        var discovered = [VideoEntry]()
+        let fm = FileManager.default
+        let subdirs = try fm.contentsOfDirectory(at: videosDir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)
         for dir in subdirs where dir.hasDirectoryPath {
             let id = dir.lastPathComponent
 
@@ -123,8 +168,14 @@ final class VideoLibrary: Sendable {
 
             let metadataURL = dir.appendingPathComponent("metadata.json")
 
-            if let data = try? Data(contentsOf: metadataURL),
-               let entry = try? JSONDecoder().decode(VideoEntry.self, from: data) {
+            let entry: VideoEntry?
+            do {
+                let data = try Data(contentsOf: metadataURL)
+                entry = try? JSONDecoder().decode(VideoEntry.self, from: data)
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                entry = nil
+            }
+            if let entry {
                 // Metadata id must match its containing directory, and the
                 // filename must be a safe basename that resolves inside `dir`.
                 guard entry.id == id, PathSafety.isSafeComponent(entry.filename) else {
@@ -136,13 +187,15 @@ final class VideoLibrary: Sendable {
                     extensionLog("[VideoLibrary] Quarantining \(id): video path escapes library")
                     continue
                 }
-                guard fm.fileExists(atPath: videoFile.path) else {
+                do {
+                    _ = try fm.attributesOfItem(atPath: videoFile.path)
+                } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
                     extensionLog("[VideoLibrary] Pruning orphaned entry \(id): video file missing")
                     try? fm.removeItem(at: dir)
                     continue
                 }
                 discovered.append(sanitizingVariants(entry))
-            } else if let videoFile = findVideoFile(in: dir) {
+            } else if let videoFile = try findVideoFile(in: dir) {
                 let entry = VideoEntry(
                     id: id,
                     name: videoFile.deletingPathExtension().lastPathComponent,
@@ -201,23 +254,6 @@ final class VideoLibrary: Sendable {
             try? fm.removeItem(at: dir)
             return nil
         }
-    }
-
-    /// Remove a video from the library.
-    func removeVideo(id: String) {
-        let dir = videosDir.appendingPathComponent(id)
-        // Only ever delete a valid UUID directory that resolves inside the
-        // library — a malformed id must not reach removeItem at all.
-        guard PathSafety.isValidEntryID(id), PathSafety.contained(dir, in: videosDir) else {
-            extensionLog("[VideoLibrary] Refusing to remove unsafe id: \(id)")
-            return
-        }
-        try? FileManager.default.removeItem(at: dir)
-        lock.withLock { entries in
-            entries.removeAll { $0.id == id }
-        }
-        saveIndex(entries)
-        extensionLog("[VideoLibrary] Removed: \(id)")
     }
 
     /// Drop any variants whose filename isn't a safe basename, so a corrupt
@@ -293,11 +329,11 @@ final class VideoLibrary: Sendable {
         try? JSONEncoder().encode(entries).write(to: indexURL, options: .atomic)
     }
 
-    private func findVideoFile(in directory: URL) -> URL? {
+    private func findVideoFile(in directory: URL) throws -> URL? {
         let extensions = ["mp4", "mov", "m4v"]
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        let contents = try FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil,
-        ) else { return nil }
+        )
         return contents.first { file in
             extensions.contains(file.pathExtension.lowercased())
         }
