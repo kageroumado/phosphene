@@ -92,6 +92,9 @@ struct PhospheneApp: App {
         .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: 660, height: 740)
 
+        Settings {
+            PhospheneSettingsView(manager: manager)
+        }
     }
 
     @CommandsBuilder private var appMenu: some Commands {
