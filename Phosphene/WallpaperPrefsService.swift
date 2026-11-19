@@ -533,7 +533,9 @@ final class WallpaperPrefsService {
             }
         }
 
-        return map
+        guard map.values.contains(where: { SidecarDisplay.isIPad($0.displayID, name: $0.name) }) else { return map }
+        let deviceNames = SidecarDisplay.connectedNames()
+        return map.mapValues { ($0.displayID, deviceNames[$0.displayID] ?? $0.name) }
     }
 
     // MARK: - Space Resolution
@@ -558,7 +560,9 @@ final class WallpaperPrefsService {
             guard let spaces = monitor["Spaces"] as? [[String: Any]] else { continue }
             let identifier = monitor["Display Identifier"] as? String
             let displayUUID = identifier == "Main" ? mainDisplayUUID : identifier?.uppercased()
-            if separateSpaces, displayUUID == nil { continue }
+            if separateSpaces, displayUUID == nil {
+                continue
+            }
             let owner = separateSpaces ? displayUUID : nil
             for (index, space) in spaces.enumerated() {
                 if let uuid = space["uuid"] as? String {
@@ -596,7 +600,8 @@ final class WallpaperPrefsService {
 
     // MARK: - Display Change Observer
 
-    @ObservationIgnored private var displayReconfigToken: (any NSObjectProtocol)?
+    @ObservationIgnored private var displayReconfigTokens: [any NSObjectProtocol] = []
+
     @ObservationIgnored private var knownDisplayIDs: Set<UInt32> = WallpaperPrefsService.connectedDisplayIDs()
     @ObservationIgnored private var displaySetRestart: DispatchWorkItem?
 
@@ -607,14 +612,14 @@ final class WallpaperPrefsService {
     }
 
     private func observeDisplayChanges() {
-        displayReconfigToken = NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil,
-            queue: .main,
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.checkSystemWallpaper()
-                self?.restartAgentIfDisplaySetChanged()
+        displayReconfigTokens = [NSApplication.didChangeScreenParametersNotification, SidecarDisplay.connectedDevicesChanged].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.checkSystemWallpaper()
+                    if name == NSApplication.didChangeScreenParametersNotification {
+                        self?.restartAgentIfDisplaySetChanged()
+                    }
+                }
             }
         }
     }
@@ -633,9 +638,7 @@ final class WallpaperPrefsService {
         displaySetRestart?.cancel()
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                guard !self.selections.isEmpty else { return }
-                guard Date().timeIntervalSince(self.lastAgentKill) > 15 else { return }
+                guard let self, !self.selections.isEmpty, Date().timeIntervalSince(self.lastAgentKill) > 15 else { return }
                 self.lastAgentKill = Date()
                 self.killWallpaperAgent(reason: "connected displays changed")
             }

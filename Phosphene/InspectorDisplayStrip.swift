@@ -32,7 +32,8 @@ struct InspectorDisplayStrip: View {
                         .containerRelativeFrame(.horizontal) { width, _ in
                             displays.count == 1 ? width : min(width, 76)
                         }
-                        .help(description)
+                        .contentShape(Rectangle())
+                        .overlay { DisplayToolTip(text: description) }
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(Text(verbatim: description))
                     }
@@ -54,7 +55,7 @@ struct InspectorDisplayStrip: View {
         if display.displayID != 0, CGDisplayIsBuiltin(display.displayID) != 0 {
             return Self.hasInternalBattery ? "macbook" : "desktopcomputer"
         }
-        if display.displayName.localizedCaseInsensitiveContains("iPad") {
+        if SidecarDisplay.isIPad(display.displayID, name: display.displayName) {
             return "ipad.landscape"
         }
         return "display"
@@ -68,4 +69,20 @@ struct InspectorDisplayStrip: View {
             return details?[kIOPSTypeKey] as? String == kIOPSInternalBatteryType
         }
     }()
+}
+
+private struct DisplayToolTip: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context _: Context) -> NSView {
+        let view = NSView()
+        view.setAccessibilityElement(false)
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context _: Context) {
+        if view.toolTip != text {
+            view.toolTip = text
+        }
+    }
 }
