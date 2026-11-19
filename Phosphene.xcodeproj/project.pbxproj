@@ -52,6 +52,7 @@
 		7E5700000000000000000AA3 /* Shared media types in Phosphene */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				AppearancePair.swift,
 				FileIdentity.swift,
 				HDRMode.swift,
 			);
@@ -61,6 +62,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				CachedFrame.swift,
+				AppearancePair.swift,
 				FileIdentity.swift,
 				GeometryVerdict.swift,
 				HDRMode.swift,
@@ -74,6 +76,8 @@
 		7E5700000000000000000AA2 /* Exceptions for "Phosphene" folder in "PhospheneTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				VideoProbe.swift,
+				PairEligibility.swift,
 				OcclusionMath.swift,
 				PathSafety.swift,
 				WallpaperEngine/GL.swift,

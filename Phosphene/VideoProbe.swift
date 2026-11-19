@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreVideo
+import VideoToolbox
 
 nonisolated struct VideoProbe {
     var fps: Double?
@@ -44,5 +45,72 @@ nonisolated struct VideoProbe {
             }
         }
         return classifications.count == 1 ? classifications.first : nil
+    }
+
+    struct HDRFormat: Equatable, Sendable {
+        let colors: [String: String]
+        let fullRange: Bool
+        let staticMetadata: [String: Data]
+    }
+
+    static func colorProperties(_ format: CMFormatDescription) -> [String: String] {
+        [
+            AVVideoColorPrimariesKey: CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_ColorPrimaries) as? String,
+            AVVideoTransferFunctionKey: CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_TransferFunction) as? String,
+            AVVideoYCbCrMatrixKey: CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_YCbCrMatrix) as? String,
+        ].compactMapValues { $0 }
+    }
+
+    private static func sampleDescriptionAtoms(_ format: CMFormatDescription) -> [String: Any] {
+        CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Any] ?? [:]
+    }
+
+    static func isHEVCMain10(_ format: CMFormatDescription) -> Bool {
+        guard format.mediaSubType.rawValue == kCMVideoCodecType_HEVC,
+              let config = sampleDescriptionAtoms(format)["hvcC"] as? Data, config.count >= 23 else { return false }
+        // HEVCDecoderConfigurationRecord: profile IDC and luma/chroma bit_depth_minus8.
+        return config[1] & 0x1F == 2 && config[17] & 7 == 2 && config[18] & 7 == 2
+    }
+
+    static func isH264High8(_ format: CMFormatDescription) -> Bool {
+        guard let config = sampleDescriptionAtoms(format)["avcC"] as? Data, config.count >= 4 else { return false }
+        return config[1] == 100 // AVC High profile (8-bit)
+    }
+
+    static func hdrFormat(_ format: CMFormatDescription) -> HDRFormat? {
+        switch format.mediaSubType.rawValue {
+        case kCMVideoCodecType_HEVC, 0x6865_7631, // hev1
+             kCMVideoCodecType_AppleProRes422, kCMVideoCodecType_AppleProRes422HQ,
+             kCMVideoCodecType_AppleProRes422LT, kCMVideoCodecType_AppleProRes422Proxy,
+             kCMVideoCodecType_AppleProRes4444, kCMVideoCodecType_AppleProRes4444XQ:
+            break
+        default:
+            return nil
+        }
+
+        let colors = colorProperties(format)
+        let transfer = colors[AVVideoTransferFunctionKey]
+        let atoms = sampleDescriptionAtoms(format)
+        guard colors.count == 3,
+              transfer == AVVideoTransferFunction_ITU_R_2100_HLG || transfer == AVVideoTransferFunction_SMPTE_ST_2084_PQ,
+              ["dvcC", "dvvC", "dvwC"].allSatisfy({ atoms[$0] == nil }) else { return nil }
+
+        var metadata: [String: Data] = [:]
+        for (extensionKey, atom, property, length) in [
+            (kCMFormatDescriptionExtension_MasteringDisplayColorVolume, "mdcv", kVTCompressionPropertyKey_MasteringDisplayColorVolume, 24),
+            (kCMFormatDescriptionExtension_ContentLightLevelInfo, "clli", kVTCompressionPropertyKey_ContentLightLevelInfo, 4),
+        ] {
+            let native = CMFormatDescriptionGetExtension(format, extensionKey: extensionKey)
+            if let value = native ?? atoms[atom] {
+                guard let data = value as? Data, data.count == length else { return nil }
+                metadata[property as String] = data
+            }
+        }
+
+        return HDRFormat(
+            colors: colors,
+            fullRange: CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_FullRangeVideo) as? Bool ?? false,
+            staticMetadata: metadata,
+        )
     }
 }
