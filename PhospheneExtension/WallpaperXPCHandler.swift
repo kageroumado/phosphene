@@ -4,16 +4,6 @@ import CoreMedia
 import os
 import QuartzCore
 
-/// The loop-boundary variant selector for a choice: the best file for the policy the
-/// renderer is currently under. Reads the surface's own choice, never a process-wide
-/// selection, so each display stays on its own video.
-func makeVariantSelector(choice: String?, fallback: URL) -> @Sendable (PlaybackPolicy) -> URL {
-    { policy in
-        guard let choice else { return fallback }
-        return VideoLibrary.shared.bestVariantURL(for: choice, policy: policy) ?? fallback
-    }
-}
-
 /// Carries a non-Sendable value (e.g. a `CALayer`) into a `Task` without tainting the
 /// closure's isolation region. `nonisolated(unsafe)` on a local isn't enough under Swift 6.2
 /// region-based isolation — capturing the raw layer merges other (Sendable) captures like
@@ -126,9 +116,97 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         Lifecycle.queue.async { handler.acquireBody(id: unsafeID, request: unsafeRequest, reply: reply) }
     }
 
-    private func acquireBody(id: Any?, request: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
+    private typealias AcquireDestination = (size: CGSize, scale: CGFloat, isPreview: Bool, displayID: UInt32?)
+    private typealias AcquireReply = @Sendable (Any?, (any Error)?) -> Void
+
+    /// Source and poster lookup are lazy so a same-choice re-acquire can reuse its renderer.
+    private final class Acquisition {
+        let key: SurfaceKey
+        let destination: AcquireDestination
+        let choice: String?
+        let hasWallpaperID: Bool
+
+        private let renderChoice: String?
+        private let usesDark: () -> Bool
+
+        init(key: SurfaceKey, destination: AcquireDestination, choice: String?, hasWallpaperID: Bool, renderChoice: String?, usesDark: @escaping () -> Bool) {
+            self.key = key
+            self.destination = destination
+            self.choice = choice
+            self.hasWallpaperID = hasWallpaperID
+            self.renderChoice = renderChoice
+            self.usesDark = usesDark
+        }
+
+        lazy var selection = findVideoURL(forChoice: renderChoice).map { VideoSourceSelection(choice: renderChoice, fallback: $0) }
+        lazy var videoURL = selection?.pair?.url(dark: usesDark()) ?? selection?.fallback
+        lazy var seedSource = videoURL.flatMap(FileIdentity.init(of:))
+        lazy var cachedStill = loadCachedSnapshotImage(
+            forChoice: choice, source: seedSource,
+            width: Int(destination.size.width * destination.scale), height: Int(destination.size.height * destination.scale),
+        )
+    }
+
+    private func acquireBody(id: Any?, request: Any?, reply: @escaping AcquireReply) {
         traceLog("=== ACQUIRE ===")
 
+        let destination = Self.acquireDestination(from: request)
+        let (destSize, scaleFactor, isPreview, displayID) = destination
+        let (choiceConfiguration, choiceFiles) = Self.acquireChoice(from: request)
+        traceLog(
+            "  destination: \(destSize) @\(scaleFactor)x, isPreview: \(isPreview), pid: \(connectionPID), "
+                + "choice: \(choiceConfiguration ?? "nil"), files: \(choiceFiles)",
+        )
+
+        // Native shuffle: adopt the frequency the host sent (optionValues in the
+        // descriptor; absent until the user touches the picker), then resolve the
+        // sentinel to the concrete video this surface should render. Surfaces keep
+        // the raw choice so re-acquires and switch decisions compare correctly.
+        let shuffleFrequency = extractPickerOptionValue("shuffleFrequency", fromRequest: request)
+        ShuffleController.shared.noteAcquire(choice: choiceConfiguration, frequencyID: shuffleFrequency)
+        let renderChoice = ShuffleController.shared.resolveChoice(choiceConfiguration)
+        acquiredAsPreview = isPreview
+
+        // Each WallpaperID (a Space, the lock-screen surface, or a Settings preview) is its
+        // own hosted surface with its own CAContext; see `SurfaceKey`. An id without a UUID
+        // falls back to a per-display constant.
+        let displayID0 = displayID ?? 0
+        let wallpaperUUID = extractWallpaperUUID(fromID: id)
+        let surfaceUUID = wallpaperUUID ?? Self.fallbackSurfaceUUID(forDisplay: displayID0)
+        let key = SurfaceKey(displayID: displayID0, surfaceUUID: surfaceUUID)
+        let role: SurfaceRole = isPreview ? .preview : .desktop
+        let registry = SurfaceRegistry.shared
+        registry.register(wallpaperID: surfaceUUID, as: key)
+        if choiceConfiguration == shuffleChoiceID, let renderChoice {
+            PlaybackStore.post(.shufflePicked(renderChoice))
+        }
+        let rawAppearance = extractPickerOptionValue(PairAppearanceMode.optionID, fromRequest: request)
+        let appearance = rawAppearance.flatMap(PairAppearanceMode.init(rawValue:)) ?? .automatic
+        let systemDark = extractSystemDark(fromRequest: request)
+        if let systemDark {
+            PlaybackStore.post(.systemAppearanceChanged(dark: systemDark))
+        }
+        PlaybackStore.post(.surfaceAcquired(key, displayID: displayID, role: role, choice: choiceConfiguration, appearance: appearance))
+        // A re-acquire of this surface (display woke / preview refresh / switch) cancels
+        // its pending teardown, so a brief invalidate→re-acquire flicker doesn't drop it.
+        cancelTeardown(for: key)
+
+        let acquisition = Acquisition(
+            key: key, destination: destination, choice: choiceConfiguration,
+            hasWallpaperID: wallpaperUUID != nil, renderChoice: renderChoice,
+        ) {
+            appearance.usesDark(systemDark: systemDark ?? PlaybackStore.snapshot.systemDark)
+        }
+        if Bisect.stillOnly {
+            acquireStillOnlyBisect(acquisition, videoURL: acquisition.videoURL, cachedStill: acquisition.cachedStill, reply: reply)
+        } else if let existing = registry.surface(for: key) {
+            reuseSurface(existing, for: acquisition, reply: reply)
+        } else {
+            createSurface(for: acquisition, reply: reply)
+        }
+    }
+
+    private static func acquireDestination(from request: Any?) -> AcquireDestination {
         // Extract destination size from WallpaperCreationRequestXPC
         var destSize = CGSize(width: 2_560, height: 1_440) // fallback
         var scaleFactor: CGFloat = 2.0
@@ -158,6 +236,10 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 }
             }
         }
+        return (destSize, scaleFactor, isPreview, displayID)
+    }
+
+    private static func acquireChoice(from request: Any?) -> (String?, [URL]) {
         // Extract choice configuration and files from descriptor via Mirror traversal
         // Path: WallpaperCreationRequestXPC.rawValue.descriptor.{configuration, files}
         var choiceConfiguration: String?
@@ -194,117 +276,84 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             }
         }
 
-        traceLog("  destination: \(destSize) @\(scaleFactor)x, isPreview: \(isPreview), pid: \(connectionPID), choice: \(choiceConfiguration ?? "nil"), files: \(choiceFiles)")
+        return (choiceConfiguration, choiceFiles)
+    }
 
-        // Native shuffle: adopt the frequency the host sent (optionValues in the
-        // descriptor; absent until the user touches the picker), then resolve the
-        // sentinel to the concrete video this surface should render. Surfaces keep
-        // the raw choice so re-acquires and switch decisions compare correctly.
-        let shuffleFrequency = extractPickerOptionValue("shuffleFrequency", fromRequest: request)
-        ShuffleController.shared.noteAcquire(choice: choiceConfiguration, frequencyID: shuffleFrequency)
-        let renderChoice = ShuffleController.shared.resolveChoice(choiceConfiguration)
-        acquiredAsPreview = isPreview
-
-        // Each WallpaperID (a Space, the lock-screen surface, or a Settings preview) is its
-        // own hosted surface with its own CAContext; see `SurfaceKey`. An id without a UUID
-        // falls back to a per-display constant.
-        let displayID0 = displayID ?? 0
-        let surfaceUUID = extractWallpaperUUID(fromID: id) ?? Self.fallbackSurfaceUUID(forDisplay: displayID0)
-        let key = SurfaceKey(displayID: displayID0, surfaceUUID: surfaceUUID)
+    private func reuseSurface(_ existing: HostedSurface, for acquisition: Acquisition, reply: @escaping AcquireReply) {
+        let (key, choiceConfiguration) = (acquisition.key, acquisition.choice)
+        let (destSize, scaleFactor, _, _) = acquisition.destination
         let registry = SurfaceRegistry.shared
-        registry.register(wallpaperID: surfaceUUID, as: key)
-        if choiceConfiguration == shuffleChoiceID, let renderChoice {
-            PlaybackStore.post(.shufflePicked(renderChoice))
-        }
-        PlaybackStore.post(.surfaceAcquired(key, displayID: displayID, role: isPreview ? .preview : .desktop, choice: choiceConfiguration))
-        // A re-acquire of this surface (display woke / preview refresh / switch) cancels
-        // its pending teardown, so a brief invalidate→re-acquire flicker doesn't drop it.
-        cancelTeardown(for: key)
-        let videoURL = findVideoURL(forChoice: renderChoice)
-        let seedSource = videoURL.flatMap(FileIdentity.init(of:))
-        let cachedStill = loadCachedSnapshotImage(
-            forChoice: choiceConfiguration, source: videoURL,
-            width: Int(destSize.width * scaleFactor), height: Int(destSize.height * scaleFactor),
+        traceLog(
+            "  [acquire] REUSE ctx=\(existing.contextId) \(key) storedVideoID=\(existing.videoID ?? "nil") "
+                + "newChoice=\(choiceConfiguration ?? "nil") renderer=\(existing.renderer.map { "#\($0.debugID)" } ?? "nil")",
         )
 
-        // Diagnostic bisection: host a still only (no video pipeline). Same context
-        // reuse/create/reply as below, but no renderer.
-        if Bisect.stillOnly {
-            acquireStillOnlyBisect(key: key, displayID: displayID, destSize: destSize, scaleFactor: scaleFactor, videoURL: videoURL, cachedStill: cachedStill, choice: choiceConfiguration, reply: reply)
-            return
+        // Geometry may have changed since this surface was created: a bigger or
+        // smaller display reconnected, or the display switched resolution. Re-frame
+        // the root and renderer layers before re-hosting (issue #21).
+        if let resized = registry.updateGeometryIfChanged(destSize: destSize, scaleFactor: scaleFactor, for: key) {
+            layOutSurface(resized, destSize: destSize, scaleFactor: scaleFactor)
+            extensionLog("  [acquire] REUSE geometry changed → resized \(key) to \(destSize) @\(scaleFactor)x")
+        }
+        reconcileSurfaceGeometry(for: key, because: "re-acquire")
+
+        guard let replyObj = createRemoteContextXPC(contextId: existing.contextId) else {
+            reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
+        }
+        reply(replyObj, nil)
+
+        if ColorDiag.enabled {
+            colorDiagInstall(rootLayer: existing.rootLayer, for: key); return
         }
 
-        // ---- REUSE: this surface's context already exists ----
-        if let existing = registry.surface(for: key) {
-            traceLog("  [acquire] REUSE ctx=\(existing.contextId) \(key) storedVideoID=\(existing.videoID ?? "nil") newChoice=\(choiceConfiguration ?? "nil") renderer=\(existing.renderer.map { "#\($0.debugID)" } ?? "nil")")
-
-            // Geometry may have changed since this surface was created: a bigger or
-            // smaller display reconnected, or the display switched resolution. Re-frame
-            // the root and renderer layers before re-hosting (issue #21).
-            if let resized = registry.updateGeometryIfChanged(destSize: destSize, scaleFactor: scaleFactor, for: key) {
-                layOutSurface(resized, destSize: destSize, scaleFactor: scaleFactor)
-                extensionLog("  [acquire] REUSE geometry changed → resized \(key) to \(destSize) @\(scaleFactor)x")
-            }
-            reconcileSurfaceGeometry(for: key, because: "re-acquire")
-
-            guard let replyObj = createRemoteContextXPC(contextId: existing.contextId) else {
-                reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
-            }
-            reply(replyObj, nil)
-
-            if ColorDiag.enabled {
-                colorDiagInstall(rootLayer: existing.rootLayer, for: key); return
-            }
-
-            if existing.videoID == choiceConfiguration, existing.renderer != nil {
-                traceLog("  [acquire] same choice (\(choiceConfiguration ?? "nil")) and renderer present → no swap")
-                return
-            }
-            guard let videoURL else {
-                traceLog("  [acquire] no video for new choice, keeping current")
-                return
-            }
-            extensionLog("  [acquire] switching to \(videoURL.lastPathComponent) (renderer \(existing.renderer != nil ? "present → switchVideo" : "nil → create"))")
-            let selector = makeVariantSelector(choice: renderChoice, fallback: videoURL)
-            if let renderer = existing.renderer {
-                // Switch in place on the already-hosted display layer: a new
-                // AVSampleBufferDisplayLayer added to a hosted context doesn't composite.
-                renderer.switchVideo(to: videoURL, selector: selector)
-                registry.updateVideoID(choiceConfiguration, for: key)
-            } else if registry.claimRendererCreate(for: key) {
-                let boxedRoot = SendableBox(value: existing.rootLayer)
-                Task(name: "Attach renderer \(key)") { [boxedRoot, videoURL, cachedStill, selector, key, choiceConfiguration] in
-                    let renderer: VideoRenderer
-                    do {
-                        renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill, seedSource: seedSource)
-                    } catch {
-                        extensionLog("  [Renderer] swap create failed: \(error)")
-                        SurfaceRegistry.shared.clearRendererPending(for: key)
-                        return
-                    }
-                    renderer.setVariantSelector(selector)
-                    let old = SurfaceRegistry.shared.setRenderer(renderer, videoID: choiceConfiguration, for: key)
-                    old?.stop()
-                    await PlaybackStore.shared.follow(renderer, surface: key)
-                    await renderer.start()
+        if existing.videoID == choiceConfiguration, existing.renderer != nil {
+            refreshBMPSnapshot(for: key)
+            traceLog("  [acquire] same choice (\(choiceConfiguration ?? "nil")) and renderer present → no swap")
+            return
+        }
+        guard let videoURL = acquisition.videoURL, let selector = acquisition.selection else {
+            traceLog("  [acquire] no video for new choice, keeping current")
+            return
+        }
+        extensionLog("  [acquire] switching to \(videoURL.lastPathComponent) (renderer \(existing.renderer != nil ? "present → switchVideo" : "nil → create"))")
+        if let renderer = existing.renderer {
+            // Switch in place on the already-hosted display layer: a new
+            // AVSampleBufferDisplayLayer added to a hosted context doesn't composite.
+            renderer.switchVideo(to: videoURL, selector: selector)
+            registry.updateVideoID(choiceConfiguration, for: key)
+        } else if registry.claimRendererCreate(for: key) {
+            let boxedRoot = SendableBox(value: existing.rootLayer)
+            let cachedStill = acquisition.cachedStill
+            let seedSource = acquisition.seedSource
+            let contextID = existing.contextId
+            Task(name: "Attach renderer \(key)") {
+                let renderer: VideoRenderer
+                do {
+                    renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill, seedSource: seedSource)
+                } catch {
+                    extensionLog("  [Renderer] swap create failed: \(error)")
+                    SurfaceRegistry.shared.clearRendererPending(for: key, contextID: contextID)
+                    return
                 }
-            } else {
-                traceLog("  [acquire] renderer create already in flight for \(key) — skipping duplicate")
+                renderer.setVariantSelector(selector)
+                guard SurfaceRegistry.shared.installRenderer(renderer, videoID: choiceConfiguration, for: key, contextID: contextID) else {
+                    renderer.stop()
+                    return
+                }
+                await PlaybackStore.shared.follow(renderer, surface: key)
+                await renderer.start()
             }
-            let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
-            Task { [videoURL, choiceConfiguration, w, h] in await writeBMPSnapshot(videoURL: videoURL, videoID: choiceConfiguration, displayPixelWidth: w, displayPixelHeight: h) }
-            return
+        } else {
+            traceLog("  [acquire] renderer create already in flight for \(key) — skipping duplicate")
         }
+        refreshBMPSnapshot(for: key)
+    }
 
-        // ---- CREATE: first acquire for this surface ----
-        var contextOptions: [String: Any] = [:]
-        if let did = displayID {
-            contextOptions["displayId"] = did
-        }
-        let caContextRaw: Any? = contextOptions.isEmpty
-            ? CAContext.remoteContext()
-            : CAContext.perform(NSSelectorFromString("remoteContextWithOptions:"), with: contextOptions)?.takeUnretainedValue()
-        guard let caContext = caContextRaw as? CAContext, caContext.contextId != 0 else {
+    private func createSurface(for acquisition: Acquisition, reply: @escaping AcquireReply) {
+        let (key, choiceConfiguration) = (acquisition.key, acquisition.choice)
+        let (destSize, scaleFactor, isPreview, displayID) = acquisition.destination
+        let registry = SurfaceRegistry.shared
+        guard let caContext = Self.makeRemoteContext(displayID: displayID) else {
             extensionLog("  ERROR: remote CAContext creation failed — failing acquire")
             reply(nil, NSError(domain: "PhospheneExtension", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to create remote CAContext"]))
             return
@@ -316,7 +365,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         rootLayer.frame = layerFrame
         rootLayer.contentsScale = scaleFactor
         rootLayer.contentsGravity = .resizeAspectFill
-        if let cachedStill {
+        if let cachedStill = acquisition.cachedStill {
             rootLayer.contents = cachedStill
         }
         caContext.layer = rootLayer
@@ -329,7 +378,10 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // Install the surface now (renderer added async) so a concurrent acquire for the
         // same surface reuses this context instead of creating another.
         registry.install(
-            HostedSurface(caContext: caContext, contextId: contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choiceConfiguration, isPreview: isPreview, destSize: destSize, scaleFactor: scaleFactor),
+            HostedSurface(
+                caContext: caContext, contextId: contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID,
+                videoID: choiceConfiguration, isPreview: isPreview, destSize: destSize, scaleFactor: scaleFactor,
+            ),
             for: key,
         )
         extensionLog("  Created context \(contextId) for \(key) at \(destSize) @\(scaleFactor)x")
@@ -345,26 +397,52 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             reply(replyObj, nil); colorDiagInstall(rootLayer: rootLayer, for: key); return
         }
 
-        guard let videoURL else {
+        guard let videoURL = acquisition.videoURL, let selector = acquisition.selection else {
             // No video file: solid gradient fallback. Static, so it's ready at once.
-            let gradientLayer = CAGradientLayer()
-            gradientLayer.colors = [
-                CGColor(red: 0.2, green: 0.0, blue: 0.5, alpha: 1.0),
-                CGColor(red: 0.0, green: 0.3, blue: 0.7, alpha: 1.0),
-                CGColor(red: 0.0, green: 0.6, blue: 0.4, alpha: 1.0),
-            ]
-            gradientLayer.startPoint = CGPoint(x: 0, y: 0)
-            gradientLayer.endPoint = CGPoint(x: 1, y: 1)
-            gradientLayer.frame = layerFrame
-            gradientLayer.contentsScale = scaleFactor
-            CATransaction.begin(); CATransaction.setDisableActions(true)
-            rootLayer.addSublayer(gradientLayer)
-            CATransaction.commit(); CATransaction.flush()
+            Self.showGradient(on: rootLayer, frame: layerFrame, scaleFactor: scaleFactor)
             reply(replyObj, nil)
             extensionLog("  No video file found — solid color fallback")
             return
         }
+        startRenderer(
+            for: acquisition, rootLayer: rootLayer, contextId: contextId,
+            media: (videoURL, selector), replyObj: replyObj, reply: reply,
+        )
+    }
 
+    private static func makeRemoteContext(displayID: UInt32?) -> CAContext? {
+        var contextOptions: [String: Any] = [:]
+        if let did = displayID {
+            contextOptions["displayId"] = did
+        }
+        let caContextRaw: Any? = contextOptions.isEmpty
+            ? CAContext.remoteContext()
+            : CAContext.perform(NSSelectorFromString("remoteContextWithOptions:"), with: contextOptions)?.takeUnretainedValue()
+        guard let caContext = caContextRaw as? CAContext, caContext.contextId != 0 else { return nil }
+        return caContext
+    }
+
+    private static func showGradient(on rootLayer: CALayer, frame: CGRect, scaleFactor: CGFloat) {
+        let gradientLayer = CAGradientLayer()
+        gradientLayer.colors = [
+            CGColor(red: 0.2, green: 0.0, blue: 0.5, alpha: 1.0),
+            CGColor(red: 0.0, green: 0.3, blue: 0.7, alpha: 1.0),
+            CGColor(red: 0.0, green: 0.6, blue: 0.4, alpha: 1.0),
+        ]
+        gradientLayer.startPoint = CGPoint(x: 0, y: 0)
+        gradientLayer.endPoint = CGPoint(x: 1, y: 1)
+        gradientLayer.frame = frame
+        gradientLayer.contentsScale = scaleFactor
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        rootLayer.addSublayer(gradientLayer)
+        CATransaction.commit(); CATransaction.flush()
+    }
+
+    private func startRenderer(
+        for acquisition: Acquisition, rootLayer: CALayer, contextId: UInt32,
+        media: (URL, VideoSourceSelection), replyObj: AnyObject, reply: @escaping AcquireReply,
+    ) {
+        let (videoURL, selector) = media
         // Cold start = no Phosphene surface in the same role (preview vs. live desktop) on
         // this display that the agent could keep compositing during the swap. On a switch
         // the outgoing context is ours and stays hosted (teardown grace) until we reply.
@@ -378,22 +456,32 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         // Filtering by role fixes the WallpaperAgent-restart ordering: a preview-first,
         // desktop-second boot must not make the desktop acquire look like a switch, since
         // the desktop CALayerHost has never hosted anything of ours.
-        let coldStart = !registry.hasLiveRenderer(onDisplay: displayID0, isPreview: isPreview)
+        let (key, choiceConfiguration) = (acquisition.key, acquisition.choice)
+        let registry = SurfaceRegistry.shared
+        let coldStart = !registry.hasLiveRenderer(onDisplay: key.displayID, isPreview: acquisition.destination.isPreview)
 
         // Claim this surface's single create slot; a racing acquire that lost skips.
         if registry.claimRendererCreate(for: key) {
             traceLog("  Setting up VideoRenderer with: \(videoURL.lastPathComponent) (coldStart=\(coldStart))")
             let boxedRoot = SendableBox(value: rootLayer)
             let boxedReply = SendableBox(value: replyObj)
-            let selector = makeVariantSelector(choice: renderChoice, fallback: videoURL)
-            Task(name: "Create renderer \(key)") { [coldStart, boxedRoot, boxedReply, videoURL, cachedStill, selector, key, choiceConfiguration] in
+            let canHandoff = !coldStart && acquisition.hasWallpaperID
+            let cachedStill = acquisition.cachedStill
+            let seedSource = acquisition.seedSource
+            Task(name: "Create renderer \(key)") {
                 let renderer: VideoRenderer
                 do {
                     renderer = try await VideoRenderer.create(rootLayer: boxedRoot.value, videoURL: videoURL, stillImage: cachedStill, seedSource: seedSource)
                 } catch {
                     extensionLog("  [Renderer] Failed to create: \(error)")
-                    SurfaceRegistry.shared.clearRendererPending(for: key)
+                    SurfaceRegistry.shared.clearRendererPending(for: key, contextID: contextId)
                     reply(boxedReply.value, nil) // unblock the acquire regardless
+                    return
+                }
+                renderer.setVariantSelector(selector)
+                guard SurfaceRegistry.shared.installRenderer(renderer, videoID: choiceConfiguration, for: key, contextID: contextId) else {
+                    renderer.stop()
+                    reply(nil, CocoaError(.userCancelled))
                     return
                 }
                 // Cold start: the IOSurface still is seeded and flushed, so the agent can
@@ -403,29 +491,66 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     reply(boxedReply.value, nil)
                     traceLog("  [acquire] cold start → replied after still seeded for \(videoURL.lastPathComponent)")
                 }
-                renderer.setVariantSelector(selector)
-                let old = SurfaceRegistry.shared.setRenderer(renderer, videoID: choiceConfiguration, for: key)
                 await PlaybackStore.shared.follow(renderer, surface: key)
-                await renderer.start()
-                // Switch: reply once the first frame is composited. Either way, stop the
-                // old renderer once the agent has been told to swap off it.
+                let handoff: VideoRenderer.StartHandoff? = if canHandoff, let pair = selector.pair, let choiceConfiguration {
+                    Self.appearanceHandoff(to: key, choice: choiceConfiguration, pair: pair, renderer: renderer)
+                } else {
+                    nil
+                }
+                await renderer.start(handoff: handoff)
+                // Switch: reply once the first frame is composited.
                 if !repliedWithStill {
                     reply(boxedReply.value, nil)
                 }
-                old?.stop()
             }
         } else {
             traceLog("  [acquire] renderer create already in flight for \(key) — skipping duplicate (create path)")
             reply(replyObj, nil)
         }
-        let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
-        Task { await writeBMPSnapshot(videoURL: videoURL, videoID: choiceConfiguration, displayPixelWidth: w, displayPixelHeight: h) }
+        refreshBMPSnapshot(for: key)
+    }
+
+    private static func appearanceHandoff(
+        to key: SurfaceKey, choice: String, pair: PairRendition, renderer: VideoRenderer,
+    ) -> VideoRenderer.StartHandoff? {
+        @Sendable
+        func predecessor(in state: PlaybackState) -> (key: SurfaceKey, surface: Surface)? {
+            guard let current = state.surfaces[key], let displayID = current.displayID,
+                  current.choice == choice, current.activity == .active,
+                  let previous = state.surfaces.lazy.filter({ $0.key != key && $0.value.displayID == displayID && $0.value.role == current.role })
+                      .max(by: { $0.value.generation < $1.value.generation }),
+                  previous.value.generation < current.generation, previous.value.choice == choice,
+                  previous.value.activity == .active, previous.value.mode == current.mode else { return nil }
+            return (previous.key, previous.value)
+        }
+
+        let state = PlaybackStore.snapshot
+        let registry = SurfaceRegistry.shared
+        guard let previous = predecessor(in: state), let current = state.surfaces[key],
+              let donor = registry.surface(for: previous.key)?.renderer, donor !== renderer else { return nil }
+        let isCurrent: @Sendable () -> Bool = {
+            let state = PlaybackStore.snapshot
+            guard let latest = predecessor(in: state), latest.key == previous.key,
+                  latest.surface.generation == previous.surface.generation, state.surfaces[key]?.generation == current.generation,
+                  registry.key(forWallpaperID: previous.key.surfaceUUID) == previous.key,
+                  registry.key(forWallpaperID: key.surfaceUUID) == key,
+                  let prior = registry.surface(for: previous.key), prior.videoID == choice, prior.renderer === donor,
+                  let replacement = registry.surface(for: key), replacement.videoID == choice,
+                  prior.isPreview == (current.role == .preview), replacement.isPreview == prior.isPreview else { return false }
+            return replacement.renderer === renderer
+        }
+        guard isCurrent() else { return nil }
+        return VideoRenderer.StartHandoff(
+            predecessor: donor, pair: pair, wantsDark: current.appearance.usesDark(systemDark: state.systemDark), isCurrent: isCurrent,
+        )
     }
 
     /// Bisection acquire: identical CAContext reuse/create/reply as `acquireBody`, but
     /// hosts a still (via `bisectShowStill`) instead of a VideoRenderer. Runs on
     /// `Lifecycle.queue`. See StillBisect.swift.
-    private func acquireStillOnlyBisect(key: SurfaceKey, displayID: UInt32?, destSize: CGSize, scaleFactor: CGFloat, videoURL: URL?, cachedStill: CGImage?, choice: String?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
+    private func acquireStillOnlyBisect(_ acquisition: Acquisition, videoURL: URL?, cachedStill: CGImage?, reply: AcquireReply) {
+        let (key, choice) = (acquisition.key, acquisition.choice)
+        let (destSize, scaleFactor, _, displayID) = acquisition.destination
         if let existing = SurfaceRegistry.shared.surface(for: key) {
             traceLog("  [bisect] REUSE ctx=\(existing.contextId) display=\(key.displayID) stored=\(existing.videoID ?? "nil") new=\(choice ?? "nil")")
             guard let replyObj = createRemoteContextXPC(contextId: existing.contextId) else {
@@ -441,14 +566,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             return
         }
 
-        var contextOptions: [String: Any] = [:]
-        if let did = displayID {
-            contextOptions["displayId"] = did
-        }
-        let caContextRaw: Any? = contextOptions.isEmpty
-            ? CAContext.remoteContext()
-            : CAContext.perform(NSSelectorFromString("remoteContextWithOptions:"), with: contextOptions)?.takeUnretainedValue()
-        guard let caContext = caContextRaw as? CAContext, caContext.contextId != 0 else {
+        guard let caContext = Self.makeRemoteContext(displayID: displayID) else {
             reply(nil, NSError(domain: "PhospheneExtension", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to create remote CAContext"]))
             return
         }
@@ -462,7 +580,10 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             reply(nil, NSError(domain: "PhospheneExtension", code: 3, userInfo: nil)); return
         }
         SurfaceRegistry.shared.install(
-            HostedSurface(caContext: caContext, contextId: caContext.contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID, videoID: choice, isPreview: acquiredAsPreview, destSize: destSize, scaleFactor: scaleFactor),
+            HostedSurface(
+                caContext: caContext, contextId: caContext.contextId, rootLayer: rootLayer, renderer: nil, displayID: displayID,
+                videoID: choice, isPreview: acquiredAsPreview, destSize: destSize, scaleFactor: scaleFactor,
+            ),
             for: key,
         )
         reply(replyObj, nil)
@@ -500,8 +621,20 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         }
 
         let key = extractWallpaperUUID(fromID: id).flatMap { SurfaceRegistry.shared.key(forWallpaperID: $0) }
+        if let key, let raw = extractPickerOptionValue(PairAppearanceMode.optionID, fromRequest: request),
+           let appearance = PairAppearanceMode(rawValue: raw) {
+            PlaybackStore.post(.appearanceSelected(key, appearance))
+        }
+        let systemDark = extractSystemDark(fromRequest: request)
+        if let systemDark {
+            PlaybackStore.post(.systemAppearanceChanged(dark: systemDark))
+        }
         PlaybackStore.post(.agentUpdate(key, mode: mode, activity: activity))
-        extensionLog("=== UPDATE (pid \(connectionPID)) === \(key.map(\.description) ?? "unknown surface → all") mode: \(mode), activity: \(activity)")
+        let systemAppearance = systemDark.map { $0 ? "dark" : "light" } ?? "absent"
+        extensionLog(
+            "=== UPDATE (pid \(connectionPID)) === \(key.map(\.description) ?? "unknown surface → all") "
+                + "mode: \(mode), activity: \(activity), systemAppearance: \(systemAppearance)",
+        )
         reply(nil)
     }
 
@@ -527,34 +660,83 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             reply(nil); return
         }
         registry.forget(wallpaperID: uuid)
+        PlaybackStore.post(.surfaceInvalidated(key))
         scheduleTeardown(for: key)
         extensionLog("=== INVALIDATE === \(key) → tear down in \(Lifecycle.teardownGrace)s unless re-acquired")
         reply(nil)
     }
 
     func snapshot(withId id: Any?, reply: @escaping @Sendable (Any?, (any Error)?) -> Void) {
+        let requestedAt = CMClockGetTime(CMClockGetHostTimeClock())
         markServed()
-        traceLog("=== SNAPSHOT ===")
 
         let registry = SurfaceRegistry.shared
-        let surface = extractWallpaperUUID(fromID: id).flatMap { registry.key(forWallpaperID: $0) }.flatMap { registry.surface(for: $0) }
+        let uuid = extractWallpaperUUID(fromID: id)
+        let key = uuid.flatMap { registry.key(forWallpaperID: $0) }
+        let surface = key.flatMap { registry.surface(for: $0) }
+        let renderer = surface?.renderer
+        let pid = connectionPID
         Task {
-            let videoURL: URL? = if let renderer = surface?.renderer {
-                await renderer.snapshotURL()
-            } else if let choice = ShuffleController.shared.resolveChoice(surface?.videoID) {
-                VideoLibrary.shared.videoURL(for: choice)
+            let selection: WallpaperSnapshotSelection?
+            let fallbackRoute: String
+            if let renderer {
+                selection = await renderer.snapshotSelection(requestedAt: requestedAt)
+                fallbackRoute = "no-renderer"
             } else {
-                // Context-free requests use the last selected logical wallpaper.
-                findVideoURL()
+                (selection, fallbackRoute) = Self.snapshotFallback(for: key, surface: surface, registry: registry)
             }
-            if let videoURL, let snapshotXPC = await createSnapshotViaRuntime(videoURL: videoURL) {
-                reply(snapshotXPC, nil)
-                traceLog("  Snapshot replied (IOSurface)")
+            let snapshot: (payload: AnyObject, route: String, format: OSType)? = if let selection {
+                await createSnapshotViaRuntime(selection, requestedAt: requestedAt)
             } else {
-                reply(nil, nil)
-                traceLog("  Snapshot replied (nil)")
+                nil
+            }
+            let elapsed = CMClockGetTime(CMClockGetHostTimeClock()) - requestedAt
+            let route = renderer == nil ? fallbackRoute : snapshot?.route ?? "unavailable"
+            let format = snapshot.map { String($0.format, radix: 16) } ?? "nil"
+            extensionLog(
+                "[Snapshot host=\(requestedAt.seconds)] pid=\(pid) id=\(uuid?.uuidString ?? "nil") surface=\(key?.description ?? "unresolved") "
+                    + "renderer=\(renderer?.debugID.description ?? "nil") route=\(route) file=\(selection?.file?.url.lastPathComponent ?? "nil") "
+                    + "local=\(selection?.localTime.seconds.description ?? "nil") replyFormat=\(format) elapsed=\(elapsed.seconds)s",
+            )
+            reply(snapshot?.payload, nil)
+        }
+    }
+
+    private static func snapshotFallback(
+        for key: SurfaceKey?, surface: HostedSurface?, registry: SurfaceRegistry,
+    ) -> (WallpaperSnapshotSelection?, String) {
+        let state = PlaybackStore.snapshot
+        let target = key.flatMap { state.surfaces[$0] }
+        let candidates: [(choice: String, dark: Bool)] = if let choice = target?.choice ?? surface?.videoID {
+            [(choice, (target?.appearance ?? .automatic).usesDark(systemDark: state.systemDark))]
+        } else {
+            Set(state.surfaces.keys).union(registry.surfaceKeys).compactMap { candidate in
+                let surface = state.surfaces[candidate]
+                guard let choice = surface?.choice ?? registry.surface(for: candidate)?.videoID else { return nil }
+                return (choice, (surface?.appearance ?? .automatic).usesDark(systemDark: state.systemDark))
             }
         }
+        let choices = Set(candidates.map(\.choice))
+        guard choices.count <= 1 else { return (nil, "no-renderer-ambiguous") }
+
+        let requested = choices.first ?? PlaybackReducer.published(state).currentVideoID
+        let choice = PlaybackReducer.resolve(requested, in: state)
+        let pair = choice.flatMap { VideoLibrary.shared.pairRendition(for: $0) }
+        let appearances = Set(candidates.map(\.dark))
+        guard pair == nil || appearances.count <= 1 else { return (nil, "no-renderer-ambiguous") }
+
+        let url: URL? = if let pair {
+            pair.url(dark: appearances.first ?? state.systemDark)
+        } else if let choice {
+            VideoLibrary.shared.videoURL(for: choice)
+        } else {
+            requested == nil ? findVideoURL(forChoice: nil) : nil
+        }
+        let selection = url.map { WallpaperSnapshotSelection(
+            frame: .file, file: SnapshotVideoFile(url: $0, identity: FileIdentity(of: $0)), localTime: .zero,
+            preserveHDR: state.prefs.hdrMode != .standard,
+        ) }
+        return (selection, "no-renderer")
     }
 
     // MARK: - Settings
@@ -584,28 +766,11 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
 
     /// WallpaperAgent routes a removal request by its case (image, folder, color,
     /// screensaver, Photos) to Apple's own providers, so none reaches a third-party
-    /// extension. Video tiles are deleted through `removeDownload(for:)` instead.
+    /// extension.
     func removeChoiceRequest(withChoiceRequest _: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
         markServed()
         extensionLog("=== REMOVE CHOICE REQUEST === (not routed to third-party providers; ignored)")
         reply(nil)
-    }
-
-    /// Delete a video from the library and tear down the surfaces showing it. Other
-    /// displays may show other videos and keep running. Runs on `Lifecycle.queue`.
-    private func removeVideo(_ videoID: String) {
-        VideoLibrary.shared.removeVideo(id: videoID)
-        let removed = SurfaceRegistry.shared.removeSurfaces(showing: videoID)
-        for key in removed {
-            PlaybackStore.post(.surfaceRemoved(key))
-        }
-        PlaybackStore.post(.videoRemoved(videoID))
-        extensionLog("  [Remove] \(videoID): stopped \(removed.count) renderer(s)")
-        agentProxy?.invalidateSnapshots { error in
-            if let error {
-                extensionLog("  [Remove] invalidateSnapshots error: \(error)")
-            }
-        }
     }
 
     func selectedChoicesDidChange(for id: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
@@ -671,30 +836,11 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         reply(nil)
     }
 
-    /// The Settings pane's "Remove Download" button on a video tile. Tiles are
-    /// `.purgeable`, so the pane sends `purgeChoice` with the tile's choice ID, which
-    /// WallpaperAgent forwards here and then re-queries the view models.
-    func removeDownload(for choiceID: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+    func removeDownload(for _: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
         markServed()
-        nonisolated(unsafe) let unsafeID = choiceID
-        nonisolated(unsafe) let handler = self
-        Lifecycle.queue.async { handler.removeDownloadBody(choiceID: unsafeID, reply: reply) }
-    }
-
-    private func removeDownloadBody(choiceID: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
-        // The video id is the descriptor's `configuration`, as on the acquire path.
-        guard let choiceID,
-              let configuration = mirrorFindProperty("configuration", in: choiceID) as? Data,
-              let videoID = String(data: configuration, encoding: .utf8),
-              VideoLibrary.shared.entry(for: videoID) != nil
-        else {
-            extensionLog("=== REMOVE DOWNLOAD === no library video in \(String(describing: choiceID))")
-            reply(nil)
-            return
-        }
-        extensionLog("=== REMOVE DOWNLOAD === \(videoID)")
-        removeVideo(videoID)
-        reply(nil)
+        // Older cached tiles can still send a purge request for a local library item.
+        DispatchQueue.main.async { SettingsPush.libraryDidChange() }
+        reply(CocoaError(.featureUnsupported))
     }
 
     // MARK: - Migration
@@ -733,6 +879,16 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     func handleNotification(withNamed name: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
         traceLog("handleNotification(\(name ?? "nil"))")
         reply(nil)
+    }
+}
+
+/// The system appearance is independent of presentation mode and picker overrides.
+private func extractSystemDark(fromRequest request: Any?) -> Bool? {
+    guard let request, let appearance = mirrorFindProperty("systemAppearance", in: request) else { return nil }
+    switch enumCaseName(appearance) {
+    case "dark": return true
+    case "light": return false
+    default: return nil
     }
 }
 

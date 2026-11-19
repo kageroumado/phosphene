@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import Foundation
 import ImageIO
@@ -5,8 +6,8 @@ import os
 
 private let pendingFrames = OSAllocatedUnfairLock(initialState: [String: (source: FileIdentity, ticket: UUID)]())
 
-func loadCachedSnapshotImage(forChoice choice: String?, source: URL?, width: Int, height: Int) -> CGImage? {
-    guard let choice, let source, let identity = FileIdentity(of: source),
+func loadCachedSnapshotImage(forChoice choice: String?, source: FileIdentity?, width: Int, height: Int) -> CGImage? {
+    guard let choice, let source,
           let directory = SurfaceRegistry.shared.cacheDirectoryURL else { return nil }
     let scoped = directory.startAccessingSecurityScopedResource()
     defer {
@@ -14,14 +15,25 @@ func loadCachedSnapshotImage(forChoice choice: String?, source: URL?, width: Int
             directory.stopAccessingSecurityScopedResource()
         }
     }
-    guard let url = CachedFrame.lookup(choice: choice, source: identity, width: width, height: height, directory: directory),
+    guard let url = CachedFrame.lookup(choice: choice, source: source, width: width, height: height, directory: directory),
           let image = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
     return CGImageSourceCreateImageAtIndex(image, 0, nil)
 }
 
-func writeBMPSnapshot(videoURL: URL, videoID: String?, displayPixelWidth: Int, displayPixelHeight: Int) async {
-    guard let videoID, let source = FileIdentity(of: videoURL),
+func refreshBMPSnapshot(for key: SurfaceKey) {
+    // An acquire or shuffle change posts its selection to the main queue first.
+    DispatchQueue.main.async {
+        Task { await writeBMPSnapshot(for: key) }
+    }
+}
+
+@concurrent
+private func writeBMPSnapshot(for key: SurfaceKey) async {
+    guard let surface = SurfaceRegistry.shared.surface(for: key), let videoID = surface.videoID,
           let cacheDir = SurfaceRegistry.shared.cacheDirectoryURL else { return }
+    let displayPixelWidth = Int(surface.destSize.width * surface.scaleFactor)
+    let displayPixelHeight = Int(surface.destSize.height * surface.scaleFactor)
+    guard let videoURL = selectedSnapshotSource(for: key, choice: videoID), let source = FileIdentity(of: videoURL) else { return }
     let scoped = cacheDir.startAccessingSecurityScopedResource()
     defer {
         if scoped {
@@ -33,10 +45,11 @@ func writeBMPSnapshot(videoURL: URL, videoID: String?, displayPixelWidth: Int, d
     let prefix = CachedFrame.prefix(videoID, displayPixelWidth, displayPixelHeight)
     let ticket = UUID()
     let needed = pendingFrames.withLock { pending in
-        guard let currentID = ShuffleController.shared.resolveChoice(videoID),
-              VideoLibrary.shared.videoURL(for: currentID) == videoURL, FileIdentity(of: videoURL) == source,
-              pending[prefix]?.source != source,
-              CachedFrame.lookup(choice: videoID, source: source, width: displayPixelWidth, height: displayPixelHeight, directory: cacheDir) == nil else { return false }
+        guard selectedSnapshotSource(for: key, choice: videoID) == videoURL, FileIdentity(of: videoURL) == source, pending[prefix]?.source != source else { return false }
+        if CachedFrame.lookup(choice: videoID, source: source, width: displayPixelWidth, height: displayPixelHeight, directory: cacheDir) != nil {
+            pending[prefix] = nil
+            return false
+        }
         pending[prefix] = (source, ticket)
         return true
     }
@@ -58,9 +71,7 @@ func writeBMPSnapshot(videoURL: URL, videoID: String?, displayPixelWidth: Int, d
     let record = CachedFrame(choice: videoID, source: source, width: displayPixelWidth, height: displayPixelHeight, filename: filename)
     do {
         try pendingFrames.withLock { pending in
-            guard pending[prefix]?.ticket == ticket, FileIdentity(of: videoURL) == source,
-                  let currentID = ShuffleController.shared.resolveChoice(videoID),
-                  VideoLibrary.shared.videoURL(for: currentID) == videoURL else { return }
+            guard pending[prefix]?.ticket == ticket, selectedSnapshotSource(for: key, choice: videoID) == videoURL, FileIdentity(of: videoURL) == source else { return }
             try FileManager.default.createDirectory(at: URL.cachesDirectory, withIntermediateDirectories: true)
             let url = cacheDir.appendingPathComponent(filename)
             try bmp.write(to: url, options: .atomic)
@@ -79,6 +90,14 @@ func writeBMPSnapshot(videoURL: URL, videoID: String?, displayPixelWidth: Int, d
     } catch {
         traceLog("  [BMPCache] Publish failed: \(error)")
     }
+}
+
+private func selectedSnapshotSource(for key: SurfaceKey, choice videoID: String) -> URL? {
+    let state = PlaybackStore.snapshot
+    guard let surface = state.surfaces[key], surface.choice == videoID,
+          let id = PlaybackReducer.resolve(videoID, in: state) else { return nil }
+    let library = VideoLibrary.shared
+    return library.pairRendition(for: id)?.url(dark: surface.appearance.usesDark(systemDark: state.systemDark)) ?? library.videoURL(for: id)
 }
 
 private func makeBMP(from cgImage: CGImage) -> Data? {
@@ -113,31 +132,13 @@ private func makeBMP(from cgImage: CGImage) -> Data? {
         return nil
     }
 
-    // Convert BGRA → BGR24 with row padding
-    var pixelData = Data(count: pixelDataSize)
-    bgraData.withUnsafeBytes { bgra in
-        pixelData.withUnsafeMutableBytes { bgr in
-            let src = bgra.baseAddress!.assumingMemoryBound(to: UInt8.self)
-            let dst = bgr.baseAddress!.assumingMemoryBound(to: UInt8.self)
-            for y in 0 ..< height {
-                for x in 0 ..< width {
-                    let si = y * bgraRowBytes + x * 4
-                    let di = y * paddedRowBytes + x * 3
-                    dst[di] = src[si] // B
-                    dst[di + 1] = src[si + 1] // G
-                    dst[di + 2] = src[si + 2] // R
-                }
-            }
-        }
-    }
-
     // Build BMP: 14-byte file header + 40-byte BITMAPINFOHEADER + pixel data
     let fileHeaderSize = 14
     let dibHeaderSize = 40
     let headerSize = fileHeaderSize + dibHeaderSize
     let fileSize = headerSize + pixelDataSize
 
-    var bmp = Data(count: headerSize)
+    var bmp = Data(count: fileSize)
 
     bmp[0] = 0x42; bmp[1] = 0x4D // "BM"
     bmpWriteLE32(&bmp, offset: 2, value: UInt32(fileSize))
@@ -152,9 +153,15 @@ private func makeBMP(from cgImage: CGImage) -> Data? {
     bmpWriteLE32(&bmp, offset: d + 16, value: 0) // BI_RGB
     bmpWriteLE32(&bmp, offset: d + 20, value: UInt32(pixelDataSize))
 
-    bmp.append(pixelData)
-
-    return bmp
+    let result = bgraData.withUnsafeMutableBytes { (bgra: UnsafeMutableRawBufferPointer) in
+        bmp.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
+            var source = vImage_Buffer(data: bgra.baseAddress, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: bgraRowBytes)
+            var destination = vImage_Buffer(data: bytes.baseAddress!.advanced(by: headerSize), height: source.height, width: source.width, rowBytes: paddedRowBytes)
+            // Dropping the fourth channel also maps BGRA to BGR without reordering colors.
+            return vImageConvert_RGBA8888toRGB888(&source, &destination, vImage_Flags(kvImageNoFlags))
+        }
+    }
+    return result == kvImageNoError ? bmp : nil
 }
 
 private func bmpWriteLE32(_ data: inout Data, offset: Int, value: UInt32) {

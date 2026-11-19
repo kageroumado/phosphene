@@ -10,9 +10,6 @@ enum Bisect {
             .appendingPathComponent("Documents/BISECT_STILL")
         return FileManager.default.fileExists(atPath: url.path)
     }
-
-    /// One still-hosting layer per display. Touched ONLY on `Lifecycle.queue`.
-    nonisolated(unsafe) static var stillLayers: [SurfaceKey: AVSampleBufferDisplayLayer] = [:]
 }
 
 /// Put a single still frame on the display's root layer (creating/reusing one AVSBDL per
@@ -21,22 +18,6 @@ enum Bisect {
 /// (a plain `CALayer.contents` does not). Tagged `DisplayImmediately` so a switch replaces
 /// the prior still with no flush. Must run on `Lifecycle.queue`.
 func bisectShowStill(videoURL: URL?, cachedStill: CGImage?, rootLayer: CALayer, for key: SurfaceKey) {
-    let layer: AVSampleBufferDisplayLayer
-    if let existing = Bisect.stillLayers[key] {
-        layer = existing
-    } else {
-        layer = AVSampleBufferDisplayLayer()
-        layer.videoGravity = .resizeAspectFill
-        layer.frame = rootLayer.bounds
-        layer.contentsScale = rootLayer.contentsScale
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        rootLayer.addSublayer(layer)
-        CATransaction.commit()
-        CATransaction.flush()
-        Bisect.stillLayers[key] = layer
-    }
-
     var sample: CMSampleBuffer?
     var source = "none"
     if let cachedStill, let buf = makeStillSampleBuffer(from: cachedStill) {
@@ -51,8 +32,29 @@ func bisectShowStill(videoURL: URL?, cachedStill: CGImage?, rootLayer: CALayer, 
         return
     }
     bisectSetDisplayImmediately(sample)
-    layer.sampleBufferRenderer.enqueue(sample)
-    extensionLog("  [bisect] display \(key.displayID): enqueued still (src=\(source))")
+    let frame = SendableBox(value: sample)
+    let root = SendableBox(value: rootLayer)
+    DispatchQueue.main.async { [source] in
+        stillLayer(in: root.value).sampleBufferRenderer.enqueue(frame.value)
+        extensionLog("  [bisect] display \(key.displayID): enqueued still (src=\(source))")
+    }
+}
+
+@MainActor
+private func stillLayer(in rootLayer: CALayer) -> AVSampleBufferDisplayLayer {
+    if let existing = rootLayer.sublayers?.first as? AVSampleBufferDisplayLayer {
+        return existing
+    }
+    let layer = AVSampleBufferDisplayLayer()
+    layer.videoGravity = .resizeAspectFill
+    layer.frame = rootLayer.bounds
+    layer.contentsScale = rootLayer.contentsScale
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    rootLayer.addSublayer(layer)
+    CATransaction.commit()
+    CATransaction.flush()
+    return layer
 }
 
 /// Decode exactly one frame from a video — no reader kept, no feed loop. Blocks the

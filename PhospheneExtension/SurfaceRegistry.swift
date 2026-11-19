@@ -22,6 +22,7 @@ struct HostedSurface: @unchecked Sendable {
     /// A `VideoRenderer.create` is in flight for this surface. Stops a racing acquire
     /// from building a duplicate renderer on the same root layer.
     var rendererPending = false
+    var reloadOnInstall = false
 }
 
 /// Owns every hosted surface's resources, keyed by surface. Playback decisions live in
@@ -74,23 +75,35 @@ final class SurfaceRegistry: Sendable {
     }
 
     /// Release a create claim without installing a renderer (the create threw).
-    func clearRendererPending(for key: SurfaceKey) {
-        lock.withLock { $0.surfaces[key]?.rendererPending = false }
+    func clearRendererPending(for key: SurfaceKey, contextID: UInt32) {
+        lock.withLock { contents in
+            if contents.surfaces[key]?.contextId == contextID {
+                contents.surfaces[key]?.rendererPending = false
+            }
+        }
     }
 
-    /// Install a surface's renderer, returning the one it replaces for the caller to stop.
-    func setRenderer(_ renderer: VideoRenderer, videoID: String?, for key: SurfaceKey) -> VideoRenderer? {
-        let previous = lock.withLock { contents -> VideoRenderer? in
-            guard var surface = contents.surfaces[key] else { return nil }
-            let previous = surface.renderer
+    /// A library edit can tear down the claimed context while its renderer is being created.
+    func installRenderer(_ renderer: VideoRenderer, videoID: String?, for key: SurfaceKey, contextID: UInt32) -> Bool {
+        let needsReload = lock.withLock { contents -> Bool? in
+            guard var surface = contents.surfaces[key], surface.contextId == contextID,
+                  surface.rendererPending, surface.renderer == nil else { return nil }
             surface.renderer = renderer
             surface.videoID = videoID
             surface.rendererPending = false
+            let needsReload = surface.reloadOnInstall
+            surface.reloadOnInstall = false
             contents.surfaces[key] = surface
-            return previous
+            return needsReload
         }
-        traceLog("  [setRenderer] \(key) new=#\(renderer.debugID) replacing=\(previous.map { "#\($0.debugID)" } ?? "nil") videoID=\(videoID ?? "nil")")
-        return previous
+        guard let needsReload else { return false }
+        if needsReload {
+            Lifecycle.queue.sync {
+                guard surface(for: key)?.renderer === renderer else { return }
+                reload(renderer, for: key, choice: ShuffleController.shared.resolveChoice(videoID))
+            }
+        }
+        return true
     }
 
     /// Record a surface's geometry, returning the surface only when it changed since
@@ -119,24 +132,48 @@ final class SurfaceRegistry: Sendable {
         renderers.forEach(body)
     }
 
-    /// Play again every video whose file was replaced on disk since its renderer
-    /// opened it (a video made again under the same name), and refresh its
-    /// snapshot, which System Settings shows as the still.
-    func reloadReplacedVideos() {
-        let showing = lock.withLock { contents in
-            contents.surfaces.values.compactMap { surface in
-                surface.renderer.map { ($0, surface.videoID, surface.destSize, surface.scaleFactor) }
+    /// Stop removed choices and reload the remaining renderers after a library change.
+    func reconcileLibrary() {
+        let state = PlaybackStore.snapshot
+        let hosted = lock.withLock { $0.surfaces.values.compactMap(\.videoID) }
+        for id in Set(hosted + [state.lastVideoID, state.shufflePick].compactMap(\.self))
+            where PathSafety.isValidEntryID(id) && VideoLibrary.shared.entry(for: id) == nil {
+            removeSurfaces(showing: id)
+            PlaybackStore.post(.videoRemoved(id))
+        }
+
+        let shuffle = ShuffleController.shared
+        var shufflePick: String?
+        if hosted.contains(shuffleChoiceID) {
+            shufflePick = shuffle.resolveChoice(shuffleChoiceID)
+            PlaybackStore.post(.shufflePicked(shufflePick))
+            if shufflePick == nil {
+                removeSurfaces(showing: shuffleChoiceID)
+                shuffle.syncActiveWithSurfaces()
             }
         }
-        for (renderer, videoID, destSize, scaleFactor) in showing {
-            let choice = ShuffleController.shared.resolveChoice(videoID)
-            guard let url = findVideoURL(forChoice: choice) else { continue }
-            renderer.reload(to: url, selector: makeVariantSelector(choice: choice, fallback: url))
-            let w = Int(destSize.width * scaleFactor), h = Int(destSize.height * scaleFactor)
-            Task { [url, videoID, w, h] in
-                await writeBMPSnapshot(videoURL: url, videoID: videoID, displayPixelWidth: w, displayPixelHeight: h)
+        for key in surfaceKeys {
+            let surface = lock.withLock { contents in
+                if contents.surfaces[key]?.rendererPending == true {
+                    contents.surfaces[key]?.reloadOnInstall = true
+                }
+                return contents.surfaces[key]
             }
+            guard let surface else { continue }
+            if let renderer = surface.renderer {
+                reload(renderer, for: key, choice: surface.videoID == shuffleChoiceID ? shufflePick : surface.videoID)
+            }
+            refreshBMPSnapshot(for: key)
         }
+    }
+
+    private func reload(_ renderer: VideoRenderer, for key: SurfaceKey, choice: String?) {
+        guard let url = findVideoURL(forChoice: choice) else { return }
+        let selector = VideoSourceSelection(choice: choice, fallback: url)
+        let state = PlaybackStore.snapshot
+        let mode = state.surfaces[key]?.appearance ?? .automatic
+        let source = selector.pair?.url(dark: mode.usesDark(systemDark: state.systemDark)) ?? url
+        renderer.reload(to: source, selector: selector)
     }
 
     /// Whether any surface shows the given choice.
@@ -151,8 +188,8 @@ final class SurfaceRegistry: Sendable {
         }
     }
 
-    /// Tear down every surface showing a video that left the library. Returns their keys.
-    func removeSurfaces(showing videoID: String) -> [SurfaceKey] {
+    /// Tear down every surface showing a choice that left the library.
+    private func removeSurfaces(showing videoID: String) {
         let removed = lock.withLock { contents -> [SurfaceKey: HostedSurface] in
             let matches = contents.surfaces.filter { $0.value.videoID == videoID }
             for key in matches.keys {
@@ -160,11 +197,11 @@ final class SurfaceRegistry: Sendable {
             }
             return matches
         }
-        for surface in removed.values {
+        for (key, surface) in removed {
             surface.renderer?.stop()
             invalidateRemoteContext(surface.caContext)
+            PlaybackStore.post(.surfaceRemoved(key))
         }
-        return Array(removed.keys)
     }
 
     /// Stop one surface's renderer and invalidate its context, leaving the others

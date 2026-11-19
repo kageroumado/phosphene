@@ -51,7 +51,10 @@ func reconcileSurfaceGeometry(for key: SurfaceKey, because reason: String) -> Bo
     case .matches:
         return false
     case .differentPixels:
-        extensionLog("  [geometry] \(reason): \(key) laid out at \(laidOut), display \(displayID) is \(display.size) @\(display.scale)x — different pixel count, left for the agent to re-acquire")
+        extensionLog(
+            "  [geometry] \(reason): \(key) laid out at \(laidOut), display \(displayID) is \(display.size) @\(display.scale)x"
+                + " — different pixel count, left for the agent to re-acquire",
+        )
         return false
     case let .reframe(size, scale):
         guard let resized = registry.updateGeometryIfChanged(destSize: size, scaleFactor: scale, for: key) else { return false }
@@ -84,12 +87,12 @@ enum DisplayReconfiguration {
 
     private static func schedule(displayID: CGDirectDisplayID, flags: CGDisplayChangeSummaryFlags) {
         traceLog("  [geometry] display \(displayID) reconfigured (flags 0x\(String(flags.rawValue, radix: 16)))")
-        let pass = DispatchWorkItem {
-            for key in SurfaceRegistry.shared.surfaceKeys {
-                reconcileSurfaceGeometry(for: key, because: "display reconfigured")
-            }
-        }
         Lifecycle.queue.async {
+            let pass = DispatchWorkItem {
+                for key in SurfaceRegistry.shared.surfaceKeys {
+                    reconcileSurfaceGeometry(for: key, because: "display reconfigured")
+                }
+            }
             pendingPass?.cancel()
             pendingPass = pass
             Lifecycle.queue.asyncAfter(deadline: .now() + settleDelay, execute: pass)

@@ -22,7 +22,7 @@ How the extension decides whether each wallpaper surface plays, and how that dec
 | `SystemEvents.swift`, `PrefsSource.swift`, `PowerMonitor.swift` | Event sources: display sleep/wake, loginwindow lock/unlock, the app's prefs file, power/thermal/Game Mode/backlight. |
 | `WallpaperXPCHandler.swift` | The agent protocol. Emits `surfaceAcquired`, `agentUpdate`, `surfaceRemoved`, `shufflePicked`, `videoRemoved`. |
 | `SurfaceRegistry.swift` | Resources only: remote `CAContext`, root layer, renderer per surface, and the WallpaperID → surface map. |
-| `VideoRenderer.swift` | The AVFoundation pipeline. Its pause, ramp, and deep-pause state is confined to its own serial queue. |
+| `VideoRenderer.swift`, `VideoRenderer+Playback.swift`, `VideoRenderer+Appearance.swift` | The AVFoundation pipeline, playback policy application, and appearance transitions. The renderer’s serial queue owns playback state. |
 
 ## Rules the design enforces
 
