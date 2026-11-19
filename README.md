@@ -19,12 +19,14 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 <summary>Full feature list</summary>
 
 - Import videos in the **Library** window and select them in **System Settings → Wallpaper**.
+- Pair light and dark versions of the same animation to show them as one wallpaper. In Wallpaper settings, choose **Automatic** to follow the system appearance, or select **Light** or **Dark**.
 - Wallpaper selection per display or Space, plus a **Lock Screen**-only playback mode.
 - Desktop and lock-screen playback through the macOS wallpaper pipeline.
 - MP4, MOV, and other AVFoundation-readable inputs; gapless looping and lock/unlock transitions.
 - Menu-bar preview, pause, display switching, and launch at login.
-- Power and thermal settings can select lower-resolution variants for confirmed SDR videos. HDR videos and videos with unknown dynamic range play from the imported original, including on battery.
-- In the menu bar, **Settings → Dynamic Range** controls the wallpaper and Library previews. Choose **Constrained High** for more subdued highlights or **Automatic** to restore the system preference.
+- **Optimize** creates lower-power versions of a video or light/dark pair. HLG and PQ videos keep HDR by default. Select **Convert to SDR** before choosing a preset to create SDR versions. The originals stay in the Library.
+- **Tools → Custom Conversion** exports a video from the Library or a file as SDR, HLG, or PQ. **Light/Dark Pair Converter** converts two sources to the same dimensions, frame rate, duration, and color format, then adds the validated pair to the Library.
+- In Phosphene, **Settings → Playback → Dynamic Range** controls the wallpaper and Library previews. Choose **Constrained High** for more subdued highlights or **Automatic** to restore the system preference.
 - **Restart Wallpaper Agent** from the menu bar for stuck playback.
 - A **Wallpaper Engine** section: Steam Workshop downloads from Sevoflurane, CrossOver or Whisky become looping videos.
 
@@ -40,9 +42,14 @@ Wallpaper Engine runs in Windows Steam. [Sevoflurane](https://kagerou.glass/sevo
 
 Wallpaper Engine is a trademark of Wallpaper Engine Team; Steam is a trademark of Valve Corporation. Phosphene is an independent app.
 
-## Counting
+## Privacy
 
-Nothing is sent unless you say so. The menu bar asks once whether to count this Mac; if you count yourself in, Phosphene sends one anonymous check-in on each day you use it: the Phosphene and macOS versions, chip family and memory size, language and date, how many of the last 7 days you used it, whether you have your own videos, and how many displays. It never includes which videos you use, and nothing in it names you. A second tier adds a scrubbed report when Phosphene itself crashes. Turning it off deletes everything this Mac sent. Every field is listed in the [Digoxin reference](https://github.com/kageroumado/digoxin/blob/main/REFERENCE.md).
+Choose **Count Me In** in the menu bar to enable anonymous usage statistics. You can change either option independently in **Settings → Privacy**. Both start off.
+
+- **Send crash reports** sends the app's crash log and basic system details after a Phosphene crash. Account names, Mac names, and home folder paths are redacted before upload.
+- **Count this Mac** sends one anonymous check-in per day of use. It includes the date, app and macOS versions, chip, memory, language, display count, days active in the last week, and whether you imported videos. Video names and files are excluded.
+
+Turning both options off requests deletion of this Mac's submissions. Offline deletion requests retry when the service becomes available. [Digoxin field reference](https://github.com/kageroumado/digoxin/blob/main/REFERENCE.md).
 
 ## Notes
 

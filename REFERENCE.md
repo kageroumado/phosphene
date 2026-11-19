@@ -39,9 +39,11 @@
 
 **`VideoRenderer`** owns the decode pipeline. Instead of `AVPlayerLayer` — which silently fails inside a remote `CAContext` — it drives `AVSampleBufferDisplayLayer` manually: one `AVAssetReader` for the current loop, a preloaded one for the next, and a PTS offset that grows across loops to keep the timeline monotonically increasing. Result is glitch-free looping without flushing the renderer.
 
-Each `videos/<UUID>/metadata.json` can include `sourceIsHDR`. The host inspects the original on import, replacement and startup enrichment. Only an explicit `false` permits H.264 optimization or playback of existing variants. Pausing still saves decoding work for every source. The optional global `hdrMode` in `phosphene-prefs.json` accepts `automatic`, `standard`, `constrainedHigh` and `high`. An absent or unknown value selects `automatic`.
+Each `videos/<UUID>/metadata.json` can include `sourceIsHDR`. The host inspects the original on import, replacement and startup enrichment. SDR sources can use legacy H.264 variants. HDR sources use validated 10-bit HEVC variants, or Rec. 709 variants explicitly generated with **Convert to SDR**. An unknown source range selects the original. Optimized light/dark pairs share a playback tier, and each tier is checked for matching timing, color format and independent keyframes before publication. Pausing still saves decoding work for every source. The optional global `hdrMode` in `phosphene-prefs.json` accepts `automatic`, `standard`, `constrainedHigh` and `high`. An absent or unknown value selects `automatic`.
 
-Wallpaper snapshots request an SDR frame at source time zero. Unprofiled BMPs use sRGB pixels. A matching wallpaper ID, source-file identity and display size are required to reuse a cached BMP. The extension keeps its freshness records in its own Caches directory. HDR highlight luminance is outside the SDR still’s range.
+Live wallpaper snapshots use the displayed frame or decode a frame at the current playback position. With no renderer, the extension requests the first frame of the selected appearance. Snapshots can preserve HDR when the surface’s HDR setting allows it.
+
+The lock-screen fallback BMP uses the first frame of the selected appearance, tone-mapped to SDR for HDR sources and stored as unprofiled sRGB pixels. The extension checks the wallpaper choice, source-file identity and display size against a record in its Caches directory before reusing a BMP.
 
 ## Quirks worth knowing
 
