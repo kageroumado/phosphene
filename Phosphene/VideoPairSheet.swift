@@ -126,6 +126,7 @@ struct VideoPairSheet: View {
     let selection: VideoPairSelection
     let completed: (Set<String>) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     @State private var swapped = false
     @State private var validation: AppearancePair.Validation?
     @State private var failure: (any Error)?
@@ -187,6 +188,14 @@ struct VideoPairSheet: View {
                             .frame(width: 320, alignment: .leading)
                             .fixedSize(horizontal: false, vertical: true)
                         }
+                    if let issue = failure as? PairIssue, issue.isCompatibilityIssue,
+                       let light = selection.entry(light: true, swapped: rolesSwapped),
+                       let dark = selection.entry(light: false, swapped: rolesSwapped) {
+                        Button("Open Pair Converter…") {
+                            dismiss()
+                            openWindow(value: PairConverterRequest.library(lightID: light.id, darkID: dark.id, draftID: UUID()))
+                        }
+                    }
                 }
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
