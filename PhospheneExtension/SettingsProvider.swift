@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// Build a fully-populated WallpaperSettingsViewModelsXPC using Codable shims.
-/// Creates one SettingsItem per video in the library.
+/// Publishes one SettingsItem per library choice.
 func buildSettingsViewModelsXPC() async -> AnyObject? {
     let bundleID = Bundle.main.bundleIdentifier ?? "glass.kagerou.phosphene.extension"
     let library = VideoLibrary.shared
@@ -11,7 +11,7 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     // Always re-scan to pick up changes (deletions, new deployments)
     library.scan()
 
-    let entries = library.entries
+    let choices = library.choices
 
     // Right-click menu on the group and every tile. Settings routes presses to
     // invokeContextMenuAction with the item's identifier; the handler opens the
@@ -32,51 +32,9 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     var items = [SettingsItem]()
     var thumbnailURLs = [URL]()
 
-    for entry in entries {
-        let videoURL = library.videoURL(for: entry)
-        let choiceID = ChoiceID(
-            id: entry.id,
-            descriptor: ChoiceIDDescriptor(
-                provider: ChoiceProviderID(rawValue: bundleID),
-                identifier: entry.id,
-                files: [videoURL],
-                configuration: Data(entry.id.utf8),
-            ),
-        )
-
-        // Generate thumbnail — skip entry if extraction fails
-        guard let thumbnailURL = await library.generateThumbnail(for: entry) else {
-            continue
-        }
-        thumbnailURLs.append(thumbnailURL)
-
-        let choiceDescriptor = ChoiceDescriptor(
-            id: choiceID,
-            provider: ChoiceProviderID(rawValue: bundleID),
-            identifier: entry.id,
-            name: entry.name,
-            localizedDescription: String(localized: "Animated video wallpaper"),
-            thumbnail: .image(url: thumbnailURL),
-            isDownloaded: true,
-            options: [],
-        )
-
-        let item = SettingsItem(
-            id: choiceID,
-            localizedName: entry.name,
-            thumbnail: .image(url: thumbnailURL),
-            choice: choiceDescriptor,
-            contentBadge: .video,
-            showInTopLevel: true,
-            sortOrder: 0,
-            // `.purgeable` gives the tile the pane's "Remove Download" button, which
-            // reaches `removeDownload(for:)` with this choice ID. Never `.removable`:
-            // the pane force-unwraps a removable item's `choiceRequest` (a video has
-            // none, so Remove crashed System Settings), and removal requests are routed
-            // only to Apple's providers.
-            disposability: .purgeable,
-            contextMenu: addVideoMenu,
-        )
+    for (entry, record) in choices {
+        guard let (item, thumbnail) = await makeVideoItem(entry: entry, record: record, bundleID: bundleID, contextMenu: addVideoMenu) else { continue }
+        thumbnailURLs.append(thumbnail)
         items.append(item)
     }
 
@@ -88,12 +46,9 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
         ))
     }
 
-    // Never serve an empty group: the host caches this response on disk and (on
-    // macOS 26.6) reuses it on every Settings launch, only re-querying after a
-    // reinstall or OS update — a cached empty group hides the Phosphene section
-    // until then (issue #27). The first query fires at registration, before the
-    // user has added any video, so a fresh install always passes through here.
-    if items.isEmpty, let placeholder = makeAddVideoItem(bundleID: bundleID, contextMenu: addVideoMenu) {
+    // The placeholder keeps an empty library discoverable in the host's cached catalog (issue #27).
+    if items.isEmpty, PrefsSource.showAddVideoPlaceholder,
+       let placeholder = makeAddVideoItem(bundleID: bundleID, contextMenu: addVideoMenu) {
         items.append(placeholder)
     }
 
@@ -111,7 +66,7 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     )
 
     let viewModel = SettingsViewModel(
-        groups: [group],
+        groups: items.isEmpty ? [] : [group],
         refreshPolicy: .default,
         isModificationDisabled: false,
     )
@@ -125,6 +80,110 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     )
 
     return remapToRealXPC(viewModels)
+}
+
+private func makeVideoItem(entry: VideoEntry, record: AppearancePair?, bundleID: String, contextMenu: ContextMenu) async -> (SettingsItem, URL)? {
+    let library = VideoLibrary.shared
+    let pair = record.flatMap { PairRendition($0, library: library)?.pair }
+    let name = record?.name ?? entry.name
+    let videoURL = library.videoURL(for: entry)
+    let choiceID = ChoiceID(
+        id: entry.id,
+        descriptor: ChoiceIDDescriptor(
+            provider: ChoiceProviderID(rawValue: bundleID),
+            identifier: entry.id,
+            files: [videoURL],
+            configuration: Data(entry.id.utf8),
+        ),
+    )
+
+    // Generate thumbnail — skip entry if extraction fails
+    guard var thumbnailURL = await library.generateThumbnail(for: entry) else {
+        return nil
+    }
+    if let pair, let other = library.entry(for: pair.counterpart),
+       let otherURL = await library.generateThumbnail(for: other) {
+        thumbnailURL = pairThumbnail(pair, owner: thumbnailURL, counterpart: otherURL) ?? thumbnailURL
+    }
+
+    let choiceDescriptor = ChoiceDescriptor(
+        id: choiceID,
+        provider: ChoiceProviderID(rawValue: bundleID),
+        identifier: entry.id,
+        name: name,
+        localizedDescription: pair == nil ? name : "",
+        thumbnail: .image(url: thumbnailURL),
+        isDownloaded: true,
+        options: pair == nil ? [] : [appearancePicker(name: name)],
+    )
+
+    let item = SettingsItem(
+        id: choiceID,
+        localizedName: name,
+        thumbnail: .image(url: thumbnailURL),
+        choice: choiceDescriptor,
+        contentBadge: pair == nil ? .video : .dynamic,
+        showInTopLevel: true,
+        sortOrder: 0,
+        disposability: .none,
+        contextMenu: contextMenu,
+    )
+    return (item, thumbnailURL)
+}
+
+private func appearancePicker(name: String) -> WallpaperOption {
+    .picker(MenuPickerOption(
+        id: PairAppearanceMode.optionID,
+        localizedLabel: name,
+        defaultValueID: PairAppearanceMode.automatic.rawValue,
+        items: PairAppearanceMode.allCases.map { mode in
+            let title = switch mode {
+            case .automatic: String(localized: "Automatic")
+            case .light: String(localized: "Light")
+            case .dark: String(localized: "Dark")
+            }
+            return .item(MenuPickerItem(id: mode.rawValue, localizedName: title, isDownloaded: true))
+        },
+    ))
+}
+
+private func pairThumbnail(_ pair: AppearancePair, owner: URL, counterpart: URL) -> URL? {
+    let light = pair.swapped ? counterpart : owner
+    let dark = pair.swapped ? owner : counterpart
+    guard let a = FileIdentity(of: light), let b = FileIdentity(of: dark) else { return nil }
+    let url = URL.cachesDirectory.appendingPathComponent(
+        "pair-\(pair.light)-\(a.inode)-\(a.modified.timeIntervalSinceReferenceDate)-\(pair.dark)-\(b.inode)-\(b.modified.timeIntervalSinceReferenceDate).jpg",
+    )
+    if FileManager.default.fileExists(atPath: url.path) {
+        return url
+    }
+    guard let lightSource = CGImageSourceCreateWithURL(light as CFURL, nil),
+          let darkSource = CGImageSourceCreateWithURL(dark as CFURL, nil),
+          let left = CGImageSourceCreateImageAtIndex(lightSource, 0, nil),
+          let right = CGImageSourceCreateImageAtIndex(darkSource, 0, nil),
+          let context = CGContext(
+              data: nil,
+              width: left.width,
+              height: left.height,
+              bitsPerComponent: 8,
+              bytesPerRow: 0,
+              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+              bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue,
+          )
+    else { return nil }
+    let frame = CGRect(x: 0, y: 0, width: left.width, height: left.height)
+    context.draw(left, in: frame)
+    context.clip(to: CGRect(x: frame.midX, y: 0, width: frame.width - frame.midX, height: frame.height))
+    context.draw(right, in: frame)
+    guard let image = context.makeImage(),
+          let jpeg = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else { return nil }
+    do {
+        try jpeg.write(to: url, options: .atomic)
+        return url
+    } catch {
+        extensionLog("[Settings] Pair thumbnail write failed: \(error)")
+        return nil
+    }
 }
 
 /// Item ids for the shuffle frequency picker. The ids and their interpretation are

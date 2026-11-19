@@ -68,6 +68,10 @@ enum SettingsPush {
             extensionLog("[SettingsPush] Build failed — nothing pushed")
             return
         }
+        broadcast(models)
+    }
+
+    private static func broadcast(_ models: AnyObject) {
         let proxies = liveProxies()
         guard !proxies.isEmpty else {
             extensionLog("[SettingsPush] No live host connection — cache refreshes on the next query")
