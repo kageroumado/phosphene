@@ -10,6 +10,7 @@ struct LibrarySidebar: View {
 
     struct Counts {
         var all = 0
+        var pairs = 0
         var inUse = 0
         var fromWorkshop = 0
     }
@@ -22,6 +23,9 @@ struct LibrarySidebar: View {
         })) {
             Section("Library") {
                 row(Text("All Videos"), symbol: "film.stack", count: counts.all, tag: .allVideos)
+                Label("Light/Dark Pairs", image: .lightDarkPair)
+                    .badge(counts.pairs)
+                    .tag(LibrarySection.lightDarkPairs)
                 row(Text("In Use"), symbol: "play.rectangle", count: counts.inUse, tag: .inUse)
                 row(Text("From Workshop"), symbol: "wand.and.sparkles", count: counts.fromWorkshop, tag: .fromWorkshop)
             }

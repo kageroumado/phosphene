@@ -12,13 +12,17 @@ final class PhospheneManager {
 
     // MARK: - Optimization State
 
-    private(set) var isOptimizing = false
     private(set) var optimizationProgress: Double = 0
-    private(set) var optimizationTierLabel = ""
     private(set) var optimizingEntryID: String?
+    private(set) var isCancellingOptimization = false
     var showOptimizationAlert = false
     var optimizationAlertMessage = ""
+    @ObservationIgnored private var optimizationJobID: UUID?
     @ObservationIgnored private var optimizationTask: Task<Void, Never>?
+
+    var isOptimizing: Bool {
+        optimizingEntryID != nil
+    }
 
     // MARK: - Preferences
 
@@ -86,6 +90,11 @@ final class PhospheneManager {
         // its own, so the setting was never read.
         defaults.removeObject(forKey: "resumeLastWallpaper")
 
+        if !defaults.bool(forKey: "didPublishNonPurgeableChoices") {
+            VideoDeploymentService.notifyExtensionLibraryChanged()
+            defaults.set(true, forKey: "didPublishNonPurgeableChoices")
+        }
+
         // Migrate entries imported before metadata probing was added
         migrateEntryMetadata()
 
@@ -131,70 +140,60 @@ final class PhospheneManager {
         }
     }
 
-    func removeVideo(entryID: String) {
-        VideoDeploymentService.removeVideo(entryID: entryID)
-    }
-
-    func optimizeVideo(entryID: String, preset: OptimizationPreset) {
-        guard !isOptimizing else { return }
-        isOptimizing = true
-        optimizingEntryID = entryID
-        optimizationProgress = 0
-
-        let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID })
-        guard let entry else {
-            isOptimizing = false
-            optimizingEntryID = nil
-            return
-        }
-
-        let sourceURL = VideoDeploymentService.videoURL(for: entry)
-        guard entry.sourceIsHDR == false, let identity = FileIdentity(of: sourceURL) else {
-            isOptimizing = false
-            optimizingEntryID = nil
-            optimizationAlertMessage = VideoOptimizationService.OptimizationError.unsupportedDynamicRange.localizedDescription
+    func optimize(_ target: VideoOptimizationTarget, preset: OptimizationPreset, convertToSDR: Bool) {
+        guard !isOptimizing, target.tiers.isEmpty else { return }
+        if let error = target.eligibilityError {
+            optimizationAlertMessage = error.localizedDescription
             showOptimizationAlert = true
             return
         }
-        let target = preset.targetResolution(source: entry.resolution)
 
-        optimizationTask = Task.detached {
-            do {
-                let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
-                defer { try? FileManager.default.removeItem(at: directory) }
-                let variants = try await VideoOptimizationService.createVariants(
-                    sourceURL: sourceURL,
-                    targetResolution: target,
-                    outputDirectory: directory,
-                    progress: { @MainActor in self.optimizationProgress = $0 },
-                )
-                try await VideoDeploymentService.deployVariants(entryID: entryID, source: identity, variants: variants)
-            } catch is CancellationError {
-                // user cancelled
-            } catch {
-                await MainActor.run {
-                    self.optimizationAlertMessage = error.localizedDescription
-                    self.showOptimizationAlert = true
-                }
+        let entryID = target.id
+        let jobID = UUID()
+        optimizationJobID = jobID
+        optimizationProgress = 0
+        optimizingEntryID = entryID
+
+        optimizationTask = Task {
+            defer {
+                assert(optimizationJobID == jobID && optimizingEntryID == entryID)
+                optimizationTask = nil
+                optimizationJobID = nil
+                optimizingEntryID = nil
+                isCancellingOptimization = false
             }
-
-            await MainActor.run {
-                self.isOptimizing = false
-                self.optimizingEntryID = nil
+            do {
+                try Task.checkCancellation()
+                try await target.optimize(preset: preset, convertToSDR: convertToSDR && target.entry.sourceIsHDR == true) { progress in
+                    guard self.optimizationJobID == jobID, !self.isCancellingOptimization else { return }
+                    self.optimizationProgress = max(self.optimizationProgress, progress)
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                optimizationAlertMessage = error.localizedDescription
+                showOptimizationAlert = true
             }
         }
     }
 
-    func removeVariants(entryID: String) {
-        VideoDeploymentService.removeVariants(entryID: entryID)
+    func removeVariants(for target: VideoOptimizationTarget) {
+        guard optimizingEntryID != target.id else { return }
+        do {
+            if let pair = target.pair?.saved {
+                try VideoDeploymentService.removePairVariants(pair)
+            } else {
+                try VideoDeploymentService.removeVariants(entryID: target.id)
+            }
+        } catch {
+            optimizationAlertMessage = error.localizedDescription
+            showOptimizationAlert = true
+        }
     }
 
-    func cancelOptimization() {
-        optimizationTask?.cancel()
-        optimizationTask = nil
-        isOptimizing = false
-        optimizingEntryID = nil
+    func cancelOptimization(entryID: String) {
+        guard optimizingEntryID == entryID, let optimizationTask, !isCancellingOptimization else { return }
+        isCancellingOptimization = true
+        optimizationTask.cancel()
     }
 
     // MARK: - Private

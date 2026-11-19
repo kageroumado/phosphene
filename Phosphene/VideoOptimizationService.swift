@@ -30,16 +30,6 @@ enum OptimizationPreset: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Short description shown in the inspector below the preset picker.
-    var description: String {
-        switch self {
-        case .batterySaver:
-            String(localized: "Downscales to 1080p with reduced frame rate tiers. Best for laptops on battery.")
-        case .balanced, .quality:
-            String(localized: "Keeps original resolution, creates lower frame rate tiers for power-saving modes.")
-        }
-    }
-
     func targetResolution(source: CGSize) -> CGSize {
         switch self {
         case .batterySaver:

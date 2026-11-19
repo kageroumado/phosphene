@@ -54,7 +54,6 @@ enum WallpaperStoreParser {
         provider: String,
     ) -> [ParsedSelection] {
         var allSpacesSelections: [ParsedSelection] = []
-        var perSpaceSelections: [ParsedSelection] = []
         var displaysWithOwnRecord = Set<String>()
 
         // Displays → {uuid} → Desktop → Content → Choices — one choice for every
@@ -82,36 +81,8 @@ enum WallpaperStoreParser {
             }
         }
 
-        // Spaces → {spaceUUID} → Displays → {displayUUID} → Desktop → ... — a choice
-        // scoped to one Space on one display. With separate Spaces per display the
-        // store keeps records for displays that don't own the Space; those never
-        // show, so only the owning display's record counts.
-        if let spaces = plist["Spaces"] as? [String: Any] {
-            for (spaceUUID, spaceValue) in spaces {
-                guard let space = spaceValue as? [String: Any],
-                      let spaceInfo = spaceMap[spaceUUID],
-                      let perDisplays = space["Displays"] as? [String: Any] else { continue }
-                for (displayUUID, displayValue) in perDisplays {
-                    if let owner = spaceInfo.displayUUID, owner != displayUUID {
-                        continue
-                    }
-                    guard let display = displayValue as? [String: Any],
-                          let videoID = videoID(in: display, provider: provider),
-                          let info = displayMap[displayUUID] else { continue }
-                    perSpaceSelections.append(ParsedSelection(
-                        id: "\(displayUUID):\(spaceUUID)",
-                        videoID: videoID,
-                        displayUUID: displayUUID,
-                        displayName: info.name,
-                        displayID: info.displayID,
-                        spaceUUID: spaceUUID,
-                        spaceName: spaceInfo.name,
-                    ))
-                }
-            }
-        }
-
         // Per-space-per-display wins over all-spaces for the same display.
+        let perSpaceSelections = parseSpaceSelections(plist: plist, displayMap: displayMap, spaceMap: spaceMap, provider: provider)
         var coveredDisplays = Set(perSpaceSelections.map(\.displayUUID))
         var result = perSpaceSelections
         for sel in allSpacesSelections where !coveredDisplays.contains(sel.displayUUID) {
@@ -140,6 +111,44 @@ enum WallpaperStoreParser {
         }
 
         return result.sorted { $0.displayName < $1.displayName }
+    }
+
+    private static func parseSpaceSelections(
+        plist: [String: Any],
+        displayMap: [String: DisplayInfo],
+        spaceMap: [String: SpaceInfo],
+        provider: String,
+    ) -> [ParsedSelection] {
+        var perSpaceSelections: [ParsedSelection] = []
+        // Spaces → {spaceUUID} → Displays → {displayUUID} → Desktop → ... — a choice
+        // scoped to one Space on one display. With separate Spaces per display the
+        // store keeps records for displays that don't own the Space; those never
+        // show, so only the owning display's record counts.
+        if let spaces = plist["Spaces"] as? [String: Any] {
+            for (spaceUUID, spaceValue) in spaces {
+                guard let space = spaceValue as? [String: Any],
+                      let spaceInfo = spaceMap[spaceUUID],
+                      let perDisplays = space["Displays"] as? [String: Any] else { continue }
+                for (displayUUID, displayValue) in perDisplays {
+                    if let owner = spaceInfo.displayUUID, owner != displayUUID {
+                        continue
+                    }
+                    guard let display = displayValue as? [String: Any],
+                          let videoID = videoID(in: display, provider: provider),
+                          let info = displayMap[displayUUID] else { continue }
+                    perSpaceSelections.append(ParsedSelection(
+                        id: "\(displayUUID):\(spaceUUID)",
+                        videoID: videoID,
+                        displayUUID: displayUUID,
+                        displayName: info.name,
+                        displayID: info.displayID,
+                        spaceUUID: spaceUUID,
+                        spaceName: spaceInfo.name,
+                    ))
+                }
+            }
+        }
+        return perSpaceSelections
     }
 
     /// The video ID (a choice's `Configuration` payload) for the first desktop

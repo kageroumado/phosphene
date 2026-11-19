@@ -2,32 +2,91 @@ import SwiftUI
 
 // MARK: - Thumbnails
 
-/// Thumbnails shared by every row and tile, so scrolling a long table never decodes
-/// the same file twice. A file is decoded as a thumbnail of ``maxPixels`` a side,
-/// whatever size it claims, off the main actor.
+/// Stores bounded, decoded thumbnails shared by the library and popover.
 nonisolated enum ThumbnailCache {
-    static let maxPixels = 720
-    /// NSCache is thread-safe: filled from the decode pool, read on the main actor.
-    private nonisolated(unsafe) static let cache: NSCache<NSURL, NSImage> = {
-        let cache = NSCache<NSURL, NSImage>()
+    private static let maxPixels = 720
+    private static let decoder = Decoder()
+    private nonisolated(unsafe) static let cache: NSCache<NSURL, Thumbnail> = {
+        let cache = NSCache<NSURL, Thumbnail>()
         cache.countLimit = 400
+        cache.totalCostLimit = 64 * 1_024 * 1_024
         return cache
     }()
 
-    /// The thumbnail if it was decoded before, for a first draw without a wait.
-    static func cached(_ url: URL?) -> NSImage? {
-        url.flatMap { unsafe cache.object(forKey: $0 as NSURL) }
+    private final class Thumbnail {
+        let identity: FileIdentity
+        let image: NSImage
+
+        init(identity: FileIdentity, image: NSImage) {
+            self.identity = identity
+            self.image = image
+        }
     }
 
-    @concurrent
+    /// The thumbnail if it was decoded before, for a first draw without a wait.
+    static func cached(_ url: URL?) -> NSImage? {
+        url.flatMap { unsafe cache.object(forKey: $0 as NSURL)?.image }
+    }
+
     static func image(at url: URL?) async -> NSImage? {
         guard let url else { return nil }
-        if let cached = unsafe cache.object(forKey: url as NSURL) {
-            return cached
+        return await decoder.image(at: url)
+    }
+
+    /// Serializing misses lets simultaneous views share the same decode.
+    private actor Decoder {
+        func image(at url: URL) -> NSImage? {
+            guard !Task.isCancelled, let identity = FileIdentity(of: url) else { return nil }
+            let key = url as NSURL
+            if let thumbnail = unsafe cache.object(forKey: key), thumbnail.identity == identity {
+                return thumbnail.image
+            }
+            guard let image = PreviewImage.thumbnail(at: url, maxPixels: maxPixels) else { return nil }
+            let bitmap = image.representations.first as? NSBitmapImageRep
+            let cost = bitmap.map { $0.bytesPerRow * $0.pixelsHigh } ?? Int(image.size.width * image.size.height) * 4
+            unsafe cache.setObject(Thumbnail(identity: identity, image: image), forKey: key, cost: cost)
+            return image
         }
-        guard let image = PreviewImage.thumbnail(at: url, maxPixels: maxPixels) else { return nil }
-        unsafe cache.setObject(image, forKey: url as NSURL)
-        return image
+    }
+}
+
+/// Reads the same preview JPEG that Wallpaper Settings uses.
+struct VideoThumbnail<Content: View>: View {
+    let videoID: String?
+    var legacyVideoURL: URL?
+    @ViewBuilder let content: (NSImage?) -> Content
+
+    @State private var image: NSImage?
+    @State private var loadedID: String?
+    @State private var revision = 0
+
+    private struct Request: Equatable {
+        let videoID: String?
+        let legacyVideoURL: URL?
+        let revision: Int
+    }
+
+    var body: some View {
+        let url = videoID.map(VideoDeploymentService.thumbnailURL(for:))
+        content(loadedID == videoID ? image : ThumbnailCache.cached(url))
+            .task(id: Request(videoID: videoID, legacyVideoURL: legacyVideoURL, revision: revision)) {
+                guard let videoID else { return }
+                var image = await ThumbnailCache.image(at: url)
+                if image == nil, let legacyVideoURL, !Task.isCancelled {
+                    await VideoDeploymentService.generateThumbnail(for: legacyVideoURL, in: legacyVideoURL.deletingLastPathComponent())
+                    image = await ThumbnailCache.image(at: url)
+                }
+                guard !Task.isCancelled else { return }
+                loadedID = videoID
+                self.image = image
+            }
+            .onReceive(NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification)) { _ in
+                revision += 1
+            }
+            .onDisappear {
+                loadedID = nil
+                image = nil
+            }
     }
 }
 
@@ -39,6 +98,19 @@ struct RowThumbnail: View {
     @State private var image: NSImage?
 
     var body: some View {
+        Self.tile(image: image, placeholder: placeholder)
+            .task(id: url) {
+                image = ThumbnailCache.cached(url)
+                if image == nil {
+                    let loaded = await ThumbnailCache.image(at: url)
+                    guard !Task.isCancelled else { return }
+                    image = loaded
+                }
+            }
+            .onDisappear { image = nil }
+    }
+
+    static func tile(image: NSImage?, placeholder: String) -> some View {
         Color.clear
             .overlay {
                 if let image {
@@ -57,18 +129,72 @@ struct RowThumbnail: View {
             }
             .frame(width: 48, height: 27)
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .task(id: url) {
-                image = ThumbnailCache.cached(url)
-                if image == nil {
-                    image = await ThumbnailCache.image(at: url)
+    }
+}
+
+struct BrowserHoverPreview<Content: View>: View {
+    @ViewBuilder let content: (_ isHovered: Bool, _ isPlaying: Bool) -> Content
+
+    @State private var isHovered = false
+    @State private var isPlaying = false
+    @Environment(\.appearsActive) private var appearsActive
+
+    var body: some View {
+        content(isHovered, isPlaying)
+            .contentShape(Rectangle())
+            .onHover(perform: updateHover)
+            .onScrollVisibilityChange(threshold: 0.01) { visible in
+                if !visible {
+                    updateHover(false)
                 }
             }
+            .task(id: isHovered) {
+                guard isHovered else { return }
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled, isHovered else { return }
+                isPlaying = true
+            }
+            .onDisappear { updateHover(false) }
+            .onChange(of: appearsActive) {
+                if !appearsActive {
+                    updateHover(false)
+                }
+            }
+    }
+
+    private func updateHover(_ hovering: Bool) {
+        isHovered = hovering
+        if !hovering {
+            isPlaying = false
+        }
     }
 }
 
 // MARK: - Videos
 
-struct VideoBrowser: View {
+struct VideoEntryTitle: View {
+    let name: String
+    let isPair: Bool
+    @ScaledMetric(relativeTo: .callout) private var badgeSize: CGFloat = 13
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if isPair {
+                Image(.lightDarkPair)
+                    .resizable()
+                    .frame(width: badgeSize, height: badgeSize)
+                    .foregroundStyle(.secondary)
+                    .help("Light/Dark Pair")
+                    .accessibilityHidden(true)
+            }
+            Text(verbatim: name)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(isPair ? Text("Light/Dark Pair") : Text(verbatim: ""))
+    }
+}
+
+struct VideoBrowser<ItemMenu: View>: View {
     let rows: [VideoRow]
     @Binding var selection: Set<String>
     @Binding var sortOrder: [KeyPathComparator<VideoRow>]
@@ -76,6 +202,7 @@ struct VideoBrowser: View {
     let iconSize: Double
     @Bindable var manager: PhospheneManager
     let onDelete: (Set<String>) -> Void
+    @ViewBuilder let itemMenu: (Set<String>) -> ItemMenu
 
     @State private var anchor: String?
 
@@ -90,8 +217,18 @@ struct VideoBrowser: View {
         Table(rows, selection: $selection, sortOrder: $sortOrder) {
             TableColumn("Name", value: \.name) { row in
                 HStack(spacing: 8) {
-                    RowThumbnail(url: VideoDeploymentService.thumbnailURL(for: row.id), placeholder: "film")
-                    Text(row.name)
+                    if let pair = row.pair, let saved = pair.saved {
+                        BrowserHoverPreview { _, isPlaying in
+                            VideoPairPreview(selection: pair, swapped: saved.swapped, isPlaying: isPlaying)
+                                .frame(width: 48, height: 27)
+                                .clipShape(.rect(cornerRadius: 4))
+                        }
+                    } else {
+                        VideoThumbnail(videoID: row.id) { image in
+                            RowThumbnail.tile(image: image, placeholder: "film")
+                        }
+                    }
+                    VideoEntryTitle(name: row.name, isPair: row.pair != nil)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -132,7 +269,9 @@ struct VideoBrowser: View {
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .contextMenu(forSelectionType: String.self) { ids in
-            contextMenu(for: ids)
+            if !ids.isEmpty {
+                itemMenu(ids)
+            }
         }
         .onDeleteCommand { onDelete(selection) }
     }
@@ -140,22 +279,23 @@ struct VideoBrowser: View {
     private var grid: some View {
         ScrollView {
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: iconSize), spacing: 18, alignment: .top)],
+                columns: [GridItem(.adaptive(minimum: iconSize, maximum: iconSize), spacing: 18, alignment: .top)],
                 alignment: .leading,
                 spacing: 22,
             ) {
                 ForEach(rows) { row in
+                    let ids: Set<String> = selection.contains(row.id) ? selection : [row.id]
                     VideoCardView(
-                        entry: row.entry,
+                        entry: row.entry, pair: row.pair,
                         isSelected: selection.contains(row.id),
                         isInUse: row.isInUse,
                         isOptimizing: manager.isOptimizing && manager.optimizingEntryID == row.id,
                         optimizationProgress: manager.optimizationProgress,
-                        onSelect: {
-                            GridSelection.click(row.id, in: rows.map(\.id), selection: &selection, anchor: &anchor)
+                        onSelect: { modifiers in
+                            GridSelection.click(row.id, in: rows.map(\.id), selection: &selection, anchor: &anchor, modifiers: modifiers)
                         },
-                        onDelete: { onDelete(selection.contains(row.id) ? selection : [row.id]) },
                     )
+                    .contextMenu { itemMenu(ids) }
                 }
             }
             .padding(20)
@@ -168,20 +308,6 @@ struct VideoBrowser: View {
         }
         .onDeleteCommand { onDelete(selection) }
     }
-
-    @ViewBuilder
-    private func contextMenu(for ids: Set<String>) -> some View {
-        if !ids.isEmpty {
-            Button("Show in Finder") {
-                let urls = rows.filter { ids.contains($0.id) }.map { VideoDeploymentService.videoURL(for: $0.entry) }
-                NSWorkspace.shared.activateFileViewerSelecting(urls)
-            }
-            Divider()
-            Button(ids.count == 1 ? "Delete…" : "Delete \(ids.count) Videos…", role: .destructive) {
-                onDelete(ids)
-            }
-        }
-    }
 }
 
 // MARK: - Wallpaper Engine
@@ -192,6 +318,7 @@ struct WorkshopBrowser: View {
     @Binding var sortOrder: [KeyPathComparator<WorkshopRow>]
     let mode: LibraryViewMode
     let iconSize: Double
+    let showVideo: (String) -> Void
 
     @State private var anchor: String?
 
@@ -249,7 +376,7 @@ struct WorkshopBrowser: View {
     private var grid: some View {
         ScrollView {
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: iconSize), spacing: 18, alignment: .top)],
+                columns: [GridItem(.adaptive(minimum: iconSize, maximum: iconSize), spacing: 18, alignment: .top)],
                 alignment: .leading,
                 spacing: 22,
             ) {
@@ -278,18 +405,22 @@ struct WorkshopBrowser: View {
 
     @ViewBuilder
     private func contextMenu(for ids: Set<String>) -> some View {
-        let renderable = ids.filter { library.assessments[$0]?.isRenderable ?? false }
+        let renderable = ids.filter {
+            library.assessments[$0]?.isRenderable == true && library.current != $0 && !library.queue.contains($0)
+        }
         if !renderable.isEmpty {
-            Button(renderable.count == 1 ? "Make Video" : "Make \(renderable.count) Videos") {
+            let title: LocalizedStringKey = if renderable.count > 1 {
+                "Make \(renderable.count) Videos"
+            } else if let id = renderable.first, library.records[id] != nil {
+                "Make Video Again"
+            } else {
+                "Make Video"
+            }
+            Button(title) {
                 library.makeVideos(Array(renderable))
             }
             Divider()
         }
-        if ids.count == 1, let id = ids.first, let item = library.item(id) {
-            if let page = item.workshopPageURL {
-                Button("Open Workshop Page") { NSWorkspace.shared.open(page) }
-            }
-            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.folder]) }
-        }
+        WorkshopItemActions(ids: ids, library: library, showVideo: showVideo)
     }
 }
