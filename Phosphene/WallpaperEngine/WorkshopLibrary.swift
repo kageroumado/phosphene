@@ -231,8 +231,7 @@ final class WorkshopLibrary {
         panel.allowsMultipleSelection = false
         panel.message = String(localized: "Choose a Steam folder, or a folder of Wallpaper Engine wallpapers.")
         panel.prompt = String(localized: "Add Folder")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard !manualFolders.contains(url) else { return }
+        guard panel.runModal() == .OK, let url = panel.url, !manualFolders.contains(url) else { return }
         manualFolders.append(url)
         UserDefaults.standard.set(manualFolders.map(\.path), forKey: Keys.folders)
         refresh()

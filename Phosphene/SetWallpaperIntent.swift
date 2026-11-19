@@ -33,7 +33,11 @@ struct SetWallpaperIntent: AppIntent {
         let id: String?
         if let url = video.fileURL {
             let accessing = url.startAccessingSecurityScopedResource()
-            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            defer {
+                if accessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
             id = await VideoDeploymentService.deployVideo(url: url)
         } else {
             // A file shared as data (from another action or app) is written out under its
