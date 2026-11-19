@@ -70,7 +70,7 @@ open -n "$APP" --args -PHOSPHENE_OPEN_LIBRARY YES
 
 The extension's container refuses every process not signed by its team, terminals included; a
 Debug build signed that way copies the extension's log and a listing of the library to
-`/tmp/phosphene-diagnostics` when launched with `--args -PHOSPHENE_EXPORT_DIAGNOSTICS YES`.
+`$TMPDIR/phosphene-diagnostics` when launched with `--args -PHOSPHENE_EXPORT_DIAGNOSTICS YES`.
 
 ## Style
 

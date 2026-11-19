@@ -188,12 +188,32 @@ final class WallpaperPrefsService {
 
     private func restartStuckAgent() {
         let now = Date()
+        guard Self.extensionStampedRecovery(before: now) else {
+            NSLog("[Phosphene] agentStuck signal ignored (no fresh recovery stamp from the extension)")
+            return
+        }
         guard now.timeIntervalSince(lastAgentKill) > 15 else {
             NSLog("[Phosphene] agentStuck signal ignored (killed agent \(Int(now.timeIntervalSince(lastAgentKill)))s ago)")
             return
         }
         lastAgentKill = now
         killWallpaperAgent(reason: "spiral-of-death detected by extension")
+    }
+
+    /// Seconds a recovery stamp stays good for; the extension writes it immediately before signaling.
+    private static let recoveryStampWindow: TimeInterval = 10
+
+    /// Whether the extension itself asked for this restart. A Darwin notification names no sender
+    /// and any process on the Mac can post one, so the notification alone proves nothing. The
+    /// extension writes the time to `phosphene-last-recovery` in its container just before it
+    /// signals, and macOS lets only this team's code write there.
+    private static func extensionStampedRecovery(before now: Date) -> Bool {
+        let stampURL = extensionDocsURL.appendingPathComponent("phosphene-last-recovery")
+        guard let data = try? Data(contentsOf: stampURL),
+              let text = String(data: data, encoding: .utf8),
+              let stamp = Double(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        else { return false }
+        return (-1 ... recoveryStampWindow).contains(now.timeIntervalSince1970 - stamp)
     }
 
     /// Manual restart from the menu bar — user-initiated, so no cooldown.

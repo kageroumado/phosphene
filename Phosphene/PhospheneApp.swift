@@ -25,7 +25,9 @@ struct PhospheneApp: App {
             if UserDefaults.standard.bool(forKey: "PHOSPHENE_EXPORT_DIAGNOSTICS") {
                 let documents = FileManager.default.homeDirectoryForCurrentUser
                     .appendingPathComponent("Library/Containers/glass.kagerou.phosphene.extension/Data/Documents")
-                let out = URL(fileURLWithPath: "/tmp/phosphene-diagnostics")
+                // The user's own temporary folder: `/tmp` is shared, and a fixed name there can
+                // be planted as a link by another account before this runs.
+                let out = FileManager.default.temporaryDirectory.appendingPathComponent("phosphene-diagnostics")
                 try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
                 for name in ["extension.log", "extension.log.1"] {
                     try? FileManager.default.removeItem(at: out.appendingPathComponent(name))
