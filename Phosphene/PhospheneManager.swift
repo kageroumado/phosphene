@@ -152,7 +152,7 @@ final class PhospheneManager {
         guard entry.sourceIsHDR == false, let identity = FileIdentity(of: sourceURL) else {
             isOptimizing = false
             optimizingEntryID = nil
-            optimizationAlertMessage = VideoOptimizationService.OptimizationError.requiresSDR.localizedDescription
+            optimizationAlertMessage = VideoOptimizationService.OptimizationError.unsupportedDynamicRange.localizedDescription
             showOptimizationAlert = true
             return
         }
@@ -160,16 +160,15 @@ final class PhospheneManager {
 
         optimizationTask = Task.detached {
             do {
+                let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+                defer { try? FileManager.default.removeItem(at: directory) }
                 let variants = try await VideoOptimizationService.createVariants(
                     sourceURL: sourceURL,
                     targetResolution: target,
+                    outputDirectory: directory,
                     progress: { @MainActor in self.optimizationProgress = $0 },
                 )
-                defer {
-                    for (url, _) in variants {
-                        try? FileManager.default.removeItem(at: url)
-                    }
-                }
                 try await VideoDeploymentService.deployVariants(entryID: entryID, source: identity, variants: variants)
             } catch is CancellationError {
                 // user cancelled

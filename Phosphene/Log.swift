@@ -1,6 +1,6 @@
 import os
 
-enum Log {
+nonisolated enum Log {
     static let general = Logger(subsystem: "glass.kagerou.phosphene", category: "General")
     static let video = Logger(subsystem: "glass.kagerou.phosphene", category: "Video")
     static let storage = Logger(subsystem: "glass.kagerou.phosphene", category: "Storage")

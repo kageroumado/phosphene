@@ -179,7 +179,7 @@ enum VideoDeploymentService {
         var metadata = try JSONDecoder().decode(EntryInfo.self, from: Data(contentsOf: metadataURL))
         guard metadata.id == entryID, metadata.filename == source.basename, metadata.sourceIsHDR == false,
               FileIdentity(of: dir.appendingPathComponent(metadata.filename)) == source else {
-            throw VideoOptimizationService.OptimizationError.requiresSDR
+            throw VideoOptimizationService.OptimizationError.unsupportedDynamicRange
         }
         for (url, variant) in variants {
             let target = dir.appendingPathComponent(variant.filename)
