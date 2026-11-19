@@ -432,6 +432,14 @@ final class WallpaperPrefsService {
     // MARK: - Display Change Observer
 
     @ObservationIgnored private var displayReconfigToken: (any NSObjectProtocol)?
+    @ObservationIgnored private var knownDisplayIDs: Set<UInt32> = WallpaperPrefsService.connectedDisplayIDs()
+    @ObservationIgnored private var displaySetRestart: DispatchWorkItem?
+
+    private static func connectedDisplayIDs() -> Set<UInt32> {
+        Set(NSScreen.screens.compactMap {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+        })
+    }
 
     private func observeDisplayChanges() {
         displayReconfigToken = NotificationCenter.default.addObserver(
@@ -441,8 +449,34 @@ final class WallpaperPrefsService {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.checkSystemWallpaper()
+                self?.restartAgentIfDisplaySetChanged()
             }
         }
+    }
+
+    /// When a display is connected or disconnected (a laptop lid closing on an external
+    /// monitor, a dock unplugged), WallpaperAgent keeps the surfaces it already has and
+    /// does not re-read the per-display choices in the wallpaper store, so a display can
+    /// keep showing another display's video until the agent restarts. Restart it once the
+    /// reconfiguration has settled, only when the connected set actually changed and a
+    /// Phosphene video is in use. (`selections` covers connected displays only, so after a
+    /// lid closes it can no longer show that another display had a different video.)
+    private func restartAgentIfDisplaySetChanged() {
+        let current = Self.connectedDisplayIDs()
+        guard current != knownDisplayIDs else { return }
+        knownDisplayIDs = current
+        displaySetRestart?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                guard !self.selections.isEmpty else { return }
+                guard Date().timeIntervalSince(self.lastAgentKill) > 15 else { return }
+                self.lastAgentKill = Date()
+                self.killWallpaperAgent(reason: "connected displays changed")
+            }
+        }
+        displaySetRestart = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
     }
 
     // MARK: - Space Change Observer
