@@ -9,6 +9,7 @@ import Testing
 struct WallpaperStoreParserTests {
     typealias Parser = WallpaperStoreParser
     typealias DisplayInfo = WallpaperStoreParser.DisplayInfo
+    typealias SpaceInfo = WallpaperStoreParser.SpaceInfo
 
     private static let ours = "glass.kagerou.phosphene.extension"
     private static let foreign = "com.apple.wallpaper.choice.sequoia"
@@ -53,7 +54,7 @@ struct WallpaperStoreParserTests {
     private func parse(
         _ plist: [String: Any],
         displayMap: [String: DisplayInfo]? = nil,
-        spaceMap: [String: String] = [:],
+        spaceMap: [String: SpaceInfo] = [:],
     ) -> [Parser.ParsedSelection] {
         Parser.parseSelections(
             plist: plist,
@@ -174,11 +175,62 @@ struct WallpaperStoreParserTests {
             "Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-all")])],
             "Spaces": [space: ["Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-space")])]]],
         ]
-        let result = parse(plist, displayMap: [Self.displayA: DisplayInfo(displayID: 1, name: "Display A")], spaceMap: [space: "Space 1"])
+        let result = parse(plist, displayMap: [Self.displayA: DisplayInfo(displayID: 1, name: "Display A")], spaceMap: [space: SpaceInfo(name: "Space 1", displayUUID: Self.displayA)])
         #expect(result.count == 1)
         #expect(result.first?.videoID == "vid-space")
         #expect(result.first?.spaceUUID == space)
         #expect(result.first?.spaceName == "Space 1")
+    }
+
+    /// Issue #40: with separate Spaces per display, the store keeps records for
+    /// displays that don't own the Space. The primary display's Space has the
+    /// empty UUID, and both Spaces are labeled "Space 1".
+    @Test
+    func `per space record on a display that does not own the space is skipped`() {
+        let sideSpace = "SPACE-SIDE"
+        let plist: [String: Any] = [
+            "Spaces": [
+                "": ["Displays": [
+                    Self.displayA: linkedRecord([choice(provider: Self.ours, videoID: "vid-main")]),
+                    Self.displayB: linkedRecord([choice(provider: Self.ours, videoID: "vid-side")]),
+                ]],
+                sideSpace: ["Displays": [
+                    Self.displayA: linkedRecord([choice(provider: Self.ours, videoID: "vid-side")]),
+                    Self.displayB: linkedRecord([choice(provider: Self.ours, videoID: "vid-side")]),
+                ]],
+            ],
+        ]
+        let spaceMap = [
+            "": SpaceInfo(name: "Space 1", displayUUID: Self.displayA),
+            sideSpace: SpaceInfo(name: "Space 1", displayUUID: Self.displayB),
+        ]
+        let result = parse(plist, spaceMap: spaceMap)
+        #expect(result.map(\.id) == ["\(Self.displayA):", "\(Self.displayB):\(sideSpace)"])
+        #expect(result.map(\.videoID) == ["vid-main", "vid-side"])
+    }
+
+    @Test
+    func `space spanning every display keeps each display's record`() {
+        let space = "SPACE-SHARED"
+        let plist: [String: Any] = ["Spaces": [space: ["Displays": [
+            Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-A")]),
+            Self.displayB: desktopRecord([choice(provider: Self.ours, videoID: "vid-B")]),
+        ]]]]
+        let result = parse(plist, spaceMap: [space: SpaceInfo(name: "Space 1", displayUUID: nil)])
+        #expect(result.map(\.videoID) == ["vid-A", "vid-B"])
+    }
+
+    @Test
+    func `distinct spaces on one display are each listed`() {
+        let plist: [String: Any] = ["Spaces": [
+            "SPACE-1": ["Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-1")])]],
+            "SPACE-2": ["Displays": [Self.displayA: desktopRecord([choice(provider: Self.ours, videoID: "vid-2")])]],
+        ]]
+        let spaceMap = [
+            "SPACE-1": SpaceInfo(name: "Space 1", displayUUID: Self.displayA),
+            "SPACE-2": SpaceInfo(name: "Space 2", displayUUID: Self.displayA),
+        ]
+        #expect(Set(parse(plist, spaceMap: spaceMap).map(\.videoID)) == ["vid-1", "vid-2"])
     }
 
     @Test

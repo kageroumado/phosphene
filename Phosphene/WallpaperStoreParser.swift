@@ -17,6 +17,20 @@ enum WallpaperStoreParser {
         }
     }
 
+    /// A Space from `com.apple.spaces.plist`: its label and the display it
+    /// belongs to. `displayUUID` is nil when Spaces span every display
+    /// ("Displays have separate Spaces" off), so the Space's records for any
+    /// display are real.
+    struct SpaceInfo: Equatable {
+        let name: String
+        let displayUUID: String?
+
+        init(name: String, displayUUID: String?) {
+            self.name = name
+            self.displayUUID = displayUUID
+        }
+    }
+
     /// A provider-owned selection resolved from the store. The library video's
     /// display name and on-disk URL are layered on by the caller, so they live
     /// on the caller's richer selection type rather than here.
@@ -36,7 +50,7 @@ enum WallpaperStoreParser {
     static func parseSelections(
         plist: [String: Any],
         displayMap: [String: DisplayInfo],
-        spaceMap: [String: String],
+        spaceMap: [String: SpaceInfo],
         provider: String,
     ) -> [ParsedSelection] {
         var allSpacesSelections: [ParsedSelection] = []
@@ -69,13 +83,18 @@ enum WallpaperStoreParser {
         }
 
         // Spaces → {spaceUUID} → Displays → {displayUUID} → Desktop → ... — a choice
-        // scoped to one Space on one display.
+        // scoped to one Space on one display. With separate Spaces per display the
+        // store keeps records for displays that don't own the Space; those never
+        // show, so only the owning display's record counts.
         if let spaces = plist["Spaces"] as? [String: Any] {
             for (spaceUUID, spaceValue) in spaces {
                 guard let space = spaceValue as? [String: Any],
-                      let spaceName = spaceMap[spaceUUID],
+                      let spaceInfo = spaceMap[spaceUUID],
                       let perDisplays = space["Displays"] as? [String: Any] else { continue }
                 for (displayUUID, displayValue) in perDisplays {
+                    if let owner = spaceInfo.displayUUID, owner != displayUUID {
+                        continue
+                    }
                     guard let display = displayValue as? [String: Any],
                           let videoID = videoID(in: display, provider: provider),
                           let info = displayMap[displayUUID] else { continue }
@@ -86,7 +105,7 @@ enum WallpaperStoreParser {
                         displayName: info.name,
                         displayID: info.displayID,
                         spaceUUID: spaceUUID,
-                        spaceName: spaceName,
+                        spaceName: spaceInfo.name,
                     ))
                 }
             }
