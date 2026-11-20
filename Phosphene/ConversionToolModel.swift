@@ -28,7 +28,27 @@ final class ConversionToolModel {
     private(set) var isRunning = false
     private(set) var progress = 0.0
     var errorMessage: String?
-    private(set) var completionMessage: String?
+    private struct Request: Equatable {
+        let sources: [ConversionSource]
+        let settings: ConversionSettings
+        let name: String
+        let libraryOutput: Bool
+        let interpretations: [Bool]
+    }
+
+    private var request: Request {
+        Request(
+            sources: [light, dark].compactMap(\.self), settings: settings,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            libraryOutput: addToLibrary || mode == .pair, interpretations: [assumeLightSDR, assumeDarkSDR],
+        )
+    }
+
+    private var completed: (request: Request, message: String)?
+    var completionMessage: String? {
+        guard let completed, completed.request == request else { return nil }
+        return completed.message
+    }
 
     @ObservationIgnored private var preset = OptimizationPreset.quality
     @ObservationIgnored private var suggested = ConversionSettings()
@@ -108,7 +128,6 @@ final class ConversionToolModel {
         } else {
             light = nil; assumeLightSDR = false
         }
-        completionMessage = nil
         errorMessage = nil
         probes[isDark] = Task {
             do {
@@ -196,39 +215,35 @@ final class ConversionToolModel {
     }
 
     func start() {
-        guard !isRunning, let light else { return }
+        guard !isRunning else { return }
         if let validationMessage {
             errorMessage = validationMessage; return
         }
-        let sources = [light] + (mode == .pair ? [dark].compactMap(\.self) : [])
-        let target = settings
-        let outputName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let libraryOutput = mode == .pair || addToLibrary
-        guard confirmUpgrades(sources, to: target) else { return }
+        let request = self.request
+        guard confirmUpgrades(request.sources, to: request.settings) else { return }
 
         var destination: URL?
-        if !libraryOutput {
+        if !request.libraryOutput {
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.mpeg4Movie]
             panel.canCreateDirectories = true
-            panel.nameFieldStringValue = outputName.replacingOccurrences(of: "/", with: "-") + ".mp4"
+            panel.nameFieldStringValue = request.name.replacingOccurrences(of: "/", with: "-") + ".mp4"
             guard panel.runModal() == .OK, let url = panel.url else { return }
             guard !PathSafety.contained(url, in: VideoDeploymentService.videosFolderURL),
-                  sources.allSatisfy({ $0.url.resolvingSymlinksInPath().standardizedFileURL != url.resolvingSymlinksInPath().standardizedFileURL }) else {
+                  request.sources.allSatisfy({ $0.url.resolvingSymlinksInPath().standardizedFileURL != url.resolvingSymlinksInPath().standardizedFileURL }) else {
                 errorMessage = String(localized: "Choose a destination outside the managed Library and distinct from the source video.")
                 return
             }
             destination = url
         }
         let output = destination.map { (url: $0, priorIdentity: FileIdentity(of: $0)) }
-        let interpretations = [assumeLightSDR, assumeDarkSDR]
         let id = UUID()
         jobID = id
         progress = 0
         isRunning = true
         Self.runningJobCount += 1
         errorMessage = nil
-        completionMessage = nil
+        completed = nil
         job = Task {
             defer {
                 Self.runningJobCount -= 1
@@ -237,7 +252,9 @@ final class ConversionToolModel {
                 jobID = nil
             }
             do {
-                try await runConversion(sources, to: output, name: outputName, target: target, interpretations: interpretations, id: id)
+                let message = try await runConversion(request, to: output, id: id)
+                completed = (request, message)
+                progress = 1
             } catch {
                 if !Task.isCancelled {
                     errorMessage = error.localizedDescription
@@ -247,9 +264,9 @@ final class ConversionToolModel {
     }
 
     private func runConversion(
-        _ sources: [ConversionSource], to output: (url: URL, priorIdentity: FileIdentity?)?,
-        name: String, target: ConversionSettings, interpretations: [Bool], id: UUID,
-    ) async throws {
+        _ request: Request, to output: (url: URL, priorIdentity: FileIdentity?)?, id: UUID,
+    ) async throws -> String {
+        let sources = request.sources
         let files = FileManager.default
         let scoped = sources.map(\.url).filter { $0.startAccessingSecurityScopedResource() }
         let destination = output?.url
@@ -273,7 +290,7 @@ final class ConversionToolModel {
             guard FileIdentity(of: source.url) == source.identity else { throw PairIssue.changed }
             let out = work.appendingPathComponent(index == 0 ? "Light.mp4" : "Dark.mp4")
             try await VideoOptimizationService.convert(
-                sourceURL: source.url, to: out, settings: target, forPair: mode == .pair, assumeSDR: interpretations[index],
+                sourceURL: source.url, to: out, settings: request.settings, forPair: mode == .pair, assumeSDR: request.interpretations[index],
             ) { value in
                 guard self.jobID == id else { return }
                 self.progress = max(self.progress, (Double(index) + value) / Double(sources.count))
@@ -293,12 +310,10 @@ final class ConversionToolModel {
             } else {
                 _ = try files.replaceItemAt(output.url, withItemAt: outputs[0])
             }
-            completionMessage = String(localized: "Saved \(output.url.lastPathComponent).")
-        } else {
-            try await VideoDeploymentService.importConversion(light: outputs[0], dark: outputs.count == 2 ? outputs[1] : nil, name: name)
-            completionMessage = String(localized: "Added \(name) to the Library.")
+            return String(localized: "Saved \(output.url.lastPathComponent).")
         }
-        progress = 1
+        try await VideoDeploymentService.importConversion(light: outputs[0], dark: outputs.count == 2 ? outputs[1] : nil, name: request.name)
+        return String(localized: "Added \(request.name) to the Library.")
     }
 
     private func confirmUpgrades(_ sources: [ConversionSource], to target: ConversionSettings) -> Bool {

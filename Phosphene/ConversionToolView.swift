@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ConversionToolView: View {
     let pairRequest: PairConverterRequest
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
     @State private var model: ConversionToolModel
     @State private var drafts: [NumberField: String] = [:]
@@ -223,6 +224,9 @@ struct ConversionToolView: View {
                 if model.isRunning {
                     Button("Cancel", role: .cancel) { model.cancel() }
                         .keyboardShortcut(.cancelAction)
+                } else if canStart, model.completionMessage != nil {
+                    Button("Done") { dismiss() }
+                        .keyboardShortcut(.defaultAction)
                 } else {
                     Button(isPair ? "Create Pair" : "Convert") { start() }
                         .keyboardShortcut(.defaultAction)

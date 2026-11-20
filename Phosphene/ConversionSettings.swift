@@ -95,7 +95,7 @@ nonisolated struct ConversionIssue: LocalizedError {
     }
 }
 
-nonisolated struct ConversionSource {
+nonisolated struct ConversionSource: Equatable {
     let url: URL
     let name: String
     let identity: FileIdentity
