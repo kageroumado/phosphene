@@ -41,6 +41,17 @@ nonisolated enum WorkshopKind: String, Codable {
         case .unknown: String(localized: "Unknown")
         }
     }
+
+    /// The SF Symbol that stands for the kind where there is no preview.
+    var symbol: String {
+        switch self {
+        case .video: "film"
+        case .scene: "square.stack.3d.up"
+        case .web: "globe"
+        case .application: "app.dashed"
+        case .unknown: "questionmark.square.dashed"
+        }
+    }
 }
 
 nonisolated struct WorkshopItem: Identifiable, Hashable {
@@ -66,6 +77,12 @@ nonisolated struct WorkshopItem: Identifiable, Hashable {
     var workshopPageURL: URL? {
         guard !id.isEmpty, id.allSatisfy(\.isNumber) else { return nil }
         return URL(string: "steam://url/CommunityFilePage/\(id)")
+    }
+
+    /// The item's page on the web, for items Steam downloaded.
+    var workshopWebPageURL: URL? {
+        guard !id.isEmpty, id.allSatisfy(\.isNumber) else { return nil }
+        return URL(string: "https://steamcommunity.com/sharedfiles/filedetails/?id=\(id)")
     }
 
     /// The id as a file name stem: Workshop ids are digits; an added folder's name

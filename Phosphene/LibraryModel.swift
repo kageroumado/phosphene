@@ -53,11 +53,30 @@ enum LibraryViewMode: String {
     case list
 }
 
-/// Icon sizes for the grid, the width of one thumbnail in points.
+/// Icon sizes for the grid, the width of one thumbnail in points. A thumbnail is drawn
+/// at exactly this width, so the largest size stays within the 640-pixel thumbnails the
+/// library keeps (320 points at 2x).
 enum LibraryIconSize {
-    static let range: ClosedRange<Double> = 140 ... 360
-    static let standard: Double = 200
+    static let range: ClosedRange<Double> = 120 ... 320
+    static let standard: Double = 180
     static let step: Double = 40
+
+    static func clamped(_ size: Double) -> Double {
+        min(range.upperBound, max(range.lowerBound, size))
+    }
+}
+
+/// The grid's metrics and the arithmetic that follows from them.
+nonisolated enum LibraryGridMetrics {
+    static let spacing: CGFloat = 20
+    static let rowSpacing: CGFloat = 20
+    static let padding: CGFloat = 20
+
+    /// How many tiles of `tileWidth` fit across `width`.
+    static func columns(in width: CGFloat, tileWidth: CGFloat) -> Int {
+        let usable = width - padding * 2
+        return max(1, Int((usable + spacing) / (tileWidth + spacing)))
+    }
 }
 
 /// One library video, flattened for sorting in a table.
@@ -89,10 +108,6 @@ nonisolated struct VideoRow: Identifiable, Sendable {
 
     var dateAdded: Date {
         entry.dateAdded
-    }
-
-    var inUseRank: Int {
-        isInUse ? 0 : 1
     }
 
     var resolutionLabel: String {
@@ -157,6 +172,30 @@ nonisolated struct WorkshopRow: Identifiable, Sendable {
     var modified: Date {
         item.modified
     }
+}
+
+/// What one grid tile draws: a library video or a Wallpaper Engine download.
+nonisolated struct LibraryTileModel: Identifiable, Equatable {
+    enum Badge: Equatable {
+        case inUse
+        case made
+        case outdated
+        case failed
+        case unsupported
+        case waiting
+        /// Work on the item, with its completed fraction.
+        case working(label: String, progress: Double)
+    }
+
+    let id: String
+    let title: String
+    let image: URL?
+    /// The file a tile plays while the pointer rests on it.
+    let video: URL?
+    let placeholderSymbol: String
+    let isDimmed: Bool
+    let badge: Badge?
+    let help: String
 }
 
 /// Finder's click rules for a grid: a click selects one item, ⌘-click toggles one,

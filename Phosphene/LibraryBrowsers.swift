@@ -1,10 +1,11 @@
+import AVFoundation
 import SwiftUI
 
 // MARK: - Thumbnails
 
-/// Thumbnails shared by every row and tile, so scrolling a long table never decodes
-/// the same file twice. A file is decoded as a thumbnail of ``maxPixels`` a side,
-/// whatever size it claims, off the main actor.
+/// Thumbnails shared by every row and tile, so scrolling never decodes the same file
+/// twice. A file is decoded as a thumbnail of ``maxPixels`` a side, whatever size it
+/// claims, off the main actor.
 nonisolated enum ThumbnailCache {
     static let maxPixels = 720
     /// NSCache is thread-safe: filled from the decode pool, read on the main actor.
@@ -29,12 +30,23 @@ nonisolated enum ThumbnailCache {
         unsafe cache.setObject(image, forKey: url as NSURL)
         return image
     }
+
+    static func removeAll() {
+        unsafe cache.removeAllObjects()
+    }
+}
+
+/// What a thumbnail load depends on: the file, and the library revision it was read at.
+private struct ThumbnailKey: Equatable {
+    let url: URL?
+    let revision: Int
 }
 
 /// A small 16:9 thumbnail for a table row.
 struct RowThumbnail: View {
     let url: URL?
     let placeholder: String
+    var revision = 0
 
     @State private var image: NSImage?
 
@@ -57,7 +69,7 @@ struct RowThumbnail: View {
             }
             .frame(width: 48, height: 27)
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .task(id: url) {
+            .task(id: ThumbnailKey(url: url, revision: revision)) {
                 image = ThumbnailCache.cached(url)
                 if image == nil {
                     image = await ThumbnailCache.image(at: url)
@@ -68,44 +80,65 @@ struct RowThumbnail: View {
 
 // MARK: - Videos
 
+/// The library's videos as a sortable table or a grid of thumbnails.
 struct VideoBrowser: View {
     let rows: [VideoRow]
-    @Binding var selection: Set<String>
-    @Binding var sortOrder: [KeyPathComparator<VideoRow>]
-    let mode: LibraryViewMode
-    let iconSize: Double
-    @Bindable var manager: PhospheneManager
-    let onDelete: (Set<String>) -> Void
 
-    @State private var anchor: String?
+    @Environment(LibraryStore.self) private var store
+    @Environment(PhospheneManager.self) private var manager
 
     var body: some View {
-        switch mode {
+        switch store.viewMode {
         case .list: table
-        case .icons: grid
+        case .icons: LibraryGrid(tiles: tiles, selection: store.videoSelection)
+        }
+    }
+
+    private var tiles: [LibraryTileModel] {
+        let working = manager.isOptimizing ? manager.optimizingEntryID : nil
+        return rows.map { row in
+            let badge: LibraryTileModel.Badge? = if row.id == working {
+                .working(
+                    label: manager.isConverting ? String(localized: "Converting") : String(localized: "Optimizing"),
+                    progress: manager.optimizationProgress,
+                )
+            } else if row.isInUse {
+                .inUse
+            } else {
+                nil
+            }
+            return LibraryTileModel(
+                id: row.id, title: row.name,
+                image: VideoDeploymentService.thumbnailURL(for: row.id),
+                video: VideoDeploymentService.videoURL(for: row.entry),
+                placeholderSymbol: "film", isDimmed: false, badge: badge,
+                help: row.isInUse ? String(localized: "In use as wallpaper") : "",
+            )
         }
     }
 
     private var table: some View {
-        Table(rows, selection: $selection, sortOrder: $sortOrder) {
+        @Bindable var store = store
+        return Table(rows, selection: $store.videoSelection, sortOrder: $store.videoSort) {
             TableColumn("Name", value: \.name) { row in
                 HStack(spacing: 8) {
-                    RowThumbnail(url: VideoDeploymentService.thumbnailURL(for: row.id), placeholder: "film")
+                    RowThumbnail(
+                        url: VideoDeploymentService.thumbnailURL(for: row.id), placeholder: "film",
+                        revision: store.revision,
+                    )
                     Text(row.name)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if row.isInUse {
+                        Spacer(minLength: 4)
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.tint)
+                            .help("In use as wallpaper")
+                            .accessibilityLabel("In use")
+                    }
                 }
             }
-            .width(min: 160, ideal: 300)
-            TableColumn("In Use", value: \.inUseRank) { row in
-                if row.isInUse {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.tint)
-                        .help("In use as wallpaper")
-                        .accessibilityLabel("In use")
-                }
-            }
-            .width(min: 44, ideal: 52, max: 64)
+            .width(min: 180, ideal: 320)
             TableColumn("Resolution", value: \.pixelCount) { row in
                 Text(row.resolutionLabel)
             }
@@ -132,82 +165,64 @@ struct VideoBrowser: View {
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .contextMenu(forSelectionType: String.self) { ids in
-            contextMenu(for: ids)
+            LibraryItemMenu(ids: ids)
+        } primaryAction: { ids in
+            store.toggleQuickLook(ids.first)
         }
-        .onDeleteCommand { onDelete(selection) }
-    }
-
-    private var grid: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: iconSize), spacing: 18, alignment: .top)],
-                alignment: .leading,
-                spacing: 22,
-            ) {
-                ForEach(rows) { row in
-                    VideoCardView(
-                        entry: row.entry,
-                        isSelected: selection.contains(row.id),
-                        isInUse: row.isInUse,
-                        isOptimizing: manager.isOptimizing && manager.optimizingEntryID == row.id,
-                        isConverting: manager.isConverting,
-                        optimizationProgress: manager.optimizationProgress,
-                        onSelect: {
-                            GridSelection.click(row.id, in: rows.map(\.id), selection: &selection, anchor: &anchor)
-                        },
-                        onDelete: { onDelete(selection.contains(row.id) ? selection : [row.id]) },
-                    )
-                }
-            }
-            .padding(20)
+        .onKeyPress(.space) {
+            store.toggleQuickLook()
+            return .handled
         }
-        .background {
-            // A click on empty space clears the selection, as in Finder.
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { selection.removeAll() }
-        }
-        .onDeleteCommand { onDelete(selection) }
-    }
-
-    @ViewBuilder
-    private func contextMenu(for ids: Set<String>) -> some View {
-        if !ids.isEmpty {
-            Button("Show in Finder") {
-                let urls = rows.filter { ids.contains($0.id) }.map { VideoDeploymentService.videoURL(for: $0.entry) }
-                NSWorkspace.shared.activateFileViewerSelecting(urls)
-            }
-            Divider()
-            Button(ids.count == 1 ? "Delete…" : "Delete \(ids.count) Videos…", role: .destructive) {
-                onDelete(ids)
-            }
-        }
+        .onDeleteCommand { store.requestDelete() }
     }
 }
 
 // MARK: - Wallpaper Engine
 
+/// The Wallpaper Engine downloads as a sortable table or a grid of previews.
 struct WorkshopBrowser: View {
     let rows: [WorkshopRow]
-    @Bindable var library: WorkshopLibrary
-    @Binding var sortOrder: [KeyPathComparator<WorkshopRow>]
-    let mode: LibraryViewMode
-    let iconSize: Double
 
-    @State private var anchor: String?
+    @Environment(LibraryStore.self) private var store
+    @Environment(WorkshopLibrary.self) private var workshop
 
     var body: some View {
-        switch mode {
+        switch store.viewMode {
         case .list: table
-        case .icons: grid
+        case .icons: LibraryGrid(tiles: rows.map(Self.tile), selection: workshop.staged)
         }
     }
 
+    private static func tile(for row: WorkshopRow) -> LibraryTileModel {
+        let badge: LibraryTileModel.Badge? = switch row.status {
+        case .available: nil
+        case .made: .made
+        case .outdated: .outdated
+        case .failed: .failed
+        case .unsupported: .unsupported
+        case .queued: .waiting
+        case let .rendering(progress, _):
+            .working(label: progress.formatted(.percent.precision(.fractionLength(0))), progress: progress)
+        }
+        let help = switch row.status {
+        case .made: String(localized: "In your library")
+        case .queued: String(localized: "Waiting to be made")
+        case .rendering: String(localized: "Making its video")
+        default: row.status.explanation ?? ""
+        }
+        return LibraryTileModel(
+            id: row.id, title: row.title, image: row.item.preview, video: nil,
+            placeholderSymbol: row.item.kind.symbol, isDimmed: row.status.isUnsupported, badge: badge, help: help,
+        )
+    }
+
     private var table: some View {
-        Table(rows, selection: $library.staged, sortOrder: $sortOrder) {
+        @Bindable var workshop = workshop
+        @Bindable var store = store
+        return Table(rows, selection: $workshop.staged, sortOrder: $store.workshopSort) {
             TableColumn("Name", value: \.title) { row in
                 HStack(spacing: 8) {
-                    RowThumbnail(url: row.item.preview, placeholder: "photo")
+                    RowThumbnail(url: row.item.preview, placeholder: row.item.kind.symbol)
                     Text(row.title)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -243,54 +258,329 @@ struct WorkshopBrowser: View {
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .contextMenu(forSelectionType: String.self) { ids in
-            contextMenu(for: ids)
+            LibraryItemMenu(ids: ids)
+        } primaryAction: { ids in
+            store.toggleQuickLook(ids.first)
+        }
+        .onKeyPress(.space) {
+            store.toggleQuickLook()
+            return .handled
+        }
+    }
+}
+
+// MARK: - Grid
+
+/// Thumbnails at exactly the icon size, as many to a row as fit, packed from the leading
+/// edge like Finder's icon view. Arrow keys move the selection and Space previews it.
+struct LibraryGrid: View {
+    let tiles: [LibraryTileModel]
+    let selection: Set<String>
+
+    @Environment(LibraryStore.self) private var store
+    @FocusState private var isFocused: Bool
+    @State private var geometry = GridGeometry()
+
+    /// The grid's width, kept outside observation: only arrow-key handling reads it.
+    private final class GridGeometry {
+        var width: CGFloat = 0
+    }
+
+    var body: some View {
+        let size = CGFloat(store.iconSize)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVGrid(
+                    columns: [GridItem(
+                        .adaptive(minimum: size, maximum: size),
+                        spacing: LibraryGridMetrics.spacing, alignment: .top,
+                    )],
+                    alignment: .leading,
+                    spacing: LibraryGridMetrics.rowSpacing,
+                ) {
+                    ForEach(tiles) { tile in
+                        LibraryTile(
+                            model: tile, width: size, isSelected: selection.contains(tile.id),
+                            revision: store.revision,
+                        )
+                    }
+                }
+                .padding(LibraryGridMetrics.padding)
+            }
+            .background {
+                // A click on empty space clears the selection, as in Finder.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { store.clearSelection() }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { geometry.width = $0 }
+            .focusable()
+            .focusEffectDisabled()
+            .focused($isFocused)
+            .simultaneousGesture(TapGesture().onEnded { isFocused = true })
+            .onKeyPress(.space) {
+                store.toggleQuickLook()
+                return .handled
+            }
+            .onMoveCommand { direction in
+                let columns = LibraryGridMetrics.columns(in: geometry.width, tileWidth: size)
+                if let id = store.moveSelection(direction, columns: columns) {
+                    proxy.scrollTo(id)
+                }
+            }
+            .onDeleteCommand { store.requestDelete() }
+        }
+    }
+}
+
+// MARK: - Tile
+
+/// A muted player that loops one file.
+final class LoopingPlayer {
+    let player: AVQueuePlayer
+    private let looper: AVPlayerLooper
+
+    init(url: URL) {
+        let item = AVPlayerItem(url: url)
+        player = AVQueuePlayer(playerItem: item)
+        player.isMuted = true
+        looper = AVPlayerLooper(player: player, templateItem: item)
+        player.play()
+    }
+
+    func stop() {
+        looper.disableLooping()
+        player.pause()
+    }
+}
+
+/// One thumbnail and its name. A click selects it with Finder's modifier rules, a double
+/// click opens Quick Look, and a video plays while the pointer rests on it.
+struct LibraryTile: View {
+    let model: LibraryTileModel
+    let width: CGFloat
+    let isSelected: Bool
+    let revision: Int
+
+    @Environment(LibraryStore.self) private var store
+    @State private var image: NSImage?
+    @State private var isHovered = false
+    @State private var preview: LoopingPlayer?
+
+    private enum Metrics {
+        static let cornerRadius: CGFloat = 8
+        static let ringWidth: CGFloat = 3
+        static let badgeSize: CGFloat = 20
+        static let badgeInset: CGFloat = 6
+        static let hoverDelay: Duration = .milliseconds(350)
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            thumbnail
+            Text(model.title)
+                .font(.callout)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .truncationMode(.middle)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .foregroundStyle(titleStyle)
+                .background(
+                    isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.clear),
+                    in: RoundedRectangle(cornerRadius: 4, style: .continuous),
+                )
+        }
+        .frame(width: width, alignment: .top)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .gesture(TapGesture(count: 2).onEnded { store.toggleQuickLook(model.id) })
+        .simultaneousGesture(TapGesture().onEnded { store.click(model.id) })
+        .contextMenu { LibraryItemMenu(clicked: model.id) }
+        .help(model.help)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.title)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { store.click(model.id) }
+        .task(id: ThumbnailKey(url: model.image, revision: revision)) {
+            image = ThumbnailCache.cached(model.image)
+            if image == nil {
+                image = await ThumbnailCache.image(at: model.image)
+            }
+        }
+        .task(id: isHovered) {
+            guard isHovered, let video = model.video else {
+                preview?.stop()
+                preview = nil
+                return
+            }
+            try? await Task.sleep(for: Metrics.hoverDelay)
+            guard !Task.isCancelled else { return }
+            preview = LoopingPlayer(url: video)
+        }
+        .onDisappear {
+            preview?.stop()
+            preview = nil
         }
     }
 
-    private var grid: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: iconSize), spacing: 18, alignment: .top)],
-                alignment: .leading,
-                spacing: 22,
-            ) {
-                ForEach(rows) { row in
-                    WorkshopTileView(
-                        item: row.item,
-                        status: row.status,
-                        isStaged: library.staged.contains(row.id),
-                        onTap: {
-                            GridSelection.click(
-                                row.id, in: rows.map(\.id), selection: &library.staged, anchor: &anchor,
-                            )
-                        },
-                    )
-                    .contextMenu { contextMenu(for: library.staged.contains(row.id) ? library.staged : [row.id]) }
-                }
-            }
-            .padding(20)
+    private var titleStyle: AnyShapeStyle {
+        if isSelected {
+            return AnyShapeStyle(.white)
         }
-        .background {
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { library.staged.removeAll() }
+        return model.isDimmed ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
+    }
+
+    private var thumbnail: some View {
+        ZStack {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFill()
+            } else {
+                Rectangle()
+                    .fill(.quaternary)
+                Image(systemName: model.placeholderSymbol)
+                    .font(.title2)
+                    .foregroundStyle(.tertiary)
+            }
+            if let preview {
+                PlayerLayerView(player: preview.player)
+            }
+        }
+        .frame(width: width, height: (width * 9 / 16).rounded())
+        .saturation(model.isDimmed ? 0.2 : 1)
+        .opacity(model.isDimmed ? 0.55 : 1)
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous)
+                .strokeBorder(.separator, lineWidth: 0.5)
+        }
+        .overlay(alignment: .bottomTrailing) { badge }
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: Metrics.cornerRadius + Metrics.ringWidth, style: .continuous)
+                    .strokeBorder(Color.accentColor, lineWidth: Metrics.ringWidth)
+                    .padding(-Metrics.ringWidth - 1)
+            }
         }
     }
 
     @ViewBuilder
-    private func contextMenu(for ids: Set<String>) -> some View {
-        let renderable = ids.filter { library.assessments[$0]?.isRenderable ?? false }
+    private var badge: some View {
+        switch model.badge {
+        case .inUse:
+            symbolBadge("checkmark", fill: AnyShapeStyle(Color.accentColor))
+        case .made:
+            symbolBadge("film", fill: AnyShapeStyle(.black.opacity(0.55)))
+        case .outdated:
+            symbolBadge("arrow.triangle.2.circlepath", fill: AnyShapeStyle(.orange))
+        case .failed:
+            symbolBadge("exclamationmark", fill: AnyShapeStyle(.red))
+        case .unsupported:
+            symbolBadge("nosign", fill: AnyShapeStyle(.gray))
+        case .waiting:
+            pill { Text("Waiting") }
+        case let .working(label, progress):
+            pill {
+                ProgressView(value: progress)
+                    .progressViewStyle(.circular)
+                    .controlSize(.mini)
+                    .tint(.white)
+                Text(verbatim: label)
+            }
+        case nil:
+            EmptyView()
+        }
+    }
+
+    private func symbolBadge(_ symbol: String, fill: AnyShapeStyle) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: Metrics.badgeSize, height: Metrics.badgeSize)
+            .background(fill, in: Circle())
+            .padding(Metrics.badgeInset)
+    }
+
+    private func pill(@ViewBuilder _ content: () -> some View) -> some View {
+        HStack(spacing: 5, content: content)
+            .font(.caption2)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.55), in: Capsule())
+            .padding(Metrics.badgeInset)
+    }
+}
+
+// MARK: - Context menu
+
+/// What a click with the secondary button offers for videos or downloads. A click on an
+/// unselected item acts on that item; a click inside the selection acts on all of it.
+struct LibraryItemMenu: View {
+    private let explicit: Set<String>?
+    private let clicked: String?
+
+    @Environment(LibraryStore.self) private var store
+    @Environment(WorkshopLibrary.self) private var workshop
+
+    init(ids: Set<String>) {
+        explicit = ids
+        clicked = nil
+    }
+
+    init(clicked: String) {
+        explicit = nil
+        self.clicked = clicked
+    }
+
+    private var ids: Set<String> {
+        if let explicit {
+            return explicit
+        }
+        guard let clicked else { return [] }
+        let selection = store.section.isWorkshop ? workshop.staged : store.videoSelection
+        return selection.contains(clicked) ? selection : [clicked]
+    }
+
+    var body: some View {
+        let ids = ids
+        if !ids.isEmpty {
+            if store.section.isWorkshop {
+                downloadItems(ids)
+            } else {
+                videoItems(ids)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func videoItems(_ ids: Set<String>) -> some View {
+        Button("Quick Look") { store.toggleQuickLook(ids.first) }
+        Button("Use as Wallpaper…") { store.openWallpaperSettings() }
+        Divider()
+        Button("Show in Finder") { store.showInFinder(ids) }
+        Divider()
+        Button(ids.count == 1 ? "Delete…" : "Delete \(ids.count) Videos…", role: .destructive) {
+            store.requestDelete(ids)
+        }
+    }
+
+    @ViewBuilder
+    private func downloadItems(_ ids: Set<String>) -> some View {
+        let renderable = ids.filter { workshop.assessments[$0]?.isRenderable ?? false }
         if !renderable.isEmpty {
-            Button(renderable.count == 1 ? "Make Video" : "Make \(renderable.count) Videos") {
-                library.makeVideos(Array(renderable))
+            Button(renderable.count == 1 ? "Make Video…" : "Make \(renderable.count) Videos…") {
+                store.requestMakeVideos(ids)
             }
             Divider()
         }
-        if ids.count == 1, let id = ids.first, let item = library.item(id) {
-            if let page = item.workshopPageURL {
-                Button("Open Workshop Page") { NSWorkspace.shared.open(page) }
-            }
-            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.folder]) }
+        Button("Quick Look") { store.toggleQuickLook(ids.first) }
+        if ids.count == 1, let item = ids.first.flatMap(workshop.item), item.workshopPageURL != nil {
+            Button("Open Workshop Page") { workshop.openWorkshopPage(of: item) }
         }
+        Button("Show in Finder") { store.showInFinder(ids) }
     }
 }

@@ -1,69 +1,69 @@
 import AppKit
+import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The library: a sidebar of places, a browser of the selected place as icons or a
-/// sortable list, and an inspector for what is selected.
+/// The library window: a sidebar of places, the selected place as a grid or a sortable
+/// list, and an inspector for what is selected.
 struct LibraryWindow: View {
-    @Bindable var manager: PhospheneManager
+    let manager: PhospheneManager
     var initialSelectionID: String?
 
-    @AppStorage(LibrarySection.storageKey) private var section: LibrarySection = .allVideos
-    @AppStorage("libraryViewMode") private var viewMode: LibraryViewMode = .icons
-    @AppStorage("libraryIconSize") private var iconSize = LibraryIconSize.standard
-    @State private var search = ""
-    @State private var entries: [VideoDeploymentService.EntryInfo] = []
-    @State private var videoSelection: Set<String> = []
-    @State private var videoSort = [KeyPathComparator(\VideoRow.dateAdded, order: .reverse)]
-    @State private var workshopSort = [KeyPathComparator(\WorkshopRow.modified, order: .reverse)]
-    @State private var showInspector = true
-    @State private var showingMakeVideos = false
-    @State private var pendingDelete: Set<String>?
-
-    private var workshop: WorkshopLibrary {
-        manager.workshop
+    var body: some View {
+        LibraryRoot(initialSelectionID: initialSelectionID)
+            .environment(manager)
+            .environment(manager.library)
+            .environment(manager.workshop)
     }
+}
+
+/// Column widths, and a window minimum that holds them all at their widest.
+///
+/// Never let the window be narrower than the columns can be: SwiftUI leaves the split
+/// view's own minimum out of the window's `contentMinSize`, and a window below it sends
+/// AppKit into an endless Update Constraints loop that ends in an exception (#35).
+/// ``contentMin`` is what the browser is left with when the sidebar is at its widest and
+/// the inspector is open; it is never applied as a `.frame(minWidth:)` on the detail,
+/// which starts the same loop at any window size.
+private enum Layout {
+    static let sidebarMin: CGFloat = 180
+    static let sidebarIdeal: CGFloat = 210
+    static let sidebarMax: CGFloat = 260
+    /// The inspector keeps one width, so selecting a row never resizes the column.
+    static let inspectorWidth: CGFloat = 280
+    static let contentMin: CGFloat = 420
+    static let dividers: CGFloat = 2
+    static let windowMinWidth = sidebarMax + inspectorWidth + contentMin + dividers
+    static let windowMinHeight: CGFloat = 520
+}
+
+// MARK: - Root
+
+private struct LibraryRoot: View {
+    let initialSelectionID: String?
+
+    @Environment(PhospheneManager.self) private var manager
+    @Environment(LibraryStore.self) private var store
+    @Environment(WorkshopLibrary.self) private var workshop
 
     var body: some View {
+        @Bindable var store = store
+        @Bindable var manager = manager
         NavigationSplitView {
-            LibrarySidebar(section: $section, counts: counts, workshop: workshop) {
-                manager.openVideoChooser()
-            }
-            .navigationSplitViewColumnWidth(
-                min: Layout.sidebarMin, ideal: Layout.sidebarIdeal, max: Layout.sidebarMax,
-            )
+            LibrarySidebar()
+                .navigationSplitViewColumnWidth(
+                    min: Layout.sidebarMin, ideal: Layout.sidebarIdeal, max: Layout.sidebarMax,
+                )
         } detail: {
-            detail
-                .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
-                .navigationTitle(sectionTitle)
-                .navigationSubtitle(sectionSubtitle)
-                .searchable(
-                    text: $search,
-                    placement: .toolbar,
-                    prompt: section.isWorkshop
-                        ? Text("Search Downloads") : Text("Search Videos"),
-                )
-                .toolbar { toolbar }
+            LibraryDetail()
         }
-        .inspector(isPresented: $showInspector) {
-            inspector
-                .inspectorColumnWidth(
-                    min: Layout.inspectorMin, ideal: Layout.inspectorIdeal, max: Layout.inspectorMax,
-                )
+        .frame(minWidth: Layout.windowMinWidth, minHeight: Layout.windowMinHeight)
+        .sheet(isPresented: $store.isMakeVideosPresented) {
+            MakeVideosSheet()
         }
-        .frame(minWidth: Layout.windowMinWidth, minHeight: 520)
-        .sheet(isPresented: $showingMakeVideos) {
-            MakeVideoSheet(library: workshop)
-        }
-        .alert(deleteTitle, isPresented: .init(
-            get: { pendingDelete != nil },
-            set: {
-                if !$0 {
-                    pendingDelete = nil
-                }
-            },
-        )) {
-            Button("Delete", role: .destructive) { deletePending() }
+        .quickLookPreview($store.quickLookURL)
+        .alert(store.deleteTitle, isPresented: $store.isConfirmingDelete) {
+            Button("Delete", role: .destructive) { store.confirmDelete() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The videos leave your library and System Settings.")
@@ -74,16 +74,19 @@ struct LibraryWindow: View {
         .dropDestination(for: URL.self) { urls, _ in
             importDropped(urls)
         }
-        .focusedSceneValue(\.libraryActions, actions)
+        .focusedSceneValue(store)
         // `phosphene://library/wallpaper-engine`: Sevoflurane opens the window at
         // the Wallpaper Engine section.
         .onOpenURL { url in
             if url.host == "library", url.path == "/wallpaper-engine" {
-                section = .workshopDownloads
+                store.section = .workshopDownloads
             }
         }
         .onAppear {
-            loadEntries()
+            store.reload()
+            if let initialSelectionID, store.videoSelection.isEmpty {
+                store.reveal(videoID: initialSelectionID)
+            }
             if !workshop.hasScanned {
                 workshop.refresh()
             }
@@ -96,75 +99,275 @@ struct LibraryWindow: View {
         .onReceive(
             NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification),
         ) { _ in
-            loadEntries()
+            store.reload()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             workshop.refresh()
         }
-        .onChange(of: section) {
-            search = ""
-        }
     }
 
-    // MARK: - Content
-
-    @ViewBuilder
-    private var detail: some View {
-        if section.isWorkshop {
-            workshopContent
-        } else {
-            videoContent
+    private func importDropped(_ urls: [URL]) {
+        let videoTypes: [UTType] = [.movie, .video, .mpeg4Movie, .quickTimeMovie]
+        let videos = urls.filter { url in
+            guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+            return videoTypes.contains { type.conforms(to: $0) }
         }
+        guard !videos.isEmpty else { return }
+        store.importVideos(videos)
     }
+}
 
-    @ViewBuilder
-    private var videoContent: some View {
-        let rows = videoRows
-        if rows.isEmpty {
-            if !search.isEmpty {
-                ContentUnavailableView.search(text: search)
-            } else {
-                videoEmptyState
+// MARK: - Detail
+
+/// The browser with its toolbar and status bar, and the inspector beside it. The
+/// inspector belongs to the detail column, so showing it moves the browser alone.
+private struct LibraryDetail: View {
+    @Environment(LibraryStore.self) private var store
+
+    var body: some View {
+        @Bindable var store = store
+        LibraryContent()
+            .safeAreaInset(edge: .bottom, spacing: 0) { LibraryStatusBar() }
+            .inspector(isPresented: $store.showInspector) {
+                LibraryInspector()
+                    .inspectorColumnWidth(Layout.inspectorWidth)
             }
-        } else {
-            VideoBrowser(
-                rows: rows.sorted(using: videoSort), selection: $videoSelection, sortOrder: $videoSort,
-                mode: viewMode, iconSize: iconSize, manager: manager,
-                onDelete: { pendingDelete = $0.isEmpty ? nil : $0 },
+            .searchable(
+                text: $store.search,
+                placement: .toolbar,
+                prompt: store.section.isWorkshop ? Text("Search Downloads") : Text("Search Videos"),
             )
+            .toolbar { LibraryToolbar() }
+    }
+}
+
+/// The current section's rows, or what to do when it has none.
+private struct LibraryContent: View {
+    @Environment(LibraryStore.self) private var store
+    @Environment(WorkshopLibrary.self) private var workshop
+
+    var body: some View {
+        if store.section.isWorkshop {
+            let rows = store.workshopRows
+            Group {
+                if !rows.isEmpty {
+                    VStack(spacing: 0) {
+                        WorkshopIntro()
+                        WorkshopBrowser(rows: rows)
+                    }
+                } else if !store.search.isEmpty {
+                    ContentUnavailableView.search(text: store.search)
+                } else {
+                    WorkshopEmptyState()
+                }
+            }
+            .navigationTitle(workshopTitle)
+            .navigationSubtitle("\(rows.count) wallpapers")
+        } else {
+            let rows = store.videoRows
+            Group {
+                if !rows.isEmpty {
+                    VideoBrowser(rows: rows)
+                } else if !store.search.isEmpty {
+                    ContentUnavailableView.search(text: store.search)
+                } else {
+                    VideoEmptyState()
+                }
+            }
+            .navigationTitle(videoTitle)
+            .navigationSubtitle(videoSubtitle(rows))
         }
     }
 
-    @ViewBuilder
-    private var workshopContent: some View {
-        let rows = workshopRows
-        if rows.isEmpty {
-            if !search.isEmpty {
-                ContentUnavailableView.search(text: search)
-            } else {
-                workshopEmptyState
+    private var videoTitle: String {
+        switch store.section {
+        case .inUse: String(localized: "In Use")
+        case .fromWorkshop: String(localized: "From Workshop")
+        default: String(localized: "All Videos")
+        }
+    }
+
+    private var workshopTitle: String {
+        switch store.section {
+        case .workshopNotMade:
+            String(localized: "Not Made Yet")
+        case let .workshopSource(id):
+            workshop.sources.first { $0.id == id }?.label ?? String(localized: "Wallpaper Engine")
+        default:
+            String(localized: "Wallpaper Engine")
+        }
+    }
+
+    private func videoSubtitle(_ rows: [VideoRow]) -> String {
+        let bytes = rows.map(\.fileSize).reduce(0, +)
+        let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        return String(localized: "\(rows.count) videos · \(size)")
+    }
+}
+
+// MARK: - Toolbar
+
+private struct LibraryToolbar: ToolbarContent {
+    @Environment(LibraryStore.self) private var store
+
+    var body: some ToolbarContent {
+        @Bindable var store = store
+        ToolbarItem {
+            Picker("View", selection: $store.viewMode) {
+                Label("Icons", systemImage: "square.grid.2x2").tag(LibraryViewMode.icons)
+                Label("List", systemImage: "list.bullet").tag(LibraryViewMode.list)
+            }
+            .pickerStyle(.segmented)
+            .help("Show as icons or as a list")
+        }
+        ToolbarSpacer(.fixed)
+        if store.section.isWorkshop {
+            ToolbarItem {
+                Button {
+                    store.requestMakeVideos()
+                } label: {
+                    Label(makeVideosTitle, systemImage: "film.stack")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.renderableSelection.isEmpty)
+                .help("Turn the selected wallpapers into looping videos")
             }
         } else {
-            VStack(spacing: 0) {
-                WorkshopIntro(library: workshop)
-                WorkshopBrowser(
-                    rows: rows.sorted(using: workshopSort), library: workshop, sortOrder: $workshopSort,
-                    mode: viewMode, iconSize: iconSize,
-                )
+            ToolbarItem {
+                Button("Add Video", systemImage: "plus") {
+                    store.addVideo()
+                }
+                .help("Add a video to the library")
             }
+        }
+        ToolbarSpacer(.fixed)
+        ToolbarItem {
+            Button("Inspector", systemImage: "sidebar.trailing") {
+                store.showInspector.toggle()
+            }
+            .help(store.showInspector ? "Hide Inspector" : "Show Inspector")
         }
     }
 
-    @ViewBuilder
-    private var videoEmptyState: some View {
-        switch section {
+    private var makeVideosTitle: String {
+        let count = store.renderableSelection.count
+        switch count {
+        case 0: return String(localized: "Make Videos")
+        case 1: return String(localized: "Make Video")
+        default: return String(localized: "Make \(count) Videos")
+        }
+    }
+}
+
+// MARK: - Status bar
+
+/// The strip under the browser: where wallpapers are chosen, or the video being made,
+/// and the icon size.
+private struct LibraryStatusBar: View {
+    @Environment(LibraryStore.self) private var store
+    @Environment(WorkshopLibrary.self) private var workshop
+
+    var body: some View {
+        @Bindable var store = store
+        HStack(spacing: 10) {
+            if let current = workshop.current.flatMap(workshop.item) {
+                ProgressView(value: workshop.progress)
+                    .progressViewStyle(.circular)
+                    .controlSize(.mini)
+                Text(verbatim: makingSummary(current))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Button("Stop") { workshop.cancelAll() }
+                    .buttonStyle(.link)
+            } else {
+                Button {
+                    store.openWallpaperSettings()
+                } label: {
+                    Text("Wallpapers apply in System Settings \(Image(systemName: "arrow.up.right"))")
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .buttonStyle(.plain)
+                .layoutPriority(-1)
+                .help("Open macOS Wallpaper Settings")
+                WallpaperPlacementHelpButton()
+            }
+            Spacer(minLength: 0)
+            if store.viewMode == .icons {
+                // The slider goes when the column is too narrow for it, so the status bar
+                // never sets the detail column's minimum width.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "photo")
+                            .imageScale(.small)
+                        Slider(value: $store.iconSize, in: LibraryIconSize.range)
+                            .controlSize(.mini)
+                            .frame(width: 96)
+                            .help("Icon size")
+                            .accessibilityLabel("Icon size")
+                        Image(systemName: "photo")
+                    }
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                }
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func makingSummary(_ item: WorkshopItem) -> String {
+        let percent = workshop.progress.formatted(.percent.precision(.fractionLength(0)))
+        let waiting = workshop.queue.count
+        let base = String(localized: "Making “\(item.title)” · \(percent)")
+        return waiting > 0 ? String(localized: "\(base) · \(waiting) waiting") : base
+    }
+}
+
+// MARK: - Wallpaper Engine pieces
+
+/// One line at the top of a Wallpaper Engine list saying what the list is for.
+private struct WorkshopIntro: View {
+    @Environment(WorkshopLibrary.self) private var workshop
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "info.circle")
+            Text("Subscribe on the Steam Workshop and downloads appear here. Select wallpapers, then choose Make Videos.")
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Button("Open Workshop") { workshop.openWorkshop() }
+                .controlSize(.small)
+                .help(workshop.isSevofluraneInstalled
+                    ? "Open the Wallpaper Engine Workshop in Sevoflurane’s Steam"
+                    : "Open the Wallpaper Engine Workshop in your browser")
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, LibraryGridMetrics.padding)
+        .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Empty states
+
+private struct VideoEmptyState: View {
+    @Environment(LibraryStore.self) private var store
+
+    var body: some View {
+        switch store.section {
         case .inUse:
             ContentUnavailableView {
                 Label("No Wallpaper in Use", systemImage: "play.rectangle")
             } description: {
                 Text("Choose a Phosphene video in System Settings › Wallpaper.")
             } actions: {
-                Button("Open Wallpaper Settings") { openWallpaperSettings() }
+                Button("Open Wallpaper Settings") { store.openWallpaperSettings() }
             }
         case .fromWorkshop:
             ContentUnavailableView {
@@ -172,7 +375,7 @@ struct LibraryWindow: View {
             } description: {
                 Text("Select Wallpaper Engine downloads and choose Make Videos.")
             } actions: {
-                Button("Show Downloads") { section = .workshopDownloads }
+                Button("Show Downloads") { store.section = .workshopDownloads }
             }
         default:
             ContentUnavailableView {
@@ -180,15 +383,19 @@ struct LibraryWindow: View {
             } description: {
                 Text("Add a video to use as your wallpaper, or drop one here.")
             } actions: {
-                Button("Add Video…") { manager.openVideoChooser() }
+                Button("Add Video…") { store.addVideo() }
                     .buttonStyle(.borderedProminent)
             }
         }
     }
+}
 
-    @ViewBuilder
-    private var workshopEmptyState: some View {
-        if section == .workshopNotMade, !workshop.items.isEmpty {
+private struct WorkshopEmptyState: View {
+    @Environment(LibraryStore.self) private var store
+    @Environment(WorkshopLibrary.self) private var workshop
+
+    var body: some View {
+        if store.section == .workshopNotMade, !workshop.items.isEmpty {
             ContentUnavailableView {
                 Label("Every Download Has a Video", systemImage: "checkmark.circle")
             } description: {
@@ -206,500 +413,94 @@ struct LibraryWindow: View {
                     .buttonStyle(.borderedProminent)
             }
         } else {
-            VStack(spacing: 0) {
-                ContentUnavailableView {
-                    Label("Wallpaper Engine Wallpapers on Your Mac", systemImage: "wand.and.sparkles")
-                } description: {
-                    if workshop.isSevofluraneInstalled {
-                        Text("""
-                        Subscribe to wallpapers on the Steam Workshop and Phosphene makes them into video wallpapers. \
-                        In Sevoflurane’s Steam, install Wallpaper Engine first.
-                        """)
-                    } else {
-                        Text("""
-                        Subscribe to wallpapers on the Steam Workshop and Phosphene makes them into video wallpapers. \
-                        Wallpaper Engine runs in Windows Steam; Sevoflurane brings that Steam to your Mac, free, \
-                        from the maker of Phosphene.
-                        """)
-                    }
-                } actions: {
-                    if workshop.isSevofluraneInstalled {
-                        Button("Open Steam Workshop") { workshop.openWorkshop() }
-                            .buttonStyle(.borderedProminent)
-                    } else {
-                        Button("Get Sevoflurane") { NSWorkspace.shared.open(WorkshopDiscovery.sevofluraneURL) }
-                            .buttonStyle(.borderedProminent)
-                            .help("Sevoflurane runs Windows Steam on your Mac. It’s free, from the maker of Phosphene.")
-                    }
-                    Button("Add Folder…") { workshop.chooseFolder() }
-                        .help("A Steam folder from CrossOver or Whisky, or any folder of Wallpaper Engine wallpapers")
+            getStarted
+        }
+    }
+
+    private var getStarted: some View {
+        VStack(spacing: 0) {
+            ContentUnavailableView {
+                Label("Wallpaper Engine Wallpapers on Your Mac", systemImage: "wand.and.sparkles")
+            } description: {
+                if workshop.isSevofluraneInstalled {
+                    Text("""
+                    Subscribe to wallpapers on the Steam Workshop and Phosphene makes them into video wallpapers. \
+                    In Sevoflurane’s Steam, install Wallpaper Engine first.
+                    """)
+                } else {
+                    Text("""
+                    Subscribe to wallpapers on the Steam Workshop and Phosphene makes them into video wallpapers. \
+                    Wallpaper Engine runs in Windows Steam; Sevoflurane brings that Steam to your Mac, free, \
+                    from the maker of Phosphene.
+                    """)
                 }
-                Text("Wallpaper Engine is a trademark of Wallpaper Engine Team; Steam is a trademark of Valve Corporation. Phosphene is an independent app.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 48)
-                    .padding(.bottom, 20)
-            }
-        }
-    }
-
-    // MARK: - Rows
-
-    private var inUseIDs: Set<String> {
-        Set(manager.prefsService.selections.map(\.videoID))
-    }
-
-    private var workshopEntryIDs: Set<String> {
-        Set(workshop.records.values.map(\.entryID))
-    }
-
-    private var videoRows: [VideoRow] {
-        let inUse = inUseIDs
-        let fromWorkshop = workshopEntryIDs
-        return entries.compactMap { entry -> VideoRow? in
-            let row = VideoRow(
-                entry: entry, isInUse: inUse.contains(entry.id), isFromWorkshop: fromWorkshop.contains(entry.id),
-                fileSize: VideoDeploymentService.fileSize(for: entry) ?? 0,
-            )
-            switch section {
-            case .inUse where !row.isInUse: return nil
-            case .fromWorkshop where !row.isFromWorkshop: return nil
-            default: break
-            }
-            guard search.isEmpty || entry.name.localizedStandardContains(search) else { return nil }
-            return row
-        }
-    }
-
-    private var workshopRows: [WorkshopRow] {
-        let labels = Dictionary(workshop.sources.map { ($0.id, $0.label) }) { first, _ in first }
-        return workshop.items.compactMap { item -> WorkshopRow? in
-            let status = workshop.status(of: item)
-            switch section {
-            case .workshopNotMade:
-                switch status {
-                case .available, .outdated, .failed, .queued, .rendering: break
-                default: return nil
+            } actions: {
+                if workshop.isSevofluraneInstalled {
+                    Button("Open Steam Workshop") { workshop.openWorkshop() }
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    Button("Get Sevoflurane") { NSWorkspace.shared.open(WorkshopDiscovery.sevofluraneURL) }
+                        .buttonStyle(.borderedProminent)
+                        .help("Sevoflurane runs Windows Steam on your Mac. It’s free, from the maker of Phosphene.")
                 }
-            case let .workshopSource(id) where item.sourceID != id:
-                return nil
-            default:
-                break
+                Button("Add Folder…") { workshop.chooseFolder() }
+                    .help("A Steam folder from CrossOver or Whisky, or any folder of Wallpaper Engine wallpapers")
             }
-            guard search.isEmpty || item.title.localizedStandardContains(search) else { return nil }
-            return WorkshopRow(item: item, status: status, sourceLabel: labels[item.sourceID] ?? "")
+            Text("Wallpaper Engine is a trademark of Wallpaper Engine Team; Steam is a trademark of Valve Corporation. Phosphene is an independent app.")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 48)
+                .padding(.bottom, 20)
         }
-    }
-
-    private var counts: LibrarySidebar.Counts {
-        let inUse = inUseIDs
-        let fromWorkshop = workshopEntryIDs
-        return LibrarySidebar.Counts(
-            all: entries.count,
-            inUse: entries.count { inUse.contains($0.id) },
-            fromWorkshop: entries.count { fromWorkshop.contains($0.id) },
-        )
-    }
-
-    // MARK: - Titles
-
-    private var sectionTitle: String {
-        switch section {
-        case .allVideos: String(localized: "All Videos")
-        case .inUse: String(localized: "In Use")
-        case .fromWorkshop: String(localized: "From Workshop")
-        case .workshopDownloads: String(localized: "Wallpaper Engine")
-        case .workshopNotMade: String(localized: "Not Made Yet")
-        case let .workshopSource(id): workshop.sources.first { $0.id == id }?.label ?? String(localized: "Wallpaper Engine")
-        }
-    }
-
-    private var sectionSubtitle: String {
-        if section.isWorkshop {
-            let count = workshopRows.count
-            return String(localized: "\(count) wallpapers")
-        }
-        let rows = videoRows
-        let bytes = rows.map(\.fileSize).reduce(0, +)
-        let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-        return String(localized: "\(rows.count) videos · \(size)")
-    }
-
-    // MARK: - Toolbar
-
-    @ToolbarContentBuilder
-    private var toolbar: some ToolbarContent {
-        ToolbarItem {
-            Picker("View", selection: $viewMode) {
-                Label("Icons", systemImage: "square.grid.2x2").tag(LibraryViewMode.icons)
-                Label("List", systemImage: "list.bullet").tag(LibraryViewMode.list)
-            }
-            .pickerStyle(.segmented)
-            .help("Show as icons or as a list")
-        }
-        ToolbarSpacer(.fixed)
-        if section.isWorkshop {
-            ToolbarItem {
-                Button {
-                    workshop.openWorkshop()
-                } label: {
-                    Label("Steam Workshop", systemImage: "safari")
-                }
-                .help("Open the Wallpaper Engine Workshop in Steam")
-            }
-            ToolbarItem {
-                Button {
-                    showingMakeVideos = true
-                } label: {
-                    Label(makeVideosTitle, systemImage: "film.stack")
-                        .labelStyle(.titleAndIcon)
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(renderableSelection.isEmpty)
-                .help("Turn the selected wallpapers into looping videos")
-            }
-        } else {
-            ToolbarItem {
-                Button {
-                    manager.openVideoChooser()
-                } label: {
-                    Label("Add Video", systemImage: "plus")
-                }
-                .help("Add a video to the library")
-            }
-        }
-        ToolbarSpacer(.fixed)
-        ToolbarItem {
-            Button {
-                showInspector.toggle()
-            } label: {
-                Label("Inspector", systemImage: "sidebar.trailing")
-            }
-            .help(showInspector ? "Hide Inspector" : "Show Inspector")
-        }
-    }
-
-    private var renderableSelection: Set<String> {
-        workshop.staged.filter { workshop.assessments[$0]?.isRenderable ?? false }
-    }
-
-    private var makeVideosTitle: String {
-        let count = renderableSelection.count
-        switch count {
-        case 0: return String(localized: "Make Videos")
-        case 1: return String(localized: "Make Video")
-        default: return String(localized: "Make \(count) Videos")
-        }
-    }
-
-    // MARK: - Inspector
-
-    @ViewBuilder
-    private var inspector: some View {
-        if section.isWorkshop {
-            let selected = workshop.staged.compactMap { workshop.item($0) }
-            if selected.count == 1, let item = selected.first {
-                WorkshopInspectorView(item: item, library: workshop) { entryID in
-                    section = .allVideos
-                    videoSelection = [entryID]
-                }
-            } else if selected.count > 1 {
-                MultipleSelectionInspector(
-                    count: selected.count,
-                    detail: String(localized: "\(renderableSelection.count) can become videos"),
-                    actionTitle: makeVideosTitle,
-                    action: renderableSelection.isEmpty ? nil : { showingMakeVideos = true },
-                )
-            } else {
-                emptyInspector
-            }
-        } else {
-            let selected = entries.filter { videoSelection.contains($0.id) }
-            if selected.count == 1, let entry = selected.first {
-                VideoInspectorView(entry: entry, manager: manager)
-            } else if selected.count > 1 {
-                let bytes = selected.compactMap { VideoDeploymentService.fileSize(for: $0) }.reduce(0, +)
-                MultipleSelectionInspector(
-                    count: selected.count,
-                    detail: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file),
-                    actionTitle: String(localized: "Delete \(selected.count) Videos…"),
-                    action: { pendingDelete = Set(selected.map(\.id)) },
-                    isDestructive: true,
-                )
-            } else {
-                emptyInspector
-            }
-        }
-    }
-
-    private var emptyInspector: some View {
-        ContentUnavailableView {
-            Label("No Selection", systemImage: "sidebar.right")
-        } description: {
-            Text(section.isWorkshop
-                ? "Select wallpapers to see what Phosphene can make of them."
-                : "Select a video to view its details.")
-        }
-    }
-
-    // MARK: - Status Bar
-
-    private var statusBar: some View {
-        HStack(spacing: 10) {
-            if let current = workshop.current.flatMap(workshop.item) {
-                ProgressView(value: workshop.progress)
-                    .progressViewStyle(.circular)
-                    .controlSize(.mini)
-                Text(renderingSummary(current))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Button("Stop") { workshop.cancelAll() }
-                    .buttonStyle(.link)
-            } else {
-                Button {
-                    openWallpaperSettings()
-                } label: {
-                    Text("Wallpapers apply in System Settings \(Image(systemName: "arrow.up.right"))")
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .buttonStyle(.plain)
-                .layoutPriority(-1)
-                .help("Open macOS Wallpaper Settings")
-                WallpaperPlacementHelpButton()
-            }
-            Spacer(minLength: 0)
-            if viewMode == .icons {
-                // The slider goes when the column is too narrow for it, so the status bar
-                // never sets the detail column's minimum width.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "photo")
-                            .imageScale(.small)
-                        Slider(value: $iconSize, in: LibraryIconSize.range)
-                            .controlSize(.mini)
-                            .frame(width: 96)
-                            .help("Icon size")
-                            .accessibilityLabel("Icon size")
-                        Image(systemName: "photo")
-                    }
-                    Color.clear
-                        .frame(width: 0, height: 0)
-                }
-            }
-        }
-        .font(.system(size: 11))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
-    }
-
-    private func renderingSummary(_ item: WorkshopItem) -> String {
-        let percent = workshop.progress.formatted(.percent.precision(.fractionLength(0)))
-        let waiting = workshop.queue.count
-        let base = String(localized: "Making “\(item.title)” · \(percent)")
-        return waiting > 0 ? String(localized: "\(base) · \(waiting) waiting") : base
-    }
-
-    // MARK: - Actions
-
-    private var actions: LibraryActions {
-        LibraryActions(
-            addVideo: { manager.openVideoChooser() },
-            addFolder: { workshop.chooseFolder() },
-            makeVideos: renderableSelection.isEmpty || !section.isWorkshop ? nil : { showingMakeVideos = true },
-            showAsIcons: { viewMode = .icons },
-            showAsList: { viewMode = .list },
-            largerIcons: { iconSize = min(LibraryIconSize.range.upperBound, iconSize + LibraryIconSize.step) },
-            smallerIcons: { iconSize = max(LibraryIconSize.range.lowerBound, iconSize - LibraryIconSize.step) },
-            viewMode: viewMode,
-        )
-    }
-
-    private var deleteTitle: String {
-        let count = pendingDelete?.count ?? 0
-        if count == 1, let id = pendingDelete?.first, let entry = entries.first(where: { $0.id == id }) {
-            return String(localized: "Delete “\(entry.name)”?")
-        }
-        return String(localized: "Delete \(count) Videos?")
-    }
-
-    private func deletePending() {
-        for id in pendingDelete ?? [] {
-            manager.removeVideo(entryID: id)
-        }
-        videoSelection.subtract(pendingDelete ?? [])
-        pendingDelete = nil
-        loadEntries()
-        workshop.refresh()
-    }
-
-    private func importDropped(_ urls: [URL]) {
-        let videoTypes: [UTType] = [.movie, .video, .mpeg4Movie, .quickTimeMovie]
-        let videos = urls.filter { url in
-            guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
-            return videoTypes.contains { type.conforms(to: $0) }
-        }
-        guard !videos.isEmpty else { return }
-        Task {
-            for url in videos {
-                await manager.importVideo(url)
-            }
-        }
-    }
-
-    private func openWallpaperSettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!)
-    }
-
-    private func loadEntries() {
-        entries = VideoDeploymentService.listEntries()
-        videoSelection = videoSelection.filter { id in entries.contains { $0.id == id } }
-        if videoSelection.isEmpty, let initialSelectionID, entries.contains(where: { $0.id == initialSelectionID }) {
-            videoSelection = [initialSelectionID]
-        }
-    }
-}
-
-/// Column widths, and a window minimum that holds them all at their widest.
-///
-/// Never let the window be narrower than the columns can be: SwiftUI leaves the split
-/// view's own minimum out of the window's `contentMinSize`, and a window below it sends
-/// AppKit into an endless Update Constraints loop that ends in an exception (#35).
-/// ``detailMin`` is what the detail column is left with when both side columns are at
-/// their widest; it is never applied as a `.frame(minWidth:)` on the detail, which
-/// starts the same loop at any window size.
-private enum Layout {
-    static let sidebarMin: CGFloat = 180
-    static let sidebarIdeal: CGFloat = 220
-    static let sidebarMax: CGFloat = 260
-    static let inspectorMin: CGFloat = 260
-    static let inspectorIdeal: CGFloat = 300
-    static let inspectorMax: CGFloat = 340
-    static let detailMin: CGFloat = 420
-    static let dividers: CGFloat = 2
-    static let windowMinWidth = sidebarMax + inspectorMax + detailMin + dividers
-}
-
-// MARK: - Pieces
-
-/// One line at the top of a Wallpaper Engine list saying what the list is for.
-private struct WorkshopIntro: View {
-    @Bindable var library: WorkshopLibrary
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "info.circle")
-            Text("Subscribe on the Steam Workshop and downloads appear here. Select wallpapers, then choose Make Videos.")
-                .lineLimit(2)
-            Spacer(minLength: 0)
-            Button("Open Workshop") { library.openWorkshop() }
-                .controlSize(.small)
-        }
-        .font(.system(size: 11))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
-    }
-}
-
-/// The inspector when several things are selected.
-private struct MultipleSelectionInspector: View {
-    let count: Int
-    let detail: String
-    let actionTitle: String
-    let action: (() -> Void)?
-    var isDestructive = false
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "square.stack.3d.up")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(.secondary)
-            Text("\(count) Selected")
-                .font(.headline)
-            Text(detail)
-                .foregroundStyle(.secondary)
-            if let action {
-                Button(role: isDestructive ? .destructive : nil, action: action) {
-                    Text(actionTitle)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .padding(.horizontal, 14)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(14)
     }
 }
 
 // MARK: - Menu commands
 
-/// The library window's actions, published to the menu bar.
-struct LibraryActions {
-    let addVideo: () -> Void
-    let addFolder: () -> Void
-    let makeVideos: (() -> Void)?
-    let showAsIcons: () -> Void
-    let showAsList: () -> Void
-    let largerIcons: () -> Void
-    let smallerIcons: () -> Void
-    let viewMode: LibraryViewMode
-}
-
-extension FocusedValues {
-    @Entry var libraryActions: LibraryActions?
-}
-
-/// Every toolbar action also lives in the menu bar, with keyboard shortcuts.
+/// Every library action in the menu bar, with keyboard shortcuts.
 struct LibraryCommands: Commands {
-    @FocusedValue(\.libraryActions) private var actions
+    @FocusedValue(LibraryStore.self) private var store
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            Button("Add Video…") { actions?.addVideo() }
+            Button("Add Video…") { store?.addVideo() }
                 .keyboardShortcut("o")
-                .disabled(actions == nil)
-            Button("Add Wallpaper Engine Folder…") { actions?.addFolder() }
+                .disabled(store == nil)
+            Button("Add Wallpaper Engine Folder…") { store?.addFolder() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
-                .disabled(actions == nil)
+                .disabled(store == nil)
             Divider()
-            Button("Make Videos…") { actions?.makeVideos?() }
+            Button("Make Videos…") { store?.requestMakeVideos() }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
-                .disabled(actions?.makeVideos == nil)
+                .disabled(store?.renderableSelection.isEmpty ?? true)
+            Divider()
+            Button("Quick Look") { store?.toggleQuickLook() }
+                .keyboardShortcut("y")
+                .disabled(!(store?.hasSelection ?? false))
+            Button("Show in Finder") { store?.showSelectionInFinder() }
+                .keyboardShortcut("r")
+                .disabled(!(store?.hasSelection ?? false))
+            Button("Delete…") { store?.requestDelete() }
+                .keyboardShortcut(.delete)
+                .disabled(store?.videoSelection.isEmpty ?? true)
         }
         CommandGroup(before: .sidebar) {
-            Toggle("as Icons", isOn: Binding(
-                get: { actions?.viewMode == .icons },
-                set: {
-                    if $0 {
-                        actions?.showAsIcons()
-                    }
-                },
-            ))
-            .keyboardShortcut("1")
-            .disabled(actions == nil)
-            Toggle("as List", isOn: Binding(
-                get: { actions?.viewMode == .list },
-                set: {
-                    if $0 {
-                        actions?.showAsList()
-                    }
-                },
-            ))
-            .keyboardShortcut("2")
-            .disabled(actions == nil)
-            Divider()
-            Button("Make Icons Larger") { actions?.largerIcons() }
+            if let store {
+                Picker("View", selection: Bindable(store).viewMode) {
+                    Text("as Icons").tag(LibraryViewMode.icons)
+                        .keyboardShortcut("1")
+                    Text("as List").tag(LibraryViewMode.list)
+                        .keyboardShortcut("2")
+                }
+                .pickerStyle(.inline)
+            }
+            Button("Make Icons Larger") { store?.stepIconSize(by: 1) }
                 .keyboardShortcut("+")
-                .disabled(actions?.viewMode != .icons)
-            Button("Make Icons Smaller") { actions?.smallerIcons() }
+                .disabled(store?.viewMode != .icons)
+            Button("Make Icons Smaller") { store?.stepIconSize(by: -1) }
                 .keyboardShortcut("-")
-                .disabled(actions?.viewMode != .icons)
+                .disabled(store?.viewMode != .icons)
             Divider()
         }
         SidebarCommands()

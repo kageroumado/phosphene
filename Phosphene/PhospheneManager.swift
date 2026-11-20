@@ -59,6 +59,9 @@ final class PhospheneManager {
     let occlusionMonitor = OcclusionMonitor()
     /// Wallpaper Engine downloads and the queue that turns them into videos.
     let workshop = WorkshopLibrary()
+    /// The library window's state. One window shows the library, so its selection and
+    /// section outlive the window.
+    @ObservationIgnored private(set) lazy var library = LibraryStore(manager: self)
 
     // MARK: - Private
 

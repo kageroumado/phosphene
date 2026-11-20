@@ -3,23 +3,13 @@ import SwiftUI
 /// The library window's sidebar: the videos Phosphene plays, then the Wallpaper
 /// Engine downloads it can make videos from, one row per place they come from.
 struct LibrarySidebar: View {
-    @Binding var section: LibrarySection
-    let counts: Counts
-    @Bindable var workshop: WorkshopLibrary
-    let onAddVideo: () -> Void
-
-    struct Counts {
-        var all = 0
-        var inUse = 0
-        var fromWorkshop = 0
-    }
+    @Environment(LibraryStore.self) private var store
+    @Environment(WorkshopLibrary.self) private var workshop
 
     var body: some View {
-        List(selection: Binding(get: { section }, set: {
-            if let new = $0 {
-                section = new
-            }
-        })) {
+        @Bindable var store = store
+        let counts = store.counts
+        List(selection: $store.sidebarSelection) {
             Section("Library") {
                 row(Text("All Videos"), symbol: "film.stack", count: counts.all, tag: .allVideos)
                 row(Text("In Use"), symbol: "play.rectangle", count: counts.inUse, tag: .inUse)
@@ -27,8 +17,8 @@ struct LibrarySidebar: View {
             }
 
             Section("Wallpaper Engine") {
-                row(Text("Downloads"), symbol: "square.and.arrow.down", count: workshop.items.count, tag: .workshopDownloads)
-                row(Text("Not Made Yet"), symbol: "circle.dashed", count: notMadeCount, tag: .workshopNotMade)
+                row(Text("Downloads"), symbol: "square.and.arrow.down", count: counts.downloads, tag: .workshopDownloads)
+                row(Text("Not Made Yet"), symbol: "circle.dashed", count: counts.notMade, tag: .workshopNotMade)
                 ForEach(workshop.sources) { source in
                     row(
                         Text(verbatim: source.label), symbol: symbol(for: source),
@@ -51,15 +41,6 @@ struct LibrarySidebar: View {
         .safeAreaInset(edge: .bottom) { bottomBar }
     }
 
-    private var notMadeCount: Int {
-        workshop.items.count { item in
-            switch workshop.status(of: item) {
-            case .available, .outdated, .failed: true
-            default: false
-            }
-        }
-    }
-
     private func row(_ title: Text, symbol: String, count: Int, tag: LibrarySection) -> some View {
         Label { title } icon: { Image(systemName: symbol) }
             .badge(count)
@@ -77,8 +58,8 @@ struct LibrarySidebar: View {
     private var bottomBar: some View {
         HStack {
             Menu {
-                Button("Add Video…", action: onAddVideo)
-                Button("Add Wallpaper Engine Folder…") { workshop.chooseFolder() }
+                Button("Add Video…") { store.addVideo() }
+                Button("Add Wallpaper Engine Folder…") { store.addFolder() }
             } label: {
                 Image(systemName: "plus")
             }

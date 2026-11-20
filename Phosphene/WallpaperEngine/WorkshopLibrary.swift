@@ -80,12 +80,28 @@ final class WorkshopLibrary {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: WorkshopDiscovery.sevofluraneBundleID) != nil
     }
 
-    /// Open the Wallpaper Engine Workshop: in Steam when an app handles `steam://`
-    /// links (Sevoflurane does), otherwise on the web.
+    /// Open the Wallpaper Engine Workshop: in Sevoflurane's Steam when Sevoflurane is
+    /// installed, otherwise on the web.
     func openWorkshop() {
-        let steam = WorkshopDiscovery.workshopURL
-        let handled = NSWorkspace.shared.urlForApplication(toOpen: steam) != nil
-        NSWorkspace.shared.open(handled ? steam : WorkshopDiscovery.workshopWebURL)
+        openSteamLink(WorkshopDiscovery.workshopURL, orWeb: WorkshopDiscovery.workshopWebURL)
+    }
+
+    /// Open one download's Workshop page, the way ``openWorkshop()`` opens the Workshop.
+    func openWorkshopPage(of item: WorkshopItem) {
+        guard let steam = item.workshopPageURL, let web = item.workshopWebPageURL else { return }
+        openSteamLink(steam, orWeb: web)
+    }
+
+    /// A `steam://` link goes to Sevoflurane by name: macOS hands the scheme to whichever
+    /// Steam registered it, and the Mac Steam client has no Wallpaper Engine to subscribe for.
+    private func openSteamLink(_ steam: URL, orWeb web: URL) {
+        guard let sevoflurane = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: WorkshopDiscovery.sevofluraneBundleID,
+        ) else {
+            NSWorkspace.shared.open(web)
+            return
+        }
+        NSWorkspace.shared.open([steam], withApplicationAt: sevoflurane, configuration: NSWorkspace.OpenConfiguration())
     }
 
     /// Scratch and output files a bake that never returned (a crash mid-render)
@@ -246,9 +262,8 @@ final class WorkshopLibrary {
 
     // MARK: - Making videos
 
-    /// Queue `ids` (default: the staged items) and start working through the queue.
-    func makeVideos(_ ids: [String]? = nil) {
-        let ids = ids ?? items.map(\.id).filter { staged.contains($0) }
+    /// Queue `ids` and start working through the queue.
+    func makeVideos(_ ids: [String]) {
         for id in ids where !queue.contains(id) && current != id {
             queue.append(id)
             failures[id] = nil

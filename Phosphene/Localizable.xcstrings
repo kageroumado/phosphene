@@ -552,12 +552,32 @@
         }
       }
     },
+    "Click to open in Quick Look": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按以在“快速查看”中打开"
+          }
+        }
+      }
+    },
     "Click to rename — the name also shows in the System Settings wallpaper picker": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "点按以重命名——此名称也会显示在“系统设置”的墙纸选择器中"
+          }
+        }
+      }
+    },
+    "Codec": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编解码器"
           }
         }
       }
@@ -1074,6 +1094,16 @@
         }
       }
     },
+    "Information": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "信息"
+          }
+        }
+      }
+    },
     "Inspector": {
       "localizations": {
         "zh-Hans": {
@@ -1214,6 +1244,16 @@
         }
       }
     },
+    "Lower frame-rate copies that Phosphene plays on battery and when the Mac runs hot.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帧率较低的副本，Phosphene 会在使用电池供电或 Mac 发热时播放。"
+          }
+        }
+      }
+    },
     "Made": {
       "localizations": {
         "zh-Hans": {
@@ -1246,6 +1286,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "制作 %lld 个视频"
+          }
+        }
+      }
+    },
+    "Make %lld Videos…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "制作 %lld 个视频…"
           }
         }
       }
@@ -1290,6 +1340,16 @@
         }
       }
     },
+    "Make Video Again…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新制作视频…"
+          }
+        }
+      }
+    },
     "Make Videos": {
       "localizations": {
         "zh-Hans": {
@@ -1301,6 +1361,16 @@
       }
     },
     "Make Videos…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "制作视频…"
+          }
+        }
+      }
+    },
+    "Make Video…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
@@ -1586,6 +1656,26 @@
         }
       }
     },
+    "Open the Wallpaper Engine Workshop in Sevoflurane’s Steam": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Sevoflurane 的 Steam 中打开 Wallpaper Engine 创意工坊"
+          }
+        }
+      }
+    },
+    "Open the Wallpaper Engine Workshop in your browser": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在浏览器中打开 Wallpaper Engine 创意工坊"
+          }
+        }
+      }
+    },
     "Open Wallpaper Settings": {
       "localizations": {
         "zh-Hans": {
@@ -1849,6 +1939,16 @@
         }
       }
     },
+    "Preview": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览"
+          }
+        }
+      }
+    },
     "Quality": {
       "localizations": {
         "zh-Hans": {
@@ -1859,12 +1959,32 @@
         }
       }
     },
+    "Quick Look": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快速查看"
+          }
+        }
+      }
+    },
     "Quit Phosphene": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "退出 Phosphene"
+          }
+        }
+      }
+    },
+    "Rating": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分级"
           }
         }
       }
@@ -2733,6 +2853,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "保持“在所有空间中显示”关闭，切换到该桌面，然后选择视频。"
+          }
+        }
+      }
+    },
+    "Without %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不含%@"
           }
         }
       }

@@ -221,7 +221,7 @@ struct MenuBarPopoverView: View {
                         openLibrary()
                     }
                     Button("Wallpaper Engine…") {
-                        UserDefaults.standard.set(LibrarySection.workshopDownloads.rawValue, forKey: LibrarySection.storageKey)
+                        manager.library.section = .workshopDownloads
                         openLibrary()
                     }
                     .help("Make wallpapers from Wallpaper Engine downloads")
