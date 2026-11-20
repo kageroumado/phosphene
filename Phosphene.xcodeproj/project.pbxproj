@@ -63,6 +63,7 @@
 		7E5700000000000000000AA2 /* Exceptions for "Phosphene" folder in "PhospheneTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				LibraryGridMetrics.swift,
 				OcclusionMath.swift,
 				PathSafety.swift,
 				WallpaperEngine/GL.swift,

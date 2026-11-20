@@ -66,19 +66,6 @@ enum LibraryIconSize {
     }
 }
 
-/// The grid's metrics and the arithmetic that follows from them.
-nonisolated enum LibraryGridMetrics {
-    static let spacing: CGFloat = 20
-    static let rowSpacing: CGFloat = 20
-    static let padding: CGFloat = 20
-
-    /// How many tiles of `tileWidth` fit across `width`.
-    static func columns(in width: CGFloat, tileWidth: CGFloat) -> Int {
-        let usable = width - padding * 2
-        return max(1, Int((usable + spacing) / (tileWidth + spacing)))
-    }
-}
-
 /// One library video, flattened for sorting in a table.
 nonisolated struct VideoRow: Identifiable, Sendable {
     let entry: VideoDeploymentService.EntryInfo
