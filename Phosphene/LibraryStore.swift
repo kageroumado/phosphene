@@ -123,23 +123,33 @@ final class LibraryStore {
     /// The downloads of the current section that match the search, in sort order.
     var workshopRows: [WorkshopRow] {
         let labels = Dictionary(workshop.sources.map { ($0.id, $0.label) }) { first, _ in first }
+        let entriesByID = Dictionary(entries.map { ($0.id, $0) }) { first, _ in first }
         return workshop.items.compactMap { item -> WorkshopRow? in
             let status = workshop.status(of: item)
             switch section {
-            case .workshopNotMade:
-                switch status {
-                case .available, .outdated, .failed, .queued, .rendering: break
-                default: return nil
-                }
+            case .workshopNotMade where !Self.isNotMade(status):
+                return nil
             case let .workshopSource(id) where item.sourceID != id:
                 return nil
             default:
                 break
             }
             guard search.isEmpty || item.title.localizedStandardContains(search) else { return nil }
-            return WorkshopRow(item: item, status: status, sourceLabel: labels[item.sourceID] ?? "")
+            return WorkshopRow(
+                item: item, status: status, sourceLabel: labels[item.sourceID] ?? "",
+                video: workshop.records[item.id].flatMap { entriesByID[$0.entryID] },
+            )
         }
         .sorted(using: workshopSort)
+    }
+
+    /// Whether a download belongs in Not Made Yet: it has no current video, or one is
+    /// being made. The section's rows and its sidebar count both use this.
+    private static func isNotMade(_ status: WorkshopLibrary.ItemStatus) -> Bool {
+        switch status {
+        case .available, .outdated, .failed, .queued, .rendering: true
+        case .made, .unsupported: false
+        }
     }
 
     struct Counts: Equatable {
@@ -158,12 +168,7 @@ final class LibraryStore {
             inUse: entries.count { inUse.contains($0.id) },
             fromWorkshop: entries.count { fromWorkshop.contains($0.id) },
             downloads: workshop.items.count,
-            notMade: workshop.items.count { item in
-                switch workshop.status(of: item) {
-                case .available, .outdated, .failed: true
-                default: false
-                }
-            },
+            notMade: workshop.items.count { Self.isNotMade(workshop.status(of: $0)) },
         )
     }
 
@@ -178,6 +183,17 @@ final class LibraryStore {
     /// The selected downloads that can become videos.
     var renderableSelection: [WorkshopItem] {
         selectedDownloads.filter { workshop.assessments[$0.id]?.isRenderable ?? false }
+    }
+
+    /// The library video made from `item`, once there is one.
+    func video(for item: WorkshopItem) -> VideoDeploymentService.EntryInfo? {
+        guard let entryID = workshop.records[item.id]?.entryID else { return nil }
+        return entries.first { $0.id == entryID }
+    }
+
+    /// The size of a library video's file, as read at the last reload.
+    func fileSize(ofVideo entryID: String) -> Int64? {
+        fileSizes[entryID]
     }
 
     var hasSelection: Bool {
@@ -267,11 +283,7 @@ final class LibraryStore {
 
     /// A download previews as its video once made, as its Workshop picture before.
     private func quickLookURL(for item: WorkshopItem) -> URL? {
-        if let entryID = workshop.records[item.id]?.entryID,
-           let entry = entries.first(where: { $0.id == entryID }) {
-            return VideoDeploymentService.videoURL(for: entry)
-        }
-        return item.preview
+        video(for: item).map(VideoDeploymentService.videoURL(for:)) ?? item.preview
     }
 
     /// Show `id`, or the first selected item, in Quick Look; a second call closes it.
@@ -346,6 +358,11 @@ final class LibraryStore {
             return String(localized: "Delete “\(entry.name)”?")
         }
         return String(localized: "Delete \(count) Videos?")
+    }
+
+    var deleteMessage: String {
+        let count = pendingDelete?.count ?? 0
+        return String(localized: "The \(count) videos leave your library and System Settings.")
     }
 
     /// Ask for the Make Videos sheet for `ids`, or for the selected downloads. Every way

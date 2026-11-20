@@ -65,6 +65,16 @@ private enum InspectorMetrics {
     static let previewRadius: CGFloat = 8
 }
 
+private extension View {
+    /// The inspector's content padding. Its top inset is the grid's, so the preview lines
+    /// up with the first row of tiles.
+    func inspectorPadding() -> some View {
+        padding(.horizontal, InspectorMetrics.padding)
+            .padding(.bottom, InspectorMetrics.padding)
+            .padding(.top, LibraryGridMetrics.padding)
+    }
+}
+
 /// A titled group of inspector content.
 private struct InspectorSection<Content: View>: View {
     let title: LocalizedStringKey
@@ -196,14 +206,12 @@ struct VideoInspector: View {
                 if let codec, !codec.isHardwareDecoded {
                     softwareDecodeNotice(codec.label)
                 }
-                InspectorSection(title: "Information") {
-                    InfoRows(rows: facts)
-                }
+                InfoRows(rows: facts)
                 InspectorSection(title: "Optimization") {
                     optimization
                 }
             }
-            .padding(InspectorMetrics.padding)
+            .inspectorPadding()
         }
         .task(id: FileKey(
             entryID: entry.id, filename: entry.filename, isConverting: isConvertingThis, revision: store.revision,
@@ -224,20 +232,17 @@ struct VideoInspector: View {
                 InspectorNameField(entryID: entry.id, name: entry.name)
                 let usedOn = usedOn
                 if !usedOn.isEmpty {
-                    Label("In use on \(usedOn.joined(separator: ", "))", systemImage: "checkmark.circle.fill")
-                        .font(.callout)
-                        .foregroundStyle(.tint)
+                    Label {
+                        Text("In use on \(usedOn.joined(separator: ", "))")
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.tint)
+                    }
+                    .font(.callout)
                 }
             }
-            Button {
-                store.openWallpaperSettings()
-            } label: {
-                Text("Use as Wallpaper…")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .help("Phosphene wallpapers are selected in System Settings → Wallpaper")
+            Button("Open Wallpaper Settings…") { store.openWallpaperSettings() }
+                .help("Phosphene wallpapers are selected in System Settings → Wallpaper")
         }
     }
 
@@ -322,13 +327,10 @@ struct VideoInspector: View {
                     Button("Remove", role: .destructive) { manager.removeVariants(entryID: entry.id) }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("This will delete the optimized variants. The original video is not affected.")
+                    let rates = variants.map { String(localized: "\($0.fps) fps") }
+                    Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
                 }
         } else {
-            Text("Lower frame-rate copies that Phosphene plays on battery and when the Mac runs hot.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
             Menu("Create Variants") {
                 ForEach(OptimizationPreset.allCases) { preset in
                     Button {
@@ -460,8 +462,8 @@ private struct InspectorNameField: View {
 
 // MARK: - Wallpaper Engine download
 
-/// One Wallpaper Engine download: its preview, whether it has a video, the action that
-/// makes one, and its facts.
+/// One Wallpaper Engine download: its video once made, or its Workshop preview before;
+/// where it stands, the one action that offers, what the video leaves out, and its facts.
 struct DownloadInspector: View {
     let item: WorkshopItem
 
@@ -470,9 +472,18 @@ struct DownloadInspector: View {
 
     var body: some View {
         let status = workshop.status(of: item)
+        let video = store.video(for: item)
         ScrollView {
             VStack(alignment: .leading, spacing: InspectorMetrics.sectionSpacing) {
-                preview
+                if let video {
+                    VideoPreview(
+                        url: VideoDeploymentService.videoURL(for: video),
+                        poster: VideoDeploymentService.thumbnailURL(for: video.id),
+                        revision: store.revision,
+                    )
+                } else {
+                    DownloadPreview(url: item.preview, placeholder: item.kind.symbol, isDimmed: status.isUnsupported)
+                }
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(verbatim: item.title)
@@ -482,35 +493,18 @@ struct DownloadInspector: View {
                             .font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    actions(status)
+                    action(status)
                 }
-                let notes = notes
-                if !notes.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(notes, id: \.self) { Text(verbatim: $0) }
-                    }
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let note {
+                    Text(verbatim: note)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                InspectorSection(title: "Information") {
-                    InfoRows(rows: facts)
-                }
+                InfoRows(rows: facts(video: video))
             }
-            .padding(InspectorMetrics.padding)
+            .inspectorPadding()
         }
-    }
-
-    private var preview: some View {
-        ZStack {
-            Rectangle()
-                .fill(.quaternary)
-            if let url = item.preview {
-                AnimatedImageView(url: url)
-            }
-        }
-        .aspectRatio(16 / 9, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: InspectorMetrics.previewRadius, style: .continuous))
     }
 
     @ViewBuilder
@@ -523,9 +517,6 @@ struct DownloadInspector: View {
         case .queued:
             Text("Waiting for the videos ahead of it.")
                 .foregroundStyle(.secondary)
-        case .made:
-            Text(verbatim: madeDescription)
-                .foregroundStyle(.secondary)
         case .outdated:
             Text("The author has updated this wallpaper since. Make the video again to get the changes.")
                 .foregroundStyle(.orange)
@@ -533,81 +524,131 @@ struct DownloadInspector: View {
             Text(verbatim: reason)
                 .foregroundStyle(.red)
         case let .unsupported(reason):
-            Text(verbatim: reason)
-                .foregroundStyle(.secondary)
-        case .available:
-            Text("Not made yet.")
-                .foregroundStyle(.secondary)
+            Label {
+                Text(verbatim: reason)
+            } icon: {
+                Image(systemName: "nosign")
+            }
+        case .available, .made:
+            EmptyView()
         }
     }
 
     @ViewBuilder
-    private func actions(_ status: WorkshopLibrary.ItemStatus) -> some View {
+    private func action(_ status: WorkshopLibrary.ItemStatus) -> some View {
         switch status {
         case .rendering, .queued:
-            wideButton("Stop Making Videos") { workshop.cancelAll() }
+            Button("Stop Making Videos") { workshop.cancelAll() }
+        case let .made(entryID):
+            Button("Show in Library") { store.reveal(videoID: entryID) }
+        case .outdated:
+            Button("Make Video Again…") { store.requestMakeVideos([item.id]) }
+        case .available, .failed:
+            Button("Make Video…") { store.requestMakeVideos([item.id]) }
         case .unsupported:
             EmptyView()
-        case let .made(entryID), let .outdated(entryID):
-            wideButton("Show in Library") { store.reveal(videoID: entryID) }
-                .buttonStyle(.borderedProminent)
-            wideButton("Make Video Again…") { store.requestMakeVideos([item.id]) }
-        case .available, .failed:
-            wideButton("Make Video…") { store.requestMakeVideos([item.id]) }
-                .buttonStyle(.borderedProminent)
         }
     }
 
-    private func wideButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .frame(maxWidth: .infinity)
-        }
-        .controlSize(.large)
-    }
-
-    private var madeDescription: String {
-        guard let record = workshop.records[item.id]?.record else { return "" }
-        let date = record.renderedAt.formatted(date: .abbreviated, time: .shortened)
-        guard let settings = record.settings else { return String(localized: "Added on \(date), as it is.") }
-        let loop = Duration.seconds(record.loopDuration).formatted(.units(allowed: [.seconds], width: .abbreviated))
-        let kind = record.seamless
-            ? String(localized: "a \(loop) seamless loop")
-            : String(localized: "a \(loop) loop that crossfades into its start")
-        let size = "\(String(settings.width)) × \(String(settings.height))"
-        return String(localized: "Made on \(date): \(size), \(settings.fps) fps, \(kind).")
-    }
-
-    /// What the video leaves out: scene features Phosphene skips, then effects whose
-    /// shader did not translate.
-    private var notes: [String] {
-        var lines: [String] = []
+    /// What the video leaves out, in one sentence: scene features Phosphene skips, effects
+    /// whose shader did not translate, and an audio visualizer.
+    private var note: String? {
+        var parts: [String] = []
         if case let .partial(omissions) = workshop.assessments[item.id] {
-            lines.append(String(localized: "The video leaves out \(omissions.formatted(.list(type: .and))), which need Wallpaper Engine running."))
+            parts += omissions
         }
         if let record = workshop.records[item.id]?.record {
-            let dropped = record.omissions.filter { $0.hasPrefix("the ") }
-            if !dropped.isEmpty {
-                lines.append(String(localized: "Drawn without \(dropped.formatted(.list(type: .and))), whose shader Phosphene couldn’t translate."))
-            }
+            parts += record.omissions.filter { $0.hasPrefix("the ") }
             if record.omissions.contains("audio visualizer") {
-                lines.append(String(localized: "Its audio visualizer is left out: a video wallpaper hears nothing."))
+                parts.append(String(localized: "the audio visualizer"))
             }
         }
-        return lines
+        guard !parts.isEmpty else { return nil }
+        return String(localized: "The video leaves out \(parts.formatted(.list(type: .and))).")
     }
 
-    private var facts: [InfoRow] {
-        let size = ByteCountFormatter.string(fromByteCount: item.sizeOnDisk, countStyle: .file)
-        var rows = [
-            InfoRow(label: String(localized: "Type"), value: item.kind.name),
-            InfoRow(label: String(localized: "Size"), value: size),
-        ]
+    /// The download's facts; once it has a video, the video's facts take the place of the
+    /// download's size.
+    private func facts(video: VideoDeploymentService.EntryInfo?) -> [InfoRow] {
+        var rows = [InfoRow(label: String(localized: "Type"), value: item.kind.name)]
+        if let video {
+            rows += videoFacts(video)
+        } else {
+            let size = ByteCountFormatter.string(fromByteCount: item.sizeOnDisk, countStyle: .file)
+            rows.append(InfoRow(label: String(localized: "Size"), value: size))
+        }
         if let rating = item.contentRating, !rating.isEmpty {
             rows.append(InfoRow(label: String(localized: "Rating"), value: rating))
         }
         let updated = item.modified.formatted(date: .abbreviated, time: .omitted)
         rows.append(InfoRow(label: String(localized: "Updated"), value: updated))
         return rows
+    }
+
+    private func videoFacts(_ video: VideoDeploymentService.EntryInfo) -> [InfoRow] {
+        var rows: [InfoRow] = []
+        if video.resolution != .zero {
+            let size = "\(Int(video.resolution.width)) × \(Int(video.resolution.height))"
+            rows.append(InfoRow(label: String(localized: "Resolution"), value: size))
+        }
+        if video.fps > 0 {
+            rows.append(InfoRow(label: String(localized: "Frame Rate"), value: String(localized: "\(Int(video.fps.rounded())) fps")))
+        }
+        let record = workshop.records[item.id]?.record
+        if let record, record.settings != nil, record.loopDuration > 0 {
+            let loop = Duration.seconds(record.loopDuration).formatted(.units(allowed: [.seconds], width: .abbreviated))
+            let value = record.seamless ? String(localized: "\(loop), seamless") : String(localized: "\(loop), crossfade")
+            rows.append(InfoRow(label: String(localized: "Loop"), value: value))
+        }
+        if let fileSize = store.fileSize(ofVideo: video.id) {
+            let size = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+            rows.append(InfoRow(label: String(localized: "Size"), value: size))
+        }
+        if let record {
+            rows.append(InfoRow(label: String(localized: "Made"), value: record.renderedAt.formatted(date: .abbreviated, time: .omitted)))
+        }
+        return rows
+    }
+}
+
+/// A download's Workshop preview, animated when it is a GIF, at no more than one image
+/// pixel per screen pixel. A click opens it in Quick Look.
+private struct DownloadPreview: View {
+    let url: URL?
+    let placeholder: String
+    let isDimmed: Bool
+
+    @Environment(LibraryStore.self) private var store
+    @State private var image: NSImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                ActualSizeFrame(pixelSize: image.pixelSize) {
+                    AnimatedImageView(image: image)
+                }
+            } else {
+                Rectangle()
+                    .fill(.quaternary)
+                Image(systemName: placeholder)
+                    .font(.title)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .unsupportedDimming(isDimmed)
+        .clipShape(RoundedRectangle(cornerRadius: InspectorMetrics.previewRadius, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture { store.toggleQuickLook() }
+        .help("Click to open in Quick Look")
+        .accessibilityLabel("Preview")
+        .accessibilityAddTraits(.isButton)
+        .task(id: url) {
+            image = nil
+            guard let url else { return }
+            let loaded = await PreviewImage.animatedImage(at: url)
+            guard !Task.isCancelled else { return }
+            image = loaded
+        }
     }
 }

@@ -109,7 +109,7 @@ struct VideoBrowser: View {
             }
             return LibraryTileModel(
                 id: row.id, title: row.name,
-                image: VideoDeploymentService.thumbnailURL(for: row.id),
+                image: VideoDeploymentService.thumbnailURL(for: row.id), imageFit: .fill,
                 video: VideoDeploymentService.videoURL(for: row.entry),
                 placeholderSymbol: "film", isDimmed: false, badge: badge,
                 help: row.isInUse ? String(localized: "In use as wallpaper") : "",
@@ -138,30 +138,30 @@ struct VideoBrowser: View {
                     }
                 }
             }
-            .width(min: 180, ideal: 320)
+            .width(min: ColumnWidth.nameMin)
             TableColumn("Resolution", value: \.pixelCount) { row in
                 Text(row.resolutionLabel)
             }
-            .width(min: 64, ideal: 84)
+            .width(ColumnWidth.resolution)
             TableColumn("Frame Rate", value: \.fps) { row in
                 Text(row.fps > 0 ? "\(Int(row.fps.rounded())) fps" : "—")
             }
-            .width(min: 60, ideal: 76)
+            .width(ColumnWidth.frameRate)
             TableColumn("Duration", value: \.duration) { row in
                 Text(Duration.seconds(row.duration).formatted(.time(pattern: .minuteSecond)))
                     .monospacedDigit()
             }
-            .width(min: 56, ideal: 70)
+            .width(ColumnWidth.duration)
             TableColumn("Size", value: \.fileSize) { row in
                 Text(ByteCountFormatter.string(fromByteCount: row.fileSize, countStyle: .file))
                     .monospacedDigit()
             }
-            .width(min: 60, ideal: 76)
+            .width(ColumnWidth.size)
             TableColumn("Added", value: \.dateAdded) { row in
                 Text(row.dateAdded, format: Date.FormatStyle(date: .numeric, time: .omitted))
                     .monospacedDigit()
             }
-            .width(min: 76, ideal: 88)
+            .width(ColumnWidth.date)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .contextMenu(forSelectionType: String.self) { ids in
@@ -174,6 +174,48 @@ struct VideoBrowser: View {
             return .handled
         }
         .onDeleteCommand { store.requestDelete() }
+        .revealsSelection(rows.first { store.videoSelection.contains($0.id) }?.id, in: store.section)
+    }
+}
+
+/// Widths of the table columns beside Name, each wide enough for its header with the
+/// sort indicator and for its longest value; Name takes the rest.
+private enum ColumnWidth {
+    static let nameMin: CGFloat = 160
+    static let resolution: CGFloat = 96
+    static let frameRate: CGFloat = 90
+    static let duration: CGFloat = 76
+    static let size: CGFloat = 80
+    static let date: CGFloat = 92
+    static let status: CGFloat = 104
+    static let type: CGFloat = 84
+    static let source: CGFloat = 120
+}
+
+extension View {
+    /// Scroll the row or tile `id` into view when this appears and when the section
+    /// changes, so switching views or places keeps the selection in sight.
+    func revealsSelection(_ id: String?, in section: LibrarySection) -> some View {
+        modifier(RevealSelection(id: id, section: section))
+    }
+}
+
+private struct RevealSelection: ViewModifier {
+    let id: String?
+    let section: LibrarySection
+
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content
+                .onAppear { reveal(proxy) }
+                .onChange(of: section) { reveal(proxy) }
+        }
+    }
+
+    private func reveal(_ proxy: ScrollViewProxy) {
+        if let id {
+            proxy.scrollTo(id)
+        }
     }
 }
 
@@ -193,6 +235,8 @@ struct WorkshopBrowser: View {
         }
     }
 
+    /// A download draws as its library video once it has one: the video's thumbnail,
+    /// playing on hover. Before that it draws its Workshop preview.
     private static func tile(for row: WorkshopRow) -> LibraryTileModel {
         let badge: LibraryTileModel.Badge? = switch row.status {
         case .available: nil
@@ -211,9 +255,16 @@ struct WorkshopBrowser: View {
         default: row.status.explanation ?? ""
         }
         return LibraryTileModel(
-            id: row.id, title: row.title, image: row.item.preview, video: nil,
+            id: row.id, title: row.title,
+            image: thumbnail(of: row), imageFit: row.video == nil ? .actualSize : .fill,
+            video: row.video.map(VideoDeploymentService.videoURL(for:)),
             placeholderSymbol: row.item.kind.symbol, isDimmed: row.status.isUnsupported, badge: badge, help: help,
         )
+    }
+
+    private static func thumbnail(of row: WorkshopRow) -> URL? {
+        guard let video = row.video else { return row.item.preview }
+        return VideoDeploymentService.thumbnailURL(for: video.id)
     }
 
     private var table: some View {
@@ -222,39 +273,43 @@ struct WorkshopBrowser: View {
         return Table(rows, selection: $workshop.staged, sortOrder: $store.workshopSort) {
             TableColumn("Name", value: \.title) { row in
                 HStack(spacing: 8) {
-                    RowThumbnail(url: row.item.preview, placeholder: row.item.kind.symbol)
+                    RowThumbnail(
+                        url: Self.thumbnail(of: row), placeholder: row.item.kind.symbol, revision: store.revision,
+                    )
                     Text(row.title)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .foregroundStyle(row.status.isUnsupported ? .secondary : .primary)
                 }
             }
-            .width(min: 180, ideal: 320)
-            TableColumn("Video", value: \.statusRank) { row in
+            .width(min: ColumnWidth.nameMin)
+            TableColumn("Status", value: \.statusRank) { row in
                 Text(row.statusName)
                     .foregroundStyle(row.status.isUnsupported ? .secondary : .primary)
                     .help(row.status.explanation ?? "")
             }
-            .width(min: 90, ideal: 110)
+            .width(ColumnWidth.status)
             TableColumn("Type", value: \.kindName) { row in
                 Text(row.kindName)
             }
-            .width(min: 64, ideal: 76)
+            .width(ColumnWidth.type)
             TableColumn("Size", value: \.size) { row in
                 Text(ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file))
                     .monospacedDigit()
             }
-            .width(min: 60, ideal: 76)
+            .width(ColumnWidth.size)
             TableColumn("Updated", value: \.modified) { row in
                 Text(row.modified, format: Date.FormatStyle(date: .numeric, time: .omitted))
                     .monospacedDigit()
             }
-            .width(min: 76, ideal: 88)
-            TableColumn("Source", value: \.sourceLabel) { row in
-                Text(row.sourceLabel)
-                    .foregroundStyle(.secondary)
+            .width(ColumnWidth.date)
+            if workshop.sources.count > 1 {
+                TableColumn("Source", value: \.sourceLabel) { row in
+                    Text(row.sourceLabel)
+                        .foregroundStyle(.secondary)
+                }
+                .width(ColumnWidth.source)
             }
-            .width(min: 90, ideal: 110)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .contextMenu(forSelectionType: String.self) { ids in
@@ -266,43 +321,50 @@ struct WorkshopBrowser: View {
             store.toggleQuickLook()
             return .handled
         }
+        .revealsSelection(rows.first { workshop.staged.contains($0.id) }?.id, in: store.section)
     }
 }
 
 // MARK: - Grid
 
-/// Thumbnails at exactly the icon size, as many to a row as fit, packed from the leading
-/// edge like Finder's icon view. Arrow keys move the selection and Space previews it.
+/// Thumbnails at exactly the icon size, as many to a row as fit, with the leftover width
+/// spread evenly between the columns like Finder's icon view. Arrow keys move the
+/// selection and Space previews it.
 struct LibraryGrid: View {
     let tiles: [LibraryTileModel]
     let selection: Set<String>
 
     @Environment(LibraryStore.self) private var store
+    @Environment(\.controlActiveState) private var controlActiveState
     @FocusState private var isFocused: Bool
+    /// The column count; it changes only when a column is gained or lost, so resizing the
+    /// window re-renders the grid only then.
+    @State private var columns = 1
     @State private var geometry = GridGeometry()
 
-    /// The grid's width, kept outside observation: only arrow-key handling reads it.
+    /// The grid's width, kept outside observation: only the column count follows it.
     private final class GridGeometry {
         var width: CGFloat = 0
     }
 
     var body: some View {
         let size = CGFloat(store.iconSize)
+        let columns = columns
+        let isEmphasized = controlActiveState == .key
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVGrid(
-                    columns: [GridItem(
-                        .adaptive(minimum: size, maximum: size),
-                        spacing: LibraryGridMetrics.spacing, alignment: .top,
-                    )],
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 0, alignment: .top), count: columns),
                     alignment: .leading,
                     spacing: LibraryGridMetrics.rowSpacing,
                 ) {
-                    ForEach(tiles) { tile in
-                        LibraryTile(
-                            model: tile, width: size, isSelected: selection.contains(tile.id),
-                            revision: store.revision,
-                        )
+                    ForEach(Array(tiles.enumerated()), id: \.element.id) { index, tile in
+                        CellPlacement(placement: LibraryGridMetrics.placement(ofColumn: index % columns, columns: columns)) {
+                            LibraryTile(
+                                model: tile, width: size, isSelected: selection.contains(tile.id),
+                                isEmphasized: isEmphasized, revision: store.revision,
+                            )
+                        }
                     }
                 }
                 .padding(LibraryGridMetrics.padding)
@@ -313,7 +375,11 @@ struct LibraryGrid: View {
                     .contentShape(Rectangle())
                     .onTapGesture { store.clearSelection() }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { geometry.width = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                geometry.width = width
+                updateColumns()
+            }
+            .onChange(of: store.iconSize) { updateColumns() }
             .focusable()
             .focusEffectDisabled()
             .focused($isFocused)
@@ -323,13 +389,41 @@ struct LibraryGrid: View {
                 return .handled
             }
             .onMoveCommand { direction in
-                let columns = LibraryGridMetrics.columns(in: geometry.width, tileWidth: size)
                 if let id = store.moveSelection(direction, columns: columns) {
                     proxy.scrollTo(id)
                 }
             }
             .onDeleteCommand { store.requestDelete() }
+            .revealsSelection(tiles.first { selection.contains($0.id) }?.id, in: store.section)
         }
+    }
+
+    private func updateColumns() {
+        let count = LibraryGridMetrics.columns(in: geometry.width, tileWidth: CGFloat(store.iconSize))
+        if count != columns {
+            columns = count
+        }
+    }
+}
+
+/// Places its one subview across the width it is offered: at `placement` 0 against the
+/// leading edge, at 1 against the trailing edge.
+private struct CellPlacement: Layout {
+    let placement: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        guard let subview = subviews.first else { return .zero }
+        let size = subview.sizeThatFits(.unspecified)
+        return CGSize(width: proposal.width ?? size.width, height: size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        guard let subview = subviews.first else { return }
+        let size = subview.sizeThatFits(.unspecified)
+        subview.place(
+            at: CGPoint(x: bounds.minX + (bounds.width - size.width) * placement, y: bounds.minY),
+            proposal: ProposedViewSize(size),
+        )
     }
 }
 
@@ -360,6 +454,8 @@ struct LibraryTile: View {
     let model: LibraryTileModel
     let width: CGFloat
     let isSelected: Bool
+    /// Whether the selection draws in the accent color: in the key window.
+    let isEmphasized: Bool
     let revision: Int
 
     @Environment(LibraryStore.self) private var store
@@ -370,6 +466,8 @@ struct LibraryTile: View {
     private enum Metrics {
         static let cornerRadius: CGFloat = 8
         static let ringWidth: CGFloat = 3
+        /// The ring's outer edge from the thumbnail's: its width plus a 1-pt gap.
+        static let ringOutset: CGFloat = ringWidth + 1
         static let badgeSize: CGFloat = 20
         static let badgeInset: CGFloat = 6
         static let hoverDelay: Duration = .milliseconds(350)
@@ -387,7 +485,7 @@ struct LibraryTile: View {
                 .padding(.vertical, 1)
                 .foregroundStyle(titleStyle)
                 .background(
-                    isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.clear),
+                    isSelected ? selectionStyle : AnyShapeStyle(.clear),
                     in: RoundedRectangle(cornerRadius: 4, style: .continuous),
                 )
         }
@@ -426,18 +524,35 @@ struct LibraryTile: View {
 
     private var titleStyle: AnyShapeStyle {
         if isSelected {
-            return AnyShapeStyle(.white)
+            return isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary)
         }
         return model.isDimmed ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
+    }
+
+    /// The ring and title fill: the accent in the key window, gray elsewhere, like a
+    /// table's selection.
+    private var selectionStyle: AnyShapeStyle {
+        isEmphasized
+            ? AnyShapeStyle(Color.accentColor)
+            : AnyShapeStyle(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
     }
 
     private var thumbnail: some View {
         ZStack {
             if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFill()
+                switch model.imageFit {
+                case .fill:
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFill()
+                case .actualSize:
+                    ActualSizeFrame(pixelSize: image.pixelSize) {
+                        Image(nsImage: image)
+                            .resizable()
+                            .interpolation(.high)
+                    }
+                }
             } else {
                 Rectangle()
                     .fill(.quaternary)
@@ -450,8 +565,7 @@ struct LibraryTile: View {
             }
         }
         .frame(width: width, height: (width * 9 / 16).rounded())
-        .saturation(model.isDimmed ? 0.2 : 1)
-        .opacity(model.isDimmed ? 0.55 : 1)
+        .unsupportedDimming(model.isDimmed)
         .clipShape(RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous)
@@ -460,9 +574,9 @@ struct LibraryTile: View {
         .overlay(alignment: .bottomTrailing) { badge }
         .overlay {
             if isSelected {
-                RoundedRectangle(cornerRadius: Metrics.cornerRadius + Metrics.ringWidth, style: .continuous)
-                    .strokeBorder(Color.accentColor, lineWidth: Metrics.ringWidth)
-                    .padding(-Metrics.ringWidth - 1)
+                RoundedRectangle(cornerRadius: Metrics.cornerRadius + Metrics.ringOutset, style: .continuous)
+                    .strokeBorder(selectionStyle, lineWidth: Metrics.ringWidth)
+                    .padding(-Metrics.ringOutset)
             }
         }
     }
@@ -559,7 +673,7 @@ struct LibraryItemMenu: View {
     @ViewBuilder
     private func videoItems(_ ids: Set<String>) -> some View {
         Button("Quick Look") { store.toggleQuickLook(ids.first) }
-        Button("Use as Wallpaper…") { store.openWallpaperSettings() }
+        Button("Open Wallpaper Settings…") { store.openWallpaperSettings() }
         Divider()
         Button("Show in Finder") { store.showInFinder(ids) }
         Divider()

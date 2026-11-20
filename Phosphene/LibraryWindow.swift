@@ -66,7 +66,7 @@ private struct LibraryRoot: View {
             Button("Delete", role: .destructive) { store.confirmDelete() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The videos leave your library and System Settings.")
+            Text(verbatim: store.deleteMessage)
         }
         .alert(manager.optimizationAlertTitle, isPresented: $manager.showOptimizationAlert) {} message: {
             Text(manager.optimizationAlertMessage)
@@ -162,7 +162,7 @@ private struct LibraryContent: View {
                 }
             }
             .navigationTitle(workshopTitle)
-            .navigationSubtitle("\(rows.count) wallpapers")
+            .navigationSubtitle(Text("\(rows.count) wallpapers"))
         } else {
             let rows = store.videoRows
             Group {
@@ -192,13 +192,14 @@ private struct LibraryContent: View {
         case .workshopNotMade:
             String(localized: "Not Made Yet")
         case let .workshopSource(id):
-            workshop.sources.first { $0.id == id }?.label ?? String(localized: "Wallpaper Engine")
+            workshop.sources.first { $0.id == id }?.label ?? String(localized: "Downloads")
         default:
-            String(localized: "Wallpaper Engine")
+            String(localized: "Downloads")
         }
     }
 
     private func videoSubtitle(_ rows: [VideoRow]) -> String {
+        guard !rows.isEmpty else { return String(localized: "\(rows.count) videos") }
         let bytes = rows.map(\.fileSize).reduce(0, +)
         let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         return String(localized: "\(rows.count) videos · \(size)")
@@ -214,8 +215,12 @@ private struct LibraryToolbar: ToolbarContent {
         @Bindable var store = store
         ToolbarItem {
             Picker("View", selection: $store.viewMode) {
-                Label("Icons", systemImage: "square.grid.2x2").tag(LibraryViewMode.icons)
-                Label("List", systemImage: "list.bullet").tag(LibraryViewMode.list)
+                Label("Icons", systemImage: "square.grid.2x2")
+                    .accessibilityLabel("Icons")
+                    .tag(LibraryViewMode.icons)
+                Label("List", systemImage: "list.bullet")
+                    .accessibilityLabel("List")
+                    .tag(LibraryViewMode.list)
             }
             .pickerStyle(.segmented)
             .help("Show as icons or as a list")
@@ -223,15 +228,14 @@ private struct LibraryToolbar: ToolbarContent {
         ToolbarSpacer(.fixed)
         if store.section.isWorkshop {
             ToolbarItem {
-                Button {
-                    store.requestMakeVideos()
-                } label: {
-                    Label(makeVideosTitle, systemImage: "film.stack")
-                        .labelStyle(.titleAndIcon)
+                // Prominent only while it can act: a filled button reads as the action to take.
+                if store.renderableSelection.isEmpty {
+                    makeVideosButton
+                        .disabled(true)
+                } else {
+                    makeVideosButton
+                        .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(store.renderableSelection.isEmpty)
-                .help("Turn the selected wallpapers into looping videos")
             }
         } else {
             ToolbarItem {
@@ -250,12 +254,22 @@ private struct LibraryToolbar: ToolbarContent {
         }
     }
 
+    private var makeVideosButton: some View {
+        Button {
+            store.requestMakeVideos()
+        } label: {
+            Label(makeVideosTitle, systemImage: "film.stack")
+                .labelStyle(.titleAndIcon)
+        }
+        .help("Turn the selected wallpapers into looping videos")
+    }
+
     private var makeVideosTitle: String {
         let count = store.renderableSelection.count
         switch count {
-        case 0: return String(localized: "Make Videos")
-        case 1: return String(localized: "Make Video")
-        default: return String(localized: "Make \(count) Videos")
+        case 0: return String(localized: "Make Videos…")
+        case 1: return String(localized: "Make Video…")
+        default: return String(localized: "Make \(count) Videos…")
         }
     }
 }

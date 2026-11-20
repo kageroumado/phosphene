@@ -34,6 +34,12 @@ nonisolated enum PreviewImage {
         return image
     }
 
+    /// ``animated(at:)`` decoded off the main actor.
+    @concurrent
+    static func animatedImage(at url: URL) async -> NSImage? {
+        animated(at: url)
+    }
+
     private static func fits(_ source: CGImageSource, within limit: Int) -> Bool {
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = properties[kCGImagePropertyPixelWidth] as? Int,
@@ -43,32 +49,63 @@ nonisolated enum PreviewImage {
     }
 }
 
+extension NSImage {
+    /// The size in pixels of the image's largest representation.
+    var pixelSize: CGSize {
+        guard let rep = representations.max(by: { $0.pixelsWide < $1.pixelsWide }),
+              rep.pixelsWide > 0, rep.pixelsHigh > 0
+        else { return size }
+        return CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+    }
+}
+
 /// An image that plays when it is an animated GIF.
 struct AnimatedImageView: NSViewRepresentable {
-    let url: URL
+    let image: NSImage
 
-    final class Coordinator {
-        var shown: URL?
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeNSView(context: Context) -> NSImageView {
+    func makeNSView(context _: Context) -> NSImageView {
         let view = NSImageView()
         view.animates = true
         view.imageScaling = .scaleProportionallyUpOrDown
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        updateNSView(view, context: context)
+        view.image = image
         return view
     }
 
-    func updateNSView(_ view: NSImageView, context: Context) {
-        guard context.coordinator.shown != url else { return }
-        context.coordinator.shown = url
-        view.image = PreviewImage.animated(at: url)
+    func updateNSView(_ view: NSImageView, context _: Context) {
+        if view.image !== image {
+            view.image = image
+        }
+    }
+}
+
+/// A Wallpaper Engine preview fit inside the frame at no more than one image pixel per
+/// screen pixel, centered on a dark fill. Previews are often 256 pixels a side, so
+/// filling a tile would blow them up into blocks.
+struct ActualSizeFrame<Content: View>: View {
+    let pixelSize: CGSize
+    @ViewBuilder var content: Content
+
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black)
+            content
+                .aspectRatio(pixelSize.width / max(pixelSize.height, 1), contentMode: .fit)
+                .frame(maxWidth: pixelSize.width / displayScale, maxHeight: pixelSize.height / displayScale)
+        }
+    }
+}
+
+extension View {
+    /// How a download that can't become a video is drawn, the same in the grid and the
+    /// inspector.
+    func unsupportedDimming(_ isDimmed: Bool) -> some View {
+        saturation(isDimmed ? 0.2 : 1)
+            .opacity(isDimmed ? 0.55 : 1)
     }
 }
 
@@ -115,14 +152,8 @@ struct MakeVideosSheet: View {
         @Bindable var workshop = workshop
         let items = store.renderableSelection
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(items.count == 1 ? "Make Video" : "Make \(items.count) Videos")
-                    .font(.headline)
-                Text("Each wallpaper becomes a looping video in your library. A scene takes about a minute.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(items.count == 1 ? "Make Video" : "Make \(items.count) Videos")
+                .font(.headline)
 
             wallpapers(items)
 
@@ -132,12 +163,12 @@ struct MakeVideosSheet: View {
                         Text(verbatim: option.label).tag(option)
                     }
                 }
-                Picker("Frame rate", selection: $workshop.settings.fps) {
+                Picker("Frame Rate", selection: $workshop.settings.fps) {
                     Text("30 fps").tag(30)
                     Text("60 fps").tag(60)
                 }
                 Picker("Format", selection: $workshop.settings.codec) {
-                    Text("HEVC").tag(WEBakeSettings.Codec.hevc)
+                    Text("HEVC (smaller)").tag(WEBakeSettings.Codec.hevc)
                     Text("H.264").tag(WEBakeSettings.Codec.h264)
                 }
                 Picker("Loop", selection: $workshop.settings.loopLength) {
@@ -149,11 +180,6 @@ struct MakeVideosSheet: View {
                 }
             }
             .formStyle(.columns)
-
-            Text("HEVC files are about a quarter smaller than H.264. 60 fps doubles the file size.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Spacer()

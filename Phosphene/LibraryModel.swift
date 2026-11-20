@@ -113,6 +113,8 @@ nonisolated struct WorkshopRow: Identifiable, Sendable {
     let item: WorkshopItem
     let status: WorkshopLibrary.ItemStatus
     let sourceLabel: String
+    /// The library video made from the download, once there is one.
+    let video: VideoDeploymentService.EntryInfo?
 
     var id: String {
         item.id
@@ -128,14 +130,14 @@ nonisolated struct WorkshopRow: Identifiable, Sendable {
 
     var statusName: String {
         switch status {
-        case .available: String(localized: "Not made")
+        case .available: String(localized: "Not Made")
         case .queued: String(localized: "Waiting")
         case let .rendering(progress, _):
             String(localized: "Making \(progress.formatted(.percent.precision(.fractionLength(0))))")
         case .made: String(localized: "Made")
-        case .outdated: String(localized: "Updated since")
+        case .outdated: String(localized: "Outdated")
         case .failed: String(localized: "Failed")
-        case .unsupported: String(localized: "Can’t be made")
+        case .unsupported: String(localized: "Unsupported")
         }
     }
 
@@ -174,9 +176,18 @@ nonisolated struct LibraryTileModel: Identifiable, Equatable {
         case working(label: String, progress: Double)
     }
 
+    /// How the image fills the tile.
+    enum ImageFit: Equatable {
+        /// Cropped to fill: a video's thumbnail, made at the video's aspect ratio.
+        case fill
+        /// Fit at no more than one image pixel per screen pixel: a Workshop preview.
+        case actualSize
+    }
+
     let id: String
     let title: String
     let image: URL?
+    let imageFit: ImageFit
     /// The file a tile plays while the pointer rests on it.
     let video: URL?
     let placeholderSymbol: String
