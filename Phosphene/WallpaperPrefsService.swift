@@ -28,6 +28,25 @@ final class WallpaperPrefsService {
 
     // MARK: - Prefs (app → extension)
 
+    private(set) var debugLoggingEnabled = false
+
+    func refreshDebugLogging() {
+        debugLoggingEnabled = DebugLogging.isEnabled(in: Self.extensionDocsURL)
+    }
+
+    func setDebugLogging(_ enabled: Bool) {
+        do {
+            try DebugLogging.setEnabled(enabled, in: Self.extensionDocsURL)
+            debugLoggingEnabled = enabled
+        } catch {
+            refreshDebugLogging()
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn’t Change Debug Logging")
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+    }
+
     private var addVideoPlaceholderEnabled = true
     var showAddVideoPlaceholder: Bool {
         get { addVideoPlaceholderEnabled }

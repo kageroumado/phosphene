@@ -1,6 +1,36 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Debug Logging": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调试日志"
+          }
+        }
+      }
+    },
+    "Records playback, appearance transitions, and snapshot details on this Mac. The log can include video filenames.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这台 Mac 上记录播放、明暗切换和壁纸快照的详细信息。日志可能包含视频文件名。"
+          }
+        }
+      }
+    },
+    "Couldn’t Change Debug Logging": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法更改调试日志设置"
+          }
+        }
+      }
+    },
     "Wallpaper Settings": {
       "localizations": {
         "zh-Hans": {

@@ -33,6 +33,13 @@ struct PhospheneSettingsView: View {
                 Toggle("Show “Add Video…” when the library is empty", isOn: $prefs.showAddVideoPlaceholder)
                     .toggleStyle(.switch)
             }
+            Section {
+                Toggle("Debug Logging", isOn: Binding(get: { prefs.debugLoggingEnabled }, set: prefs.setDebugLogging))
+                    .toggleStyle(.switch)
+                    .onAppear { prefs.refreshDebugLogging() }
+            } footer: {
+                Text("Records playback, appearance transitions, and snapshot details on this Mac. The log can include video filenames.")
+            }
         }
     }
 

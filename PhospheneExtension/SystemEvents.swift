@@ -10,7 +10,7 @@ final class SystemEvents: NSObject {
         CFPreferencesSynchronize(domain, user, host)
         let style = CFPreferencesCopyValue("AppleInterfaceStyle" as CFString, domain, user, host) as? String
         let dark = style == "Dark"
-        extensionLog("[Appearance] \(source): system \(dark ? "dark" : "light")")
+        traceLog("[Appearance] \(source): system \(dark ? "dark" : "light")")
         PlaybackStore.post(.systemAppearanceChanged(dark: dark))
     }
 

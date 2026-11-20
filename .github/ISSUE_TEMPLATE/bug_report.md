@@ -52,20 +52,9 @@ This log records wallpaper switches, presentation/state changes, teardowns, and 
 
 ### If the log is inconclusive — enable verbose logging and re-capture
 
-The normal log omits high-volume internals (per-frame ticks, renderer restart steps,
-per-connection XPC churn, snapshots). If the issue isn't clear from the log above, turn on
-verbose logging, reproduce once, and attach the fuller log:
-
-```sh
-touch ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG
-killall WallpaperAgent            # relaunches the extension so it picks up the flag
-# ... reproduce the problem ...
-# then attach extension.log
-
-# disable verbose logging afterwards:
-trash ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG
-killall WallpaperAgent
-```
+Turn on **Phosphene → Settings → General → Debug Logging**, reproduce the issue once,
+then turn the switch off. Review the relevant lines before attaching them. They can
+include video filenames.
 
 ## Recovery note
 

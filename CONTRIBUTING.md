@@ -13,16 +13,9 @@ attach is the extension log:
 ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/extension.log
 ```
 
-If the default log is inconclusive, enable verbose logging, reproduce once, and
-attach the fuller log:
-
-```sh
-touch ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG
-killall WallpaperAgent            # relaunches the extension so it picks up the flag
-# ... reproduce ...
-trash ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG
-killall WallpaperAgent
-```
+If the default log is inconclusive, turn on **Settings → General → Debug Logging**,
+reproduce once, then turn it off. Review the log before attaching it to a report because
+it can include video filenames.
 
 Security-sensitive issues shouldn't go in public issues — report them privately
 to [@kageroumado on X](https://x.com/kageroumado).

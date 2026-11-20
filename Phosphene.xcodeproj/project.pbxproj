@@ -53,6 +53,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				AppearancePair.swift,
+				DebugLogging.swift,
 				FileIdentity.swift,
 				HDRMode.swift,
 			);

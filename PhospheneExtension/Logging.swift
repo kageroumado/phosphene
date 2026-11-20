@@ -1,5 +1,6 @@
 import Foundation
 import os
+import Synchronization
 
 /// Maximum log file size before rotation (1 MB).
 private let maxLogSize: UInt64 = 1_024 * 1_024
@@ -92,15 +93,26 @@ func dumpMirror(_ obj: Any, label: String = "root", depth: Int = 3, indent: Int 
     }
 }
 
-/// When true, high-volume per-switch/per-frame diagnostics (`traceLog`) are written too.
-/// OFF by default so normal logs stay focused on switches, state changes, and errors.
-/// Enable for deep debugging by creating a `VERBOSE_LOG` marker file in the container
-/// Documents dir and relaunching (`killall WallpaperAgent`). Evaluated once at launch.
-let verboseLoggingEnabled: Bool = {
-    let url = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Documents/VERBOSE_LOG")
-    return FileManager.default.fileExists(atPath: url.path)
-}()
+private let verboseLogFlag = Atomic(DebugLogging.isEnabled(in: .documentsDirectory))
+
+var verboseLoggingEnabled: Bool {
+    verboseLogFlag.load(ordering: .relaxed)
+}
+
+func observeDebugLogging() {
+    CFNotificationCenterAddObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(), nil,
+        { _, _, _, _, _ in refreshDebugLogging() },
+        DebugLogging.changedNotification as CFString, nil, .deliverImmediately,
+    )
+    refreshDebugLogging()
+}
+
+private func refreshDebugLogging() {
+    DispatchQueue.main.async {
+        verboseLogFlag.store(DebugLogging.isEnabled(in: .documentsDirectory), ordering: .relaxed)
+    }
+}
 
 /// Trace-level log — only written when `verboseLoggingEnabled`. Use for the noisy internal
 /// diagnostics (renderer restart steps, feed ticks, per-connection churn, snapshots). The

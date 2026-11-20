@@ -66,19 +66,20 @@ gated behind **verbose logging**.
 
 ### Enable verbose logging
 
-Create a marker file in the extension's container, then restart the wallpaper agent so the
-extension relaunches and picks it up:
+Turn on **Settings → General → Debug Logging**. Changes take effect while the wallpaper
+extension is running. For command-line troubleshooting, create the same marker and
+notify the extension:
 
 ```sh
 touch ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG
-killall WallpaperAgent
+notifyutil -p glass.kagerou.phosphene.verboseLoggingChanged
 ```
 
-Disable it again by removing the marker and restarting the agent:
+Disable it again by removing the marker and posting the notification:
 
 ```sh
 trash ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG   # or rm
-killall WallpaperAgent
+notifyutil -p glass.kagerou.phosphene.verboseLoggingChanged
 ```
 
 Attach the (verbose) log to a bug report — see `.github/ISSUE_TEMPLATE`.

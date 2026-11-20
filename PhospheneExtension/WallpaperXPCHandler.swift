@@ -690,15 +690,17 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             } else {
                 nil
             }
-            let elapsed = CMClockGetTime(CMClockGetHostTimeClock()) - requestedAt
-            let route = renderer == nil ? fallbackRoute : snapshot?.route ?? "unavailable"
-            let format = snapshot.map { String($0.format, radix: 16) } ?? "nil"
-            extensionLog(
-                "[Snapshot host=\(requestedAt.seconds)] pid=\(pid) id=\(uuid?.uuidString ?? "nil") surface=\(key?.description ?? "unresolved") "
-                    + "renderer=\(renderer?.debugID.description ?? "nil") route=\(route) file=\(selection?.file?.url.lastPathComponent ?? "nil") "
-                    + "local=\(selection?.localTime.seconds.description ?? "nil") replyFormat=\(format) elapsed=\(elapsed.seconds)s",
-            )
             reply(snapshot?.payload, nil)
+            if verboseLoggingEnabled {
+                let elapsed = CMClockGetTime(CMClockGetHostTimeClock()) - requestedAt
+                let route = renderer == nil ? fallbackRoute : snapshot?.route ?? "unavailable"
+                let format = snapshot.map { String($0.format, radix: 16) } ?? "nil"
+                traceLog(
+                    "[Snapshot host=\(requestedAt.seconds)] pid=\(pid) id=\(uuid?.uuidString ?? "nil") surface=\(key?.description ?? "unresolved") "
+                        + "renderer=\(renderer?.debugID.description ?? "nil") route=\(route) file=\(selection?.file?.url.lastPathComponent ?? "nil") "
+                        + "local=\(selection?.localTime.seconds.description ?? "nil") replyFormat=\(format) elapsed=\(elapsed.seconds)s",
+                )
+            }
         }
     }
 

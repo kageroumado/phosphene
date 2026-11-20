@@ -58,13 +58,14 @@ extension VideoRenderer {
         displayLayer.zPosition = 0
         CATransaction.commit()
         CATransaction.flush()
-        let released = DispatchTime.now()
+        let released = verboseLoggingEnabled ? DispatchTime.now() : nil
         spareFlushInFlight = true
         spareRenderer.flush(removingDisplayedImage: true) { [weak self] in
             guard let self else { return }
             queue.async { [self] in
-                let elapsed = Double(DispatchTime.now().uptimeNanoseconds - released.uptimeNanoseconds) / 1_000_000
-                traceLog("  [Appearance #\(debugID)] Spare renderer flushed in \(Int(elapsed))ms")
+                if let released {
+                    traceLog("  [Appearance #\(debugID)] Spare renderer flushed in \(elapsedMilliseconds(since: released))ms")
+                }
                 spareFlushInFlight = false
                 prepareAppearanceCut()
             }
@@ -191,7 +192,8 @@ extension VideoRenderer {
             if retryMatchedFrameIfPoolIsBusy(blend, step: step) {
                 return
             }
-            extensionLog("[Appearance #\(debugID)] Matched feed unavailable at \(pts.seconds)s after \(blend.blended) blended frames")
+            extensionLog("[Appearance #\(debugID)] Matched feed unavailable")
+            traceLog("[Appearance #\(debugID)] Matched feed stopped at \(pts.seconds)s after \(blend.blended) blended frames")
             fallBackToKeyframe()
             return
         }
@@ -211,7 +213,9 @@ extension VideoRenderer {
         let pts = lastEnqueuedEnd + CMTimeMultiply(step, multiplier: count)
         guard blend.stream.advance(to: pts) else { return false }
         lastEnqueuedEnd = pts
-        blend.skipped += Int(count)
+        if verboseLoggingEnabled {
+            blend.skipped += Int(count)
+        }
         return true
     }
 
@@ -262,7 +266,7 @@ extension VideoRenderer {
         blend.waitingForBufferSince = nil
         blend.submitted += 1
         blend.fraction = fraction
-        if fraction > 0, fraction < 1 {
+        if fraction > 0, fraction < 1, verboseLoggingEnabled {
             blend.blended += 1
         }
         matchedDissolve = blend
@@ -297,7 +301,7 @@ extension VideoRenderer {
 
     private func prepareMovingAppearance(playback: PairRendition.Playback, url: URL, at time: CMTime, origin: CMTime) {
         let generation = cutGeneration
-        let requested = DispatchTime.now()
+        let requested = verboseLoggingEnabled ? DispatchTime.now() : nil
         cutTask = Task { [weak self] in
             let prepared = await PreparedPausedAppearance.prepare(playback: playback, url: url, at: time, loopStart: origin)
             guard let self, !Task.isCancelled else { return }
@@ -325,8 +329,10 @@ extension VideoRenderer {
                     guard let self, let leg, movingAppearance === leg else { return }
                     switch event {
                     case .ready:
-                        let delay = Double(DispatchTime.now().uptimeNanoseconds - requested.uptimeNanoseconds) / 1_000_000
-                        traceLog("[Appearance #\(debugID)] Live dissolve started after \(Int(delay))ms, clock=\(CMTimebaseGetTime(timebase).seconds)")
+                        if let requested {
+                            traceLog("[Appearance #\(debugID)] Live dissolve started after \(elapsedMilliseconds(since: requested))ms, " +
+                                "clock=\(CMTimebaseGetTime(timebase).seconds)")
+                        }
                         fadeMovingAppearance(leg, towardIncoming: true)
                     case let .failed(reason):
                         extensionLog("[Appearance #\(debugID)] Live dissolve unavailable: \(reason)")
@@ -340,7 +346,7 @@ extension VideoRenderer {
     private func fallBackToKeyframe() {
         cancelAppearanceCut()
         useKeyframeCut = true
-        extensionLog("[Appearance #\(debugID)] Using a synchronized keyframe cut")
+        traceLog("[Appearance #\(debugID)] Using a synchronized keyframe cut")
         prepareAppearanceCut()
     }
 
@@ -521,7 +527,11 @@ extension VideoRenderer {
         videoTrack = cut.output.track
         recordSnapshotSource(at: time)
         prepareNextReader()
-        extensionLog("[Appearance] Switched to \(next.url.lastPathComponent) at \(time.seconds)")
+        traceLog("[Appearance] Switched to \(next.url.lastPathComponent) at \(time.seconds)")
         return cut.first
     }
+}
+
+private func elapsedMilliseconds(since start: DispatchTime) -> UInt64 {
+    (DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
 }

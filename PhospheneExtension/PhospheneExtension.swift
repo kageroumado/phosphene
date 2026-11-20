@@ -6,6 +6,7 @@ import Foundation
 final class PhospheneExtension: NSObject, AppExtension {
     override required init() {
         super.init()
+        observeDebugLogging()
 
         let frameworkPath = "/System/Library/PrivateFrameworks/WallpaperExtensionKit.framework/WallpaperExtensionKit"
         if let handle = dlopen(frameworkPath, RTLD_LAZY) {

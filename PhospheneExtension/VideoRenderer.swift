@@ -587,29 +587,33 @@ final class VideoRenderer: @unchecked Sendable {
         }
 
         let frame: WallpaperSnapshotSelection.Frame
-        let route: String
         if rate == 0, let pixels = display?.displayedPixelBuffer() {
             frame = .displayed(SendableBox(value: pixels))
-            route = "displayed"
         } else if !flushInFlight, let visible,
                   let matched = snapshotMatchedFrames.last(where: { $0.start >= visible.start && $0.covers(time) }) {
             frame = .matched(matched)
             let fallback = matched.fraction < 0.5 ? matched.from : matched.to
             file = SnapshotVideoFile(url: fallback, identity: matched.playback.identity(for: fallback))
             local = matched.localPTS
-            route = "matched pts=\(matched.start.seconds) fraction=\(matched.fraction) from=\(matched.from.lastPathComponent) to=\(matched.to.lastPathComponent)"
         } else if !flushInFlight, file != nil {
             frame = .file
-            route = display === renderer ? "timeline" : "dissolve-dominant"
         } else {
             return nil
         }
         traceLog(
-            "[Snapshot host=\(hostTime.seconds)] renderer=#\(debugID) route=\(route) clock=\(time.seconds) rate=\(rate) " +
+            "[Snapshot host=\(hostTime.seconds)] renderer=#\(debugID) route=\(snapshotRoute(frame, display: display)) clock=\(time.seconds) rate=\(rate) " +
                 "loop=\(visible?.fileLoopStart.seconds ?? 0) frontier=\(lastEnqueuedEnd.seconds) " +
                 "file=\(file?.url.lastPathComponent ?? "nil") local=\(local.seconds)",
         )
         return WallpaperSnapshotSelection(frame: frame, file: flushInFlight ? nil : file, localTime: local, preserveHDR: preserveHDR)
+    }
+
+    private func snapshotRoute(_ frame: WallpaperSnapshotSelection.Frame, display: AVSampleBufferVideoRenderer?) -> String {
+        switch frame {
+        case .displayed: "displayed"
+        case let .matched(match): "matched pts=\(match.start.seconds) fraction=\(match.fraction) from=\(match.from.lastPathComponent) to=\(match.to.lastPathComponent)"
+        case .file: display === renderer ? "timeline" : "dissolve-dominant"
+        }
     }
 
     /// Keep timing and fraction only so snapshot requests cannot pin the playback pool.
