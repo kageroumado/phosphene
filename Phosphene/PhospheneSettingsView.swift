@@ -37,6 +37,8 @@ struct PhospheneSettingsView: View {
                 Toggle("Debug Logging", isOn: Binding(get: { prefs.debugLoggingEnabled }, set: prefs.setDebugLogging))
                     .toggleStyle(.switch)
                     .onAppear { prefs.refreshDebugLogging() }
+            } header: {
+                Text("Diagnostics")
             } footer: {
                 Text("Records playback, appearance transitions, and snapshot details on this Mac. The log can include video filenames.")
             }
