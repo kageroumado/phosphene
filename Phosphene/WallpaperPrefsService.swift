@@ -498,22 +498,35 @@ final class WallpaperPrefsService {
     /// reconfiguration has settled, only when the connected set actually changed and a
     /// Phosphene video is in use. (`selections` covers connected displays only, so after a
     /// lid closes it can no longer show that another display had a different video.)
+    /// A restart that falls inside the agent-kill cooldown waits for the cooldown to end.
     private func restartAgentIfDisplaySetChanged() {
         let current = Self.connectedDisplayIDs()
         guard current != knownDisplayIDs else { return }
         knownDisplayIDs = current
+        scheduleDisplaySetRestart(after: 2.5)
+    }
+
+    /// Seconds between two agent kills that the app starts on its own.
+    private static let agentKillCooldown: TimeInterval = 15
+
+    /// Schedules the one pending display-set restart, replacing any earlier one.
+    private func scheduleDisplaySetRestart(after delay: TimeInterval) {
         displaySetRestart?.cancel()
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                guard !self.selections.isEmpty else { return }
-                guard Date().timeIntervalSince(self.lastAgentKill) > 15 else { return }
+                guard let self, !self.selections.isEmpty else { return }
+                let wait = Self.agentKillCooldown - Date().timeIntervalSince(self.lastAgentKill)
+                guard wait <= 0 else {
+                    NSLog("[Phosphene] display-set restart deferred \(Int(wait.rounded(.up)))s (agent killed recently)")
+                    self.scheduleDisplaySetRestart(after: wait)
+                    return
+                }
                 self.lastAgentKill = Date()
                 self.killWallpaperAgent(reason: "connected displays changed")
             }
         }
         displaySetRestart = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     // MARK: - Space Change Observer
