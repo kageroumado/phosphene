@@ -142,26 +142,26 @@ struct VideoBrowser: View {
             TableColumn("Resolution", value: \.pixelCount) { row in
                 Text(row.resolutionLabel)
             }
-            .width(ColumnWidth.resolution)
+            .width(min: ColumnWidth.resolution, ideal: ColumnWidth.resolution, max: ColumnWidth.resolution * 2)
             TableColumn("Frame Rate", value: \.fps) { row in
                 Text(row.fps > 0 ? "\(Int(row.fps.rounded())) fps" : "—")
             }
-            .width(ColumnWidth.frameRate)
+            .width(min: ColumnWidth.frameRate, ideal: ColumnWidth.frameRate, max: ColumnWidth.frameRate * 2)
             TableColumn("Duration", value: \.duration) { row in
                 Text(Duration.seconds(row.duration).formatted(.time(pattern: .minuteSecond)))
                     .monospacedDigit()
             }
-            .width(ColumnWidth.duration)
+            .width(min: ColumnWidth.duration, ideal: ColumnWidth.duration, max: ColumnWidth.duration * 2)
             TableColumn("Size", value: \.fileSize) { row in
                 Text(ByteCountFormatter.string(fromByteCount: row.fileSize, countStyle: .file))
                     .monospacedDigit()
             }
-            .width(ColumnWidth.size)
+            .width(min: ColumnWidth.size, ideal: ColumnWidth.size, max: ColumnWidth.size * 2)
             TableColumn("Added", value: \.dateAdded) { row in
                 Text(row.dateAdded, format: Date.FormatStyle(date: .numeric, time: .omitted))
                     .monospacedDigit()
             }
-            .width(ColumnWidth.date)
+            .width(min: ColumnWidth.date, ideal: ColumnWidth.date, max: ColumnWidth.date * 2)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .contextMenu(forSelectionType: String.self) { ids in
@@ -288,27 +288,27 @@ struct WorkshopBrowser: View {
                     .foregroundStyle(row.status.isUnsupported ? .secondary : .primary)
                     .help(row.status.explanation ?? "")
             }
-            .width(ColumnWidth.status)
+            .width(min: ColumnWidth.status, ideal: ColumnWidth.status, max: ColumnWidth.status * 2)
             TableColumn("Type", value: \.kindName) { row in
                 Text(row.kindName)
             }
-            .width(ColumnWidth.type)
+            .width(min: ColumnWidth.type, ideal: ColumnWidth.type, max: ColumnWidth.type * 2)
             TableColumn("Size", value: \.size) { row in
                 Text(ByteCountFormatter.string(fromByteCount: row.size, countStyle: .file))
                     .monospacedDigit()
             }
-            .width(ColumnWidth.size)
+            .width(min: ColumnWidth.size, ideal: ColumnWidth.size, max: ColumnWidth.size * 2)
             TableColumn("Updated", value: \.modified) { row in
                 Text(row.modified, format: Date.FormatStyle(date: .numeric, time: .omitted))
                     .monospacedDigit()
             }
-            .width(ColumnWidth.date)
+            .width(min: ColumnWidth.date, ideal: ColumnWidth.date, max: ColumnWidth.date * 2)
             if workshop.sources.count > 1 {
                 TableColumn("Source", value: \.sourceLabel) { row in
                     Text(row.sourceLabel)
                         .foregroundStyle(.secondary)
                 }
-                .width(ColumnWidth.source)
+                .width(min: ColumnWidth.source, ideal: ColumnWidth.source, max: ColumnWidth.source * 2)
             }
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
