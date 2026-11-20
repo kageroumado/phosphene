@@ -18,8 +18,10 @@ final class PhospheneManager {
     private(set) var optimizingEntryID: String?
     /// Whether the running operation re-encodes the entry's original file as HEVC.
     private(set) var isConverting = false
+    /// A failed optimization or conversion, shown as an alert by the library window.
     var showOptimizationAlert = false
-    var optimizationAlertMessage = ""
+    private(set) var optimizationAlertTitle = ""
+    private(set) var optimizationAlertMessage = ""
     @ObservationIgnored private var optimizationTask: Task<Void, Never>?
 
     // MARK: - Preferences
@@ -166,6 +168,7 @@ final class PhospheneManager {
                 // user cancelled
             } catch {
                 await MainActor.run {
+                    self.optimizationAlertTitle = String(localized: "Couldn't optimize the video.")
                     self.optimizationAlertMessage = error.localizedDescription
                     self.showOptimizationAlert = true
                 }
@@ -193,10 +196,11 @@ final class PhospheneManager {
         optimizationTask = Task(name: "Convert to HEVC") {
             do {
                 try await VideoDeploymentService.convertToHEVC(entry: entry) { self.optimizationProgress = $0 }
-            } catch is CancellationError {
-                // user cancelled
             } catch {
+                // `cancelOptimization()` has already reset the state of a cancelled conversion.
+                guard !Task.isCancelled else { return }
                 Log.video.error("HEVC conversion of \(entryID) failed: \(error.localizedDescription)")
+                self.optimizationAlertTitle = String(localized: "Couldn't convert the video to HEVC.")
                 self.optimizationAlertMessage = error.localizedDescription
                 self.showOptimizationAlert = true
             }

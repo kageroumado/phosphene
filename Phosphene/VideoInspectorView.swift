@@ -266,18 +266,27 @@ struct VideoInspectorView: View {
                 .font(.system(size: 11.5))
 
             if isConvertingThis {
-                ProgressView(value: manager.optimizationProgress)
-            }
+                ProgressView(value: manager.optimizationProgress) {
+                    Text("Converting…")
+                        .font(.system(size: 12, weight: .medium))
+                }
 
-            Button {
-                manager.convertToHEVC(entryID: entry.id)
-            } label: {
-                Text("Convert to HEVC")
-                    .frame(maxWidth: .infinity)
+                Button("Cancel", role: .destructive) {
+                    manager.cancelOptimization()
+                }
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            } else {
+                Button {
+                    manager.convertToHEVC(entryID: entry.id)
+                } label: {
+                    Text("Convert to HEVC")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(manager.isOptimizing)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(manager.isOptimizing)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(11)

@@ -572,6 +572,36 @@
         }
       }
     },
+    "Converting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在转换"
+          }
+        }
+      }
+    },
+    "Converting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在转换…"
+          }
+        }
+      }
+    },
+    "Couldn't convert the video to HEVC.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法将视频转换为 HEVC。"
+          }
+        }
+      }
+    },
     "Couldn't download the update. Check your connection, or get it from the releases page.": {
       "extractionState": "stale",
       "localizations": {
@@ -600,6 +630,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法载入更新说明。"
+          }
+        }
+      }
+    },
+    "Couldn't optimize the video.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法优化视频。"
           }
         }
       }

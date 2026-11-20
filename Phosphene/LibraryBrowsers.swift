@@ -150,6 +150,7 @@ struct VideoBrowser: View {
                         isSelected: selection.contains(row.id),
                         isInUse: row.isInUse,
                         isOptimizing: manager.isOptimizing && manager.optimizingEntryID == row.id,
+                        isConverting: manager.isConverting,
                         optimizationProgress: manager.optimizationProgress,
                         onSelect: {
                             GridSelection.click(row.id, in: rows.map(\.id), selection: &selection, anchor: &anchor)

@@ -6,6 +6,8 @@ struct VideoCardView: View {
     var isSelected: Bool = false
     var isInUse: Bool = false
     var isOptimizing: Bool = false
+    /// Whether the running operation is an HEVC conversion, which the pill names.
+    var isConverting: Bool = false
     var optimizationProgress: Double = 0
     let onSelect: () -> Void
     let onDelete: () -> Void
@@ -106,7 +108,7 @@ struct VideoCardView: View {
                 .progressViewStyle(.circular)
                 .controlSize(.mini)
                 .tint(.white)
-            Text("Optimizing")
+            Text(isConverting ? LocalizedStringKey("Converting") : LocalizedStringKey("Optimizing"))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white)
         }

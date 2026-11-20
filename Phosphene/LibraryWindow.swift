@@ -68,6 +68,9 @@ struct LibraryWindow: View {
         } message: {
             Text("The videos leave your library and System Settings.")
         }
+        .alert(manager.optimizationAlertTitle, isPresented: $manager.showOptimizationAlert) {} message: {
+            Text(manager.optimizationAlertMessage)
+        }
         .dropDestination(for: URL.self) { urls, _ in
             importDropped(urls)
         }

@@ -172,6 +172,9 @@ final class WallpaperPrefsService {
     /// Rate-limited so we never loop on kills.
     private var lastAgentKill: Date = .distantPast
 
+    /// Seconds between two agent kills that the app starts on its own.
+    private static let agentKillCooldown: TimeInterval = 15
+
     private func observeAgentStuck() {
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         unsafe CFNotificationCenterAddObserver(
@@ -192,7 +195,7 @@ final class WallpaperPrefsService {
             NSLog("[Phosphene] agentStuck signal ignored (no fresh recovery stamp from the extension)")
             return
         }
-        guard now.timeIntervalSince(lastAgentKill) > 15 else {
+        guard now.timeIntervalSince(lastAgentKill) > Self.agentKillCooldown else {
             NSLog("[Phosphene] agentStuck signal ignored (killed agent \(Int(now.timeIntervalSince(lastAgentKill)))s ago)")
             return
         }
@@ -505,9 +508,6 @@ final class WallpaperPrefsService {
         knownDisplayIDs = current
         scheduleDisplaySetRestart(after: 2.5)
     }
-
-    /// Seconds between two agent kills that the app starts on its own.
-    private static let agentKillCooldown: TimeInterval = 15
 
     /// Schedules the one pending display-set restart, replacing any earlier one.
     private func scheduleDisplaySetRestart(after delay: TimeInterval) {
