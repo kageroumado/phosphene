@@ -160,29 +160,73 @@ enum VideoDeploymentService {
         return records
     }
 
-    /// Convert a video to HEVC and deploy to the extension.
+    // MARK: - HEVC conversion
+
+    private enum Conversion {
+        static let progressInterval: TimeInterval = 0.2
+    }
+
+    /// Re-encode an entry's video as HEVC in a `.mov` and swap it into the same entry
+    /// with ``replaceVideo(entryID:with:)``, which keeps the id and the wallpaper
+    /// selections and deletes the old file and its variants. The old file stays in
+    /// place until the export has finished, so a failed or cancelled export leaves the
+    /// entry as it was. The temporary export is removed on every path.
+    ///
+    /// - Parameter progress: Called with the export's completed fraction, 0...1.
+    /// - Throws: `CancellationError` when the calling task is cancelled, the export's
+    ///   error when it fails, or a `CocoaError` when the swap into the library fails.
     @MainActor
-    static func convertAndDeploy(url: URL, name: String? = nil) async {
-        let fileManager = FileManager.default
-        let tempURL = fileManager.temporaryDirectory
-            .appendingPathComponent("convert_\(UUID().uuidString).mov")
-
-        let asset = AVURLAsset(url: url)
-        guard let exportSession = AVAssetExportSession(
-            asset: asset, presetName: AVAssetExportPresetHEVCHighestQuality,
-        ) else {
-            await deployVideo(url: url, name: name)
-            return
-        }
-
+    static func convertToHEVC(entry: EntryInfo, progress: @escaping @MainActor (Double) -> Void) async throws {
+        let stem = (entry.filename as NSString).deletingPathExtension
+        let workDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hevc-\(UUID().uuidString)", isDirectory: true)
+        let output = workDir.appendingPathComponent(stem).appendingPathExtension("mov")
         do {
-            try await exportSession.export(to: tempURL, as: .mov)
-            await deployVideo(url: tempURL, name: name)
-            try? fileManager.removeItem(at: tempURL)
+            try await createDirectory(workDir)
+            try await exportHEVC(from: videoURL(for: entry), to: output, progress: progress)
+            try Task.checkCancellation()
+            guard await replaceVideo(entryID: entry.id, with: output) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
         } catch {
-            Log.video.error("HEVC conversion failed: \(error.localizedDescription)")
-            await deployVideo(url: url, name: name)
+            await removeItem(workDir)
+            throw error
         }
+        await removeItem(workDir)
+        Log.video.info("Converted entry \(entry.id) to HEVC")
+    }
+
+    @MainActor
+    private static func exportHEVC(
+        from source: URL,
+        to output: URL,
+        progress: @escaping @MainActor (Double) -> Void,
+    ) async throws {
+        guard let session = AVAssetExportSession(
+            asset: AVURLAsset(url: source), presetName: AVAssetExportPresetHEVCHighestQuality,
+        ) else {
+            throw AVError(.exportFailed)
+        }
+        let monitor = Task(name: "HEVC export progress") {
+            for await state in session.states(updateInterval: Conversion.progressInterval) {
+                if case let .exporting(exportProgress) = state {
+                    progress(exportProgress.fractionCompleted)
+                }
+            }
+        }
+        defer { monitor.cancel() }
+        try await session.export(to: output, as: .mov)
+        progress(1)
+    }
+
+    @concurrent
+    private nonisolated static func createDirectory(_ url: URL) async throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    @concurrent
+    private nonisolated static func removeItem(_ url: URL) async {
+        try? FileManager.default.removeItem(at: url)
     }
 
     /// Deploy optimized variants into an existing entry's directory in the extension container.

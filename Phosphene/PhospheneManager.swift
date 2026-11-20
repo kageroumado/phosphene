@@ -16,6 +16,8 @@ final class PhospheneManager {
     private(set) var optimizationProgress: Double = 0
     private(set) var optimizationTierLabel = ""
     private(set) var optimizingEntryID: String?
+    /// Whether the running operation re-encodes the entry's original file as HEVC.
+    private(set) var isConverting = false
     var showOptimizationAlert = false
     var optimizationAlertMessage = ""
     @ObservationIgnored private var optimizationTask: Task<Void, Never>?
@@ -176,6 +178,34 @@ final class PhospheneManager {
         }
     }
 
+    /// Re-encode an entry's video as HEVC in place, keeping the entry and the wallpaper
+    /// selections that use it. Shares the optimization state, so one conversion or
+    /// optimization runs at a time and app updates wait for it.
+    func convertToHEVC(entryID: String) {
+        guard !isOptimizing,
+              let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID })
+        else { return }
+        isOptimizing = true
+        isConverting = true
+        optimizingEntryID = entryID
+        optimizationProgress = 0
+
+        optimizationTask = Task(name: "Convert to HEVC") {
+            do {
+                try await VideoDeploymentService.convertToHEVC(entry: entry) { self.optimizationProgress = $0 }
+            } catch is CancellationError {
+                // user cancelled
+            } catch {
+                Log.video.error("HEVC conversion of \(entryID) failed: \(error.localizedDescription)")
+                self.optimizationAlertMessage = error.localizedDescription
+                self.showOptimizationAlert = true
+            }
+            self.isOptimizing = false
+            self.isConverting = false
+            self.optimizingEntryID = nil
+        }
+    }
+
     func removeVariants(entryID: String) {
         VideoDeploymentService.removeVariants(entryID: entryID)
     }
@@ -184,6 +214,7 @@ final class PhospheneManager {
         optimizationTask?.cancel()
         optimizationTask = nil
         isOptimizing = false
+        isConverting = false
         optimizingEntryID = nil
     }
 

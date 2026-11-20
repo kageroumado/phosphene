@@ -562,6 +562,16 @@
         }
       }
     },
+    "Convert to HEVC": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "转换为 HEVC"
+          }
+        }
+      }
+    },
     "Couldn't download the update. Check your connection, or get it from the releases page.": {
       "extractionState": "stale",
       "localizations": {
@@ -2236,6 +2246,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "这些视频会从资料库和“系统设置”中移除。"
+          }
+        }
+      }
+    },
+    "This Mac decodes %@ in software, so playback can stutter.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 Mac 以软件解码 %@，播放可能卡顿。"
           }
         }
       }

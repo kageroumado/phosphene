@@ -1,13 +1,14 @@
 import AVFoundation
 import CoreMedia
 import SwiftUI
+import VideoToolbox
 
 struct VideoInspectorView: View {
     let entry: VideoDeploymentService.EntryInfo
     @Bindable var manager: PhospheneManager
     @State private var thumbnail: NSImage?
     @State private var selectedPreset: OptimizationPreset = .balanced
-    @State private var codec: String = ""
+    @State private var codec: Codec?
     @State private var draftName: String = ""
     @State private var isRenaming = false
     @State private var isHoveringName = false
@@ -24,6 +25,18 @@ struct VideoInspectorView: View {
         manager.isOptimizing && manager.optimizingEntryID == entry.id
     }
 
+    private var isConvertingThis: Bool {
+        isOptimizingThis && manager.isConverting
+    }
+
+    /// What the inspector's load task depends on: the entry, its file, and whether an HEVC
+    /// conversion of it is running, so the codec reloads once a conversion swaps the file.
+    private struct LoadKey: Equatable {
+        let entryID: String
+        let filename: String
+        let isConverting: Bool
+    }
+
     /// The wallpaper selections currently using this video, one per display/Space.
     private var activeSelections: [WallpaperPrefsService.WallpaperSelection] {
         manager.prefsService.selections.filter { $0.videoID == entry.id }
@@ -35,6 +48,9 @@ struct VideoInspectorView: View {
                 previewSection
                 nameField
                 specChips
+                if let codec, !codec.isHardwareDecoded {
+                    softwareDecodeCard(codec.label)
+                }
                 if !activeSelections.isEmpty {
                     inUseCard
                 }
@@ -79,7 +95,7 @@ struct VideoInspectorView: View {
             }
             .padding(14)
         }
-        .task(id: entry.id) {
+        .task(id: LoadKey(entryID: entry.id, filename: entry.filename, isConverting: isConvertingThis)) {
             draftName = entry.name
             loadThumbnail()
             await loadCodec()
@@ -235,11 +251,37 @@ struct VideoInspectorView: View {
             if let size = VideoDeploymentService.fileSize(for: entry) {
                 specChip(formattedFileSize(size))
             }
-            if !codec.isEmpty {
-                specChip(codec)
+            if let codec {
+                specChip(codec.label)
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Software Decoding
+
+    private func softwareDecodeCard(_ codecLabel: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("This Mac decodes \(codecLabel) in software, so playback can stutter.")
+                .font(.system(size: 11.5))
+
+            if isConvertingThis {
+                ProgressView(value: manager.optimizationProgress)
+            }
+
+            Button {
+                manager.convertToHEVC(entryID: entry.id)
+            } label: {
+                Text("Convert to HEVC")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(manager.isOptimizing)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(11)
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     private func specChip(_ text: String) -> some View {
@@ -297,7 +339,7 @@ struct VideoInspectorView: View {
                 .textCase(.uppercase)
                 .foregroundStyle(.tertiary)
 
-            if isOptimizingThis {
+            if isOptimizingThis, !manager.isConverting {
                 optimizingView
             } else if let variants = entry.variants, !variants.isEmpty {
                 optimizedView(variants)
@@ -384,7 +426,7 @@ struct VideoInspectorView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .disabled(entry.resolution == .zero)
+            .disabled(entry.resolution == .zero || isConvertingThis)
         }
     }
 
@@ -399,27 +441,41 @@ struct VideoInspectorView: View {
         }
     }
 
+    /// The video track's codec as the inspector shows it.
+    private struct Codec {
+        let label: String
+        /// Whether this Mac has a hardware decoder for the codec.
+        let isHardwareDecoded: Bool
+    }
+
     private func loadCodec() async {
         let url = VideoDeploymentService.videoURL(for: entry)
         let asset = AVURLAsset(url: url)
-        if let track = try? await asset.loadTracks(withMediaType: .video).first,
-           let descriptions = try? await track.load(.formatDescriptions),
-           let desc = descriptions.first {
-            let code = CMFormatDescriptionGetMediaSubType(desc)
-            switch code {
-            case kCMVideoCodecType_HEVC: codec = "HEVC"
-            case kCMVideoCodecType_H264: codec = "H.264"
-            case kCMVideoCodecType_VP9: codec = "VP9"
-            case kCMVideoCodecType_AV1: codec = "AV1"
-            default:
-                let b3 = UInt8((code >> 24) & 0xFF)
-                let b2 = UInt8((code >> 16) & 0xFF)
-                let b1 = UInt8((code >> 8) & 0xFF)
-                let b0 = UInt8(code & 0xFF)
-                codec = String(bytes: [b3, b2, b1, b0], encoding: .ascii)?
-                    .trimmingCharacters(in: .whitespaces) ?? "Unknown"
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let descriptions = try? await track.load(.formatDescriptions),
+              let desc = descriptions.first
+        else {
+            if !Task.isCancelled {
+                codec = nil
             }
+            return
         }
+        let code = CMFormatDescriptionGetMediaSubType(desc)
+        let label = switch code {
+        case kCMVideoCodecType_HEVC: "HEVC"
+        case kCMVideoCodecType_H264: "H.264"
+        case kCMVideoCodecType_VP9: "VP9"
+        case kCMVideoCodecType_AV1: "AV1"
+        default: fourCharacterCode(code)
+        }
+        guard !Task.isCancelled else { return }
+        codec = Codec(label: label, isHardwareDecoded: VTIsHardwareDecodeSupported(code))
+    }
+
+    private func fourCharacterCode(_ code: FourCharCode) -> String {
+        let bytes = [24, 16, 8, 0].map { UInt8((code >> $0) & 0xFF) }
+        return String(bytes: bytes, encoding: .ascii)?
+            .trimmingCharacters(in: .whitespaces) ?? "Unknown"
     }
 
     private func formattedDuration(_ seconds: Double) -> String {
