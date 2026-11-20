@@ -1,21 +1,61 @@
 import AppKit
 import Digoxin
 import Foundation
-import os
+import Observation
 
-/// How many people use Phosphene, and Phosphene's own crashes, through Digoxin at the
-/// tier the person chose (``tier``).
-///
-/// A check-in carries the versions, the chip family, the memory class, the language, the
-/// count of days used in the last week, and the two properties in ``properties()``. It
-/// names no video. The wallpaper extension runs inside the system's wallpaper process,
-/// so its crashes are the system's reports, and only the app's own are sent.
-nonisolated enum UsageCounting {
-    static let app = "phosphene"
+/// The three original values keep their meaning for existing installs.
+nonisolated struct ReportingConsent: Equatable {
+    var crashReports: Bool
+    var usageStatistics: Bool
 
-    /// Production for a release build. A Debug build reports to a Digoxin on this Mac, or
-    /// to the one `PHOSPHENE_DIGOXIN_URL` names.
-    static let baseURL: URL = {
+    init(storedValue: String?) {
+        crashReports = storedValue == "crashReports" || storedValue == "crashesOnly"
+        usageStatistics = storedValue == "counting" || storedValue == "crashReports"
+    }
+
+    var storedValue: String {
+        switch (crashReports, usageStatistics) {
+        case (false, false): "off"
+        case (false, true): "counting"
+        case (true, false): "crashesOnly"
+        case (true, true): "crashReports"
+        }
+    }
+}
+
+@MainActor @Observable
+final class UsageCounting {
+    static let shared = UsageCounting()
+    private static let consentKey = "usageCounting"
+    private static let scanDateKey = "ownCrashesCheckedAt"
+
+    private var storedConsent = UserDefaults.standard.string(forKey: consentKey)
+    var shouldAsk: Bool {
+        storedConsent == nil
+    }
+
+    var consent: ReportingConsent {
+        get { ReportingConsent(storedValue: storedConsent) }
+        set {
+            guard storedConsent != newValue.storedValue else { return }
+            let wasReportingCrashes = consent.crashReports
+            storedConsent = newValue.storedValue
+            UserDefaults.standard.set(newValue.storedValue, forKey: Self.consentKey)
+            if wasReportingCrashes != newValue.crashReports {
+                crashTask?.cancel()
+                UserDefaults.standard.set(Date.now, forKey: Self.scanDateKey)
+                checkCrashReports()
+            }
+            updateStatistics()
+        }
+    }
+
+    private(set) var statisticsStatus: DigoxinStatus = .off
+    private(set) var crashStatus: DigoxinStatus = .off
+    @ObservationIgnored private var crashTask: Task<Void, Never>?
+    @ObservationIgnored private var statisticsTask: Task<Void, Never>?
+
+    private nonisolated static let baseURL: URL = {
         #if DEBUG
             ProcessInfo.processInfo.environment["PHOSPHENE_DIGOXIN_URL"].flatMap(URL.init(string:))
                 ?? URL(string: "http://127.0.0.1:9130/api/digoxin")!
@@ -23,106 +63,91 @@ nonisolated enum UsageCounting {
             URL(string: "https://kagerou.glass/api/digoxin")!
         #endif
     }()
+    private nonisolated static let supportFolder: URL = {
+        let folder = URL.applicationSupportDirectory.appending(path: "Phosphene", directoryHint: .isDirectory)
+        #if DEBUG
+            // The development endpoint must never drain a release build's queues.
+            return folder.appending(path: "Debug", directoryHint: .isDirectory)
+        #else
+            return folder
+        #endif
+    }()
 
-    /// The app's own Application Support folder; Digoxin keeps its state in a `Digoxin`
-    /// folder inside it.
-    static let supportFolder = URL.applicationSupportDirectory
-        .appending(path: "Phosphene", directoryHint: .isDirectory)
-
-    /// The crash reports macOS writes for the app carry this process name.
-    static let processName = "Phosphene"
-
-    private static let logger = Logger(subsystem: "glass.kagerou.phosphene", category: "UsageCounting")
-
-    static let client = Digoxin(configuration: .init(
-        app: app,
-        baseURL: baseURL,
-        storageDirectory: supportFolder,
-        propertiesProvider: { await properties() },
-        log: { logger.info("\($0, privacy: .public)") },
+    /// Separate queues let either permission be revoked while the other is still in use.
+    private nonisolated static let statistics = Digoxin(configuration: .init(
+        app: "phosphene", baseURL: baseURL, storageDirectory: supportFolder,
+        propertiesProvider: { await libraryProperties() },
+    ))
+    private nonisolated static let crashes = Digoxin(configuration: .init(
+        app: "phosphene", baseURL: baseURL,
+        storageDirectory: supportFolder.appending(path: "CrashReports", directoryHint: .isDirectory),
     ))
 
-    /// The heartbeat's app properties, each on the server's allowlist for Phosphene:
-    /// whether the library holds at least one imported video, and how many displays are
-    /// connected.
-    private static func properties() async -> [String: TelemetryValue] {
-        await MainActor.run {
-            [
-                "ownVideos": .bool(!VideoDeploymentService.listEntries().isEmpty),
-                "displays": .int(NSScreen.screens.count),
-            ]
+    private static func libraryProperties() -> [String: TelemetryValue] {
+        [
+            "ownVideos": .bool(!VideoDeploymentService.listEntries().isEmpty),
+            "displays": .int(NSScreen.screens.count),
+        ]
+    }
+
+    func noteUse() {
+        updateStatistics()
+        if crashTask == nil {
+            checkCrashReports()
         }
     }
 
-    // MARK: - Lifecycle
-
-    /// At launch: applies the stored tier, sends the reports of crashes since the last look,
-    /// and counts the day.
-    static func start() {
-        Task.detached(name: "Usage counting at launch") {
-            await client.setTier(tier ?? .off)
-            await submitOwnCrashes()
-            await client.recordUse()
-        }
-    }
-
-    /// The popover opened: counts the day, and sends a crash that happened since launch.
-    static func noteUse() {
-        Task.detached(name: "Usage counting on use") {
-            await submitOwnCrashes()
-            await client.recordUse()
-        }
-    }
-
-    /// The person's choice, from the question card or the popover's settings.
-    static func choose(_ newTier: ConsentTier) {
-        let previous = tier
-        tier = newTier
-        // Crashes before the choice are not the choice's to send.
-        if newTier == .crashReports, previous != .crashReports {
-            ownCrashesCheckedAt = Date()
-        }
-        logger.info("chose \(newTier.rawValue, privacy: .public)")
-        Task.detached(name: "Apply the usage counting tier") {
-            await client.setTier(newTier)
-            if newTier != .off {
+    private func updateStatistics() {
+        statisticsTask?.cancel()
+        statisticsTask = Task {
+            let client = Self.statistics
+            let oldTier = await client.tier
+            guard !Task.isCancelled else { return }
+            // A legacy combined queue can finish sending its reports while both grants remain.
+            let enabledTier: ConsentTier = oldTier == .crashReports && consent.crashReports ? .crashReports : .counting
+            await client.setTier(consent.usageStatistics ? enabledTier : .off)
+            guard !Task.isCancelled else { return }
+            if consent.usageStatistics {
                 await client.recordUse()
+            } else {
+                await client.flush()
             }
+            let status = await client.status
+            guard !Task.isCancelled else { return }
+            statisticsStatus = status
         }
     }
 
-    /// One report per crash of the app since the last look, at the crash-reports tier; the
-    /// look moves forward at every tier, so turning reports on later sends nothing from
-    /// before.
-    private static func submitOwnCrashes() async {
-        let now = Date()
-        let since = ownCrashesCheckedAt
-        ownCrashesCheckedAt = now
-        guard tier == .crashReports, let since else { return }
-        let bundleID = Bundle.main.bundleIdentifier
-        let reports = DiagnosticReports.reports(forProcess: processName, after: since)
-        for report in reports where OwnCrashReports.isOurs(report, bundleID: bundleID) {
-            await client.submitCrashReport(files: [report])
+    private func checkCrashReports() {
+        crashTask = Task {
+            guard !Task.isCancelled else { return }
+            let client = Self.crashes
+            await client.setTier(consent.crashReports ? .crashReports : .off)
+            guard !Task.isCancelled else { return }
+            if consent.crashReports {
+                let since = UserDefaults.standard.object(forKey: Self.scanDateKey) as? Date
+                let scanDate = Date.now
+                if let since {
+                    let reports = await OwnCrashReports.reports(after: since)
+                    for report in reports {
+                        guard !Task.isCancelled else { return }
+                        await client.submitCrashReport(files: [report])
+                    }
+                }
+                guard !Task.isCancelled else { return }
+                UserDefaults.standard.set(scanDate, forKey: Self.scanDateKey)
+            }
+            // Retry pending reports and deletions without recording a day of use.
+            await client.flush()
+            let status = await client.status
+            guard !Task.isCancelled else { return }
+            crashStatus = status
+            crashTask = nil
         }
     }
 
-    // MARK: - Stored choice
-
-    /// The Digoxin tier the person chose; `nil` until they have been asked, which is what
-    /// makes the question appear once, including after an update from a version that
-    /// never asked.
-    static var tier: ConsentTier? {
-        get { UserDefaults.standard.string(forKey: tierKey).flatMap(ConsentTier.init(rawValue:)) }
-        set { UserDefaults.standard.set(newValue?.rawValue, forKey: tierKey) }
-    }
-
-    static let tierKey = "usageCounting"
-
-    /// When the app's crash reports were last looked for: reports written after it are the
-    /// ones not yet sent.
-    private static var ownCrashesCheckedAt: Date? {
-        get { UserDefaults.standard.object(forKey: "ownCrashesCheckedAt") as? Date }
-        set { UserDefaults.standard.set(newValue, forKey: "ownCrashesCheckedAt") }
+    func activeMacs() async -> Int? {
+        try? await Self.statistics.activeCount().active
     }
 }
 
@@ -134,6 +159,13 @@ nonisolated enum UsageCounting {
 /// cannot tell the app from another process of the same name. The header line can: a
 /// crash names the bundle identifier of the app that crashed.
 nonisolated enum OwnCrashReports {
+    @concurrent
+    static func reports(after date: Date) async -> [URL] {
+        let bundleID = Bundle.main.bundleIdentifier
+        return DiagnosticReports.reports(forProcess: "Phosphene", after: date)
+            .filter { isOurs($0, bundleID: bundleID) }
+    }
+
     /// `bug_type` of a crash. A hang or a spin is written under other types.
     static let crashBugType = "309"
 
@@ -151,43 +183,5 @@ nonisolated enum OwnCrashReports {
               header["bug_type"] as? String == crashBugType
         else { return false }
         return header["bundleID"] as? String == bundleID
-    }
-}
-
-// MARK: - Yesterday's count
-
-extension UsageCounting {
-    /// How many Macs counted themselves in yesterday, from the service's public summary;
-    /// `nil` while the service has not answered, or answered with anything but a count.
-    static func activeMacs() async -> Int? {
-        await activeCount.value()
-    }
-
-    private static let activeCount = ActiveCount()
-
-    /// Yesterday's count from the service's public summary, kept for the process once it has
-    /// arrived; a failed ask is tried again on the next ask.
-    private actor ActiveCount {
-        private var cached: Int?
-        private var inFlight: Task<Int?, Never>?
-
-        func value() async -> Int? {
-            if let cached {
-                return cached
-            }
-            if let inFlight {
-                return await inFlight.value
-            }
-            let task = Task<Int?, Never> { await Self.fetch() }
-            inFlight = task
-            let result = await task.value
-            inFlight = nil
-            cached = result
-            return result
-        }
-
-        private static func fetch() async -> Int? {
-            try? await client.activeCount().active
-        }
     }
 }

@@ -1,10 +1,12 @@
 import AppKit
+import os
 import SwiftUI
 import UniformTypeIdentifiers
 
 /// The library: a sidebar of places, a browser of the selected place as icons or a
 /// sortable list, and an inspector for what is selected.
 struct LibraryWindow: View {
+    @Environment(\.appearsActive) private var appearsActive
     @Bindable var manager: PhospheneManager
     var initialSelectionID: String?
 
@@ -12,20 +14,135 @@ struct LibraryWindow: View {
     @AppStorage("libraryViewMode") private var viewMode: LibraryViewMode = .icons
     @AppStorage("libraryIconSize") private var iconSize = LibraryIconSize.standard
     @State private var search = ""
+    @State private var searchPresented = false
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var entries: [VideoDeploymentService.EntryInfo] = []
+    @State private var files: [String: FileIdentity] = [:]
     @State private var videoSelection: Set<String> = []
     @State private var videoSort = [KeyPathComparator(\VideoRow.dateAdded, order: .reverse)]
     @State private var workshopSort = [KeyPathComparator(\WorkshopRow.modified, order: .reverse)]
     @State private var showInspector = true
     @State private var showingMakeVideos = false
-    @State private var pendingDelete: Set<String>?
+    @State private var pairs: [String: VideoPairSelection] = [:]
+    @State private var pairSheet: VideoPairSelection?
+    @State private var pendingDelete: LibraryDeletion?
+    @State private var pendingVariantRemoval: VideoOptimizationTarget?
+    @State private var convertToSDRSelection: String?
+    @State private var optimizationUnavailableReason: String?
+    @State private var deletionNotice: String?
 
     private var workshop: WorkshopLibrary {
         manager.workshop
     }
 
     var body: some View {
-        NavigationSplitView {
+        columns
+            .sheet(item: $pairSheet) { selection in
+                VideoPairSheet(selection: selection) { ids in
+                    loadEntries()
+                    videoSelection = ids.intersection(videoRows.map(\.id))
+                }
+            }
+            .sheet(isPresented: $showingMakeVideos) {
+                MakeVideoSheet(library: workshop)
+            }
+            .alert(pendingDelete?.title ?? "", isPresented: .init(
+                get: { pendingDelete != nil },
+                set: {
+                    if !$0 {
+                        pendingDelete = nil
+                    }
+                },
+            ), presenting: pendingDelete) { deletion in
+                Button(deletion.isSinglePair ? "Delete Pair" : "Delete", role: .destructive) { delete(deletion) }
+                Button("Cancel", role: .cancel) {}
+            } message: { deletion in
+                Text(verbatim: deletion.message)
+            }
+            .alert("Remove Variants", isPresented: Binding(
+                get: { pendingVariantRemoval != nil },
+                set: {
+                    if !$0 {
+                        pendingVariantRemoval = nil
+                    }
+                },
+            ), presenting: pendingVariantRemoval) { target in
+                Button("Remove", role: .destructive) { manager.removeVariants(for: target) }
+                Button("Cancel", role: .cancel) {}
+            } message: { target in
+                if target.pair != nil {
+                    Text("This will remove the optimized versions of both videos and keep the original pair.")
+                } else {
+                    Text("This will delete the optimized variants. The original video is not affected.")
+                }
+            }
+            .alert("Can’t Optimize Video", isPresented: Binding(
+                get: { optimizationUnavailableReason != nil },
+                set: {
+                    if !$0 {
+                        optimizationUnavailableReason = nil
+                    }
+                },
+            ), presenting: optimizationUnavailableReason) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { reason in
+                Text(verbatim: reason)
+            }
+            .dropDestination(for: URL.self) { urls, _ in
+                importDropped(urls)
+            }
+            .focusedSceneValue(\.libraryActions, actions)
+            // `phosphene://library/wallpaper-engine`: Sevoflurane opens the window at
+            // the Wallpaper Engine section.
+            .onOpenURL { url in
+                guard url.host == "library" else { return }
+                if url.path == "/wallpaper-engine" {
+                    section = .workshopDownloads
+                }
+            }
+            .onAppear {
+                loadEntries()
+                if !workshop.hasScanned {
+                    workshop.refresh()
+                }
+                // Promote to a regular app for every open path (menu bar, URL scheme):
+                // the window needs a Dock icon and menu bar while visible. The
+                // AppDelegate's willClose observer demotes back to accessory.
+                NSApplication.shared.setActivationPolicy(.regular)
+                NSApplication.shared.activate()
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification),
+            ) { _ in
+                loadEntries()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                loadEntries()
+                workshop.refresh()
+            }
+            .onChange(of: section) {
+                search = ""
+                searchPresented = false
+                if !section.isWorkshop {
+                    videoSelection.formIntersection(videoRows.map(\.id))
+                }
+            }
+            .onChange(of: search) {
+                if !section.isWorkshop {
+                    videoSelection.formIntersection(videoRows.map(\.id))
+                }
+            }
+            .onChange(of: appearsActive) {
+                if !appearsActive, search.isEmpty {
+                    searchPresented = false
+                }
+            }
+    }
+
+    // MARK: - Content
+
+    private var columns: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             LibrarySidebar(section: $section, counts: counts, workshop: workshop) {
                 manager.openVideoChooser()
             }
@@ -33,77 +150,30 @@ struct LibraryWindow: View {
                 min: Layout.sidebarMin, ideal: Layout.sidebarIdeal, max: Layout.sidebarMax,
             )
         } detail: {
-            detail
-                .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
+            // Grid and table intrinsic sizes must not feed back into the split view during live resize.
+            Color.clear
+                .overlay {
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
+                }
+                .alert("Library Error", isPresented: $manager.showOptimizationAlert) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(manager.optimizationAlertMessage)
+                }
                 .navigationTitle(sectionTitle)
                 .navigationSubtitle(sectionSubtitle)
-                .searchable(
-                    text: $search,
-                    placement: .toolbar,
-                    prompt: section.isWorkshop
-                        ? Text("Search Downloads") : Text("Search Videos"),
-                )
                 .toolbar { toolbar }
         }
+        .navigationSplitViewStyle(.balanced)
         .inspector(isPresented: $showInspector) {
-            inspector
-                .inspectorColumnWidth(
-                    min: Layout.inspectorMin, ideal: Layout.inspectorIdeal, max: Layout.inspectorMax,
-                )
+            Color.clear.overlay { inspector }
+                .inspectorColumnWidth(min: Layout.inspectorMin, ideal: Layout.inspectorIdeal, max: Layout.inspectorMax)
+                .toolbar { ToolbarSpacer(.flexible, placement: .principal) }
         }
-        .frame(minWidth: Layout.windowMinWidth, minHeight: 520)
-        .sheet(isPresented: $showingMakeVideos) {
-            MakeVideoSheet(library: workshop)
-        }
-        .alert(deleteTitle, isPresented: .init(
-            get: { pendingDelete != nil },
-            set: {
-                if !$0 {
-                    pendingDelete = nil
-                }
-            },
-        )) {
-            Button("Delete", role: .destructive) { deletePending() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The videos leave your library and System Settings.")
-        }
-        .dropDestination(for: URL.self) { urls, _ in
-            importDropped(urls)
-        }
-        .focusedSceneValue(\.libraryActions, actions)
-        // `phosphene://library/wallpaper-engine`: Sevoflurane opens the window at
-        // the Wallpaper Engine section.
-        .onOpenURL { url in
-            if url.host == "library", url.path == "/wallpaper-engine" {
-                section = .workshopDownloads
-            }
-        }
-        .onAppear {
-            loadEntries()
-            if !workshop.hasScanned {
-                workshop.refresh()
-            }
-            // Promote to a regular app for every open path (menu bar, URL scheme):
-            // the window needs a Dock icon and menu bar while visible. The
-            // AppDelegate's willClose observer demotes back to accessory.
-            NSApplication.shared.setActivationPolicy(.regular)
-            NSApplication.shared.activate()
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification),
-        ) { _ in
-            loadEntries()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            workshop.refresh()
-        }
-        .onChange(of: section) {
-            search = ""
-        }
+        .frame(minWidth: minimumWindowWidth, minHeight: 520, alignment: .leading)
     }
-
-    // MARK: - Content
 
     @ViewBuilder
     private var detail: some View {
@@ -127,7 +197,7 @@ struct LibraryWindow: View {
             VideoBrowser(
                 rows: rows.sorted(using: videoSort), selection: $videoSelection, sortOrder: $videoSort,
                 mode: viewMode, iconSize: iconSize, manager: manager,
-                onDelete: { pendingDelete = $0.isEmpty ? nil : $0 },
+                onDelete: requestDelete, itemMenu: videoContextMenu,
             )
         }
     }
@@ -146,7 +216,7 @@ struct LibraryWindow: View {
                 WorkshopIntro(library: workshop)
                 WorkshopBrowser(
                     rows: rows.sorted(using: workshopSort), library: workshop, sortOrder: $workshopSort,
-                    mode: viewMode, iconSize: iconSize,
+                    mode: viewMode, iconSize: iconSize, showVideo: showWorkshopVideo,
                 )
             }
         }
@@ -155,6 +225,14 @@ struct LibraryWindow: View {
     @ViewBuilder
     private var videoEmptyState: some View {
         switch section {
+        case .lightDarkPairs:
+            ContentUnavailableView {
+                Label("No Light/Dark Pairs", image: .lightDarkPair)
+            } description: {
+                Text("Select two videos in All Videos to create a light/dark pair.")
+            } actions: {
+                Button("All Videos") { section = .allVideos }
+            }
         case .inUse:
             ContentUnavailableView {
                 Label("No Wallpaper in Use", systemImage: "play.rectangle")
@@ -251,20 +329,42 @@ struct LibraryWindow: View {
         Set(workshop.records.values.map(\.entryID))
     }
 
+    private func pairAction(for ids: Set<String>) -> VideoPairSelection? {
+        guard !section.isWorkshop else { return nil }
+        if ids.count == 1, let id = ids.first {
+            return pairs[id]
+        }
+        guard ids.count == 2 else { return nil }
+        let selected = entries.filter { ids.contains($0.id) }
+        guard selected.count == 2, selected.allSatisfy({ pairs[$0.id] == nil }) else { return nil }
+        return VideoPairSelection(first: selected[0], second: selected[1], saved: nil)
+    }
+
+    private func includes(_ entry: VideoDeploymentService.EntryInfo, ids: Set<String>) -> Bool {
+        ids.contains(entry.id) || pairs[entry.id]?.saved.map { ids.contains($0.counterpart) } == true
+    }
+
+    private func size(of entry: VideoDeploymentService.EntryInfo) -> Int64 {
+        (pairs[entry.id]?.members ?? [entry]).reduce(0) { $0 + Int64(clamping: files[$1.id]?.size ?? 0) }
+    }
+
     private var videoRows: [VideoRow] {
         let inUse = inUseIDs
         let fromWorkshop = workshopEntryIDs
         return entries.compactMap { entry -> VideoRow? in
+            let members = pairs[entry.id]?.members ?? [entry]
             let row = VideoRow(
-                entry: entry, isInUse: inUse.contains(entry.id), isFromWorkshop: fromWorkshop.contains(entry.id),
-                fileSize: VideoDeploymentService.fileSize(for: entry) ?? 0,
+                entry: entry, pair: pairs[entry.id], isInUse: includes(entry, ids: inUse), isFromWorkshop: includes(entry, ids: fromWorkshop),
+                fileSize: size(of: entry),
             )
             switch section {
+            case .lightDarkPairs where row.pair == nil: return nil
             case .inUse where !row.isInUse: return nil
             case .fromWorkshop where !row.isFromWorkshop: return nil
             default: break
             }
-            guard search.isEmpty || entry.name.localizedStandardContains(search) else { return nil }
+            guard search.isEmpty || entry.name.localizedStandardContains(search)
+                || members.contains(where: { $0.name.localizedStandardContains(search) }) else { return nil }
             return row
         }
     }
@@ -294,8 +394,9 @@ struct LibraryWindow: View {
         let fromWorkshop = workshopEntryIDs
         return LibrarySidebar.Counts(
             all: entries.count,
-            inUse: entries.count { inUse.contains($0.id) },
-            fromWorkshop: entries.count { fromWorkshop.contains($0.id) },
+            pairs: pairs.count,
+            inUse: entries.count { includes($0, ids: inUse) },
+            fromWorkshop: entries.count { includes($0, ids: fromWorkshop) },
         )
     }
 
@@ -304,6 +405,7 @@ struct LibraryWindow: View {
     private var sectionTitle: String {
         switch section {
         case .allVideos: String(localized: "All Videos")
+        case .lightDarkPairs: String(localized: "Light/Dark Pairs")
         case .inUse: String(localized: "In Use")
         case .fromWorkshop: String(localized: "From Workshop")
         case .workshopDownloads: String(localized: "Wallpaper Engine")
@@ -320,6 +422,12 @@ struct LibraryWindow: View {
         let rows = videoRows
         let bytes = rows.map(\.fileSize).reduce(0, +)
         let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        if section == .lightDarkPairs {
+            return rows.count == 1 ? String(localized: "1 pair · \(size)") : String(localized: "\(rows.count) pairs · \(size)")
+        }
+        if rows.count == 1 {
+            return String(localized: "1 video · \(size)")
+        }
         return String(localized: "\(rows.count) videos · \(size)")
     }
 
@@ -327,58 +435,163 @@ struct LibraryWindow: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        ToolbarItem {
-            Picker("View", selection: $viewMode) {
-                Label("Icons", systemImage: "square.grid.2x2").tag(LibraryViewMode.icons)
-                Label("List", systemImage: "list.bullet").tag(LibraryViewMode.list)
-            }
-            .pickerStyle(.segmented)
-            .help("Show as icons or as a list")
-        }
+        ToolbarItem { viewPicker.pickerStyle(.segmented) }
+        ToolbarSpacer(.fixed)
+        ToolbarItemGroup { browserActions }
         ToolbarSpacer(.fixed)
         if section.isWorkshop {
-            ToolbarItem {
-                Button {
-                    workshop.openWorkshop()
-                } label: {
-                    Label("Steam Workshop", systemImage: "safari")
-                }
-                .help("Open the Wallpaper Engine Workshop in Steam")
+            ToolbarItemGroup {
+                WorkshopItemActions(ids: workshop.staged, library: workshop, showVideo: showWorkshopVideo)
             }
+        } else if !videoSelection.isEmpty {
+            ToolbarItemGroup {
+                primaryVideoActions(for: videoSelection)
+            }
+            .highVisibilityPriority()
+            ToolbarItemGroup {
+                finderButton(for: videoSelection)
+                videoEditingActions(for: videoSelection, inToolbar: true)
+            }
+            ToolbarSpacer(.fixed)
+        }
+        ToolbarItem { inspectorButton }
+        searchItem.highVisibilityPriority()
+    }
+
+    @ToolbarContentBuilder
+    private var searchItem: some ToolbarContent {
+        if searchPresented {
+            ToolbarSpacer(.fixed)
             ToolbarItem {
-                Button {
-                    showingMakeVideos = true
-                } label: {
-                    Label(makeVideosTitle, systemImage: "film.stack")
-                        .labelStyle(.titleAndIcon)
+                LibrarySearchField(text: $search, prompt: searchPrompt) {
+                    search = ""
+                    searchPresented = false
                 }
-                .buttonStyle(.glassProminent)
-                .disabled(renderableSelection.isEmpty)
-                .help("Turn the selected wallpapers into looping videos")
+                .frame(width: 144)
             }
         } else {
             ToolbarItem {
                 Button {
-                    manager.openVideoChooser()
+                    searchPresented = true
                 } label: {
-                    Label("Add Video", systemImage: "plus")
+                    Label(searchPrompt, systemImage: "magnifyingglass")
                 }
-                .help("Add a video to the library")
+                .keyboardShortcut("f")
             }
         }
-        ToolbarSpacer(.fixed)
-        ToolbarItem {
-            Button {
-                showInspector.toggle()
-            } label: {
-                Label("Inspector", systemImage: "sidebar.trailing")
-            }
-            .help(showInspector ? "Hide Inspector" : "Show Inspector")
+    }
+
+    private var viewPicker: some View {
+        Picker("View", selection: $viewMode) {
+            Label("Icons", systemImage: "square.grid.2x2").tag(LibraryViewMode.icons)
+            Label("List", systemImage: "list.bullet").tag(LibraryViewMode.list)
         }
+        .help("Show as icons or as a list")
+    }
+
+    @ViewBuilder
+    private var browserActions: some View {
+        if section.isWorkshop {
+            Button { workshop.openWorkshop() } label: {
+                Label("Steam Workshop", systemImage: "safari")
+            }
+            .help("Open the Wallpaper Engine Workshop in Steam")
+            Button { showingMakeVideos = true } label: {
+                Label(makeVideosTitle, systemImage: "film.stack")
+            }
+            .disabled(renderableSelection.isEmpty)
+            .help("Turn the selected wallpapers into looping videos")
+        } else {
+            Button { manager.openVideoChooser() } label: {
+                Label("Add Video", systemImage: "plus")
+            }
+            .help("Add a video to the library")
+        }
+    }
+
+    @ViewBuilder
+    private func videoContextMenu(for ids: Set<String>) -> some View {
+        primaryVideoActions(for: ids)
+        finderButton(for: ids)
+        videoEditingActions(for: ids, inToolbar: false)
+    }
+
+    @ViewBuilder
+    private func primaryVideoActions(for ids: Set<String>) -> some View {
+        if ids.count == 1 {
+            Button("Use as Wallpaper…", systemImage: "desktopcomputer", action: openWallpaperSettings)
+                .help("Phosphene wallpapers are selected in System Settings → Wallpaper")
+        }
+        deleteButton(for: ids)
+    }
+
+    private func finderButton(for ids: Set<String>) -> some View {
+        Button("Show in Finder", systemImage: "folder") {
+            let urls = entries.filter { ids.contains($0.id) }.flatMap { entry in
+                (pairs[entry.id]?.members ?? [entry]).map(VideoDeploymentService.videoURL)
+            }
+            NSWorkspace.shared.activateFileViewerSelecting(urls)
+        }
+        .help("Show in Finder")
+    }
+
+    private func deleteButton(for ids: Set<String>) -> some View {
+        let title: LocalizedStringKey = if ids.count > 1 {
+            "Delete \(ids.count) Videos…"
+        } else if let id = ids.first, pairs[id] != nil {
+            "Delete Pair…"
+        } else {
+            "Delete…"
+        }
+        return Button(title, systemImage: "trash", role: .destructive) { requestDelete(ids) }
+            .help(Text(title))
+    }
+
+    @ViewBuilder
+    private func videoEditingActions(for ids: Set<String>, inToolbar: Bool) -> some View {
+        if let pair = pairAction(for: ids) {
+            let label = Label(pair.actionTitle, image: .lightDarkPair)
+            if inToolbar {
+                Toggle(isOn: Binding(get: { pair.saved != nil }, set: { _ in pairSheet = pair })) { label }
+                    .toggleStyle(.button)
+                    .help(pair.actionTitle)
+            } else {
+                Button { pairSheet = pair } label: { label }
+            }
+            if let record = pair.saved {
+                Button("Swap Light and Dark", systemImage: "arrow.left.arrow.right") { swap(record) }
+                    .disabled(pair.members.count != 2)
+            }
+        }
+        if ids.count == 1, let id = ids.first, let entry = entries.first(where: { $0.id == id }) {
+            let target = VideoOptimizationTarget(entry: entry, pair: pairs[id])
+            VideoOptimizationMenu(target: target, manager: manager, convertToSDR: Binding(
+                get: { convertToSDRSelection == id },
+                set: { convertToSDRSelection = $0 ? id : nil },
+            ), showUnavailable: { optimizationUnavailableReason = $0 }) {
+                pendingVariantRemoval = target
+            }
+        }
+    }
+
+    private var inspectorButton: some View {
+        Button(action: toggleInspector) {
+            Label("Inspector", systemImage: "sidebar.trailing")
+        }
+        .help(showInspector ? "Hide Inspector" : "Show Inspector")
+    }
+
+    private var searchPrompt: String {
+        section.isWorkshop ? String(localized: "Search Downloads") : String(localized: "Search Videos")
     }
 
     private var renderableSelection: Set<String> {
         workshop.staged.filter { workshop.assessments[$0]?.isRenderable ?? false }
+    }
+
+    private func showWorkshopVideo(_ entryID: String) {
+        section = .allVideos
+        videoSelection = [visibleID(for: entryID)]
     }
 
     private var makeVideosTitle: String {
@@ -397,16 +610,11 @@ struct LibraryWindow: View {
         if section.isWorkshop {
             let selected = workshop.staged.compactMap { workshop.item($0) }
             if selected.count == 1, let item = selected.first {
-                WorkshopInspectorView(item: item, library: workshop) { entryID in
-                    section = .allVideos
-                    videoSelection = [entryID]
-                }
+                WorkshopInspectorView(item: item, library: workshop)
             } else if selected.count > 1 {
                 MultipleSelectionInspector(
                     count: selected.count,
                     detail: String(localized: "\(renderableSelection.count) can become videos"),
-                    actionTitle: makeVideosTitle,
-                    action: renderableSelection.isEmpty ? nil : { showingMakeVideos = true },
                 )
             } else {
                 emptyInspector
@@ -414,15 +622,17 @@ struct LibraryWindow: View {
         } else {
             let selected = entries.filter { videoSelection.contains($0.id) }
             if selected.count == 1, let entry = selected.first {
-                VideoInspectorView(entry: entry, manager: manager)
+                let pair = pairs[entry.id]
+                VideoInspectorView(
+                    entry: entry, file: files[entry.id], pair: pair,
+                    alternateFile: pair?.second.flatMap { files[$0.id] }, manager: manager,
+                )
+                .id(entry.id)
             } else if selected.count > 1 {
-                let bytes = selected.compactMap { VideoDeploymentService.fileSize(for: $0) }.reduce(0, +)
+                let bytes = selected.reduce(0) { $0 + size(of: $1) }
                 MultipleSelectionInspector(
                     count: selected.count,
                     detail: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file),
-                    actionTitle: String(localized: "Delete \(selected.count) Videos…"),
-                    action: { pendingDelete = Set(selected.map(\.id)) },
-                    isDestructive: true,
                 )
             } else {
                 emptyInspector
@@ -453,6 +663,14 @@ struct LibraryWindow: View {
                     .truncationMode(.middle)
                 Button("Stop") { workshop.cancelAll() }
                     .buttonStyle(.link)
+            } else if let deletionNotice {
+                Label(deletionNotice, systemImage: "checkmark.circle")
+                    .lineLimit(1)
+                    .help(deletionNotice)
+                    .task(id: deletionNotice) {
+                        do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                        self.deletionNotice = nil
+                    }
             } else {
                 Button {
                     openWallpaperSettings()
@@ -503,8 +721,40 @@ struct LibraryWindow: View {
 
     // MARK: - Actions
 
+    /// Split view children must stay compressible while AppKit negotiates divider positions.
+    private var minimumWindowWidth: CGFloat {
+        let sidebar = columnVisibility == .detailOnly ? 0 : Layout.sidebarMax + 1
+        let inspector = showInspector ? Layout.inspectorMax + 1 : 0
+        return max(500, 280 + sidebar + inspector)
+    }
+
+    private func toggleInspector() {
+        guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "library" }),
+              let root = window.contentView, let controller = inspectorController(in: root) else {
+            showInspector.toggle()
+            return
+        }
+        controller.toggleInspector(nil)
+    }
+
+    /// The navigation sidebar and the inspector can belong to different split controllers.
+    private func inspectorController(in view: NSView) -> NSSplitViewController? {
+        if let split = (view as? NSSplitView)?.delegate as? NSSplitViewController,
+           split.splitViewItems.contains(where: { $0.behavior == .inspector }) {
+            return split
+        }
+        for child in view.subviews {
+            if let split = inspectorController(in: child) {
+                return split
+            }
+        }
+        return nil
+    }
+
     private var actions: LibraryActions {
         LibraryActions(
+            showsInspector: showInspector, toggleInspector: toggleInspector,
+            pair: pairAction(for: videoSelection), openPair: { pairSheet = $0 },
             addVideo: { manager.openVideoChooser() },
             addFolder: { workshop.chooseFolder() },
             makeVideos: renderableSelection.isEmpty || !section.isWorkshop ? nil : { showingMakeVideos = true },
@@ -516,22 +766,47 @@ struct LibraryWindow: View {
         )
     }
 
-    private var deleteTitle: String {
-        let count = pendingDelete?.count ?? 0
-        if count == 1, let id = pendingDelete?.first, let entry = entries.first(where: { $0.id == id }) {
-            return String(localized: "Delete “\(entry.name)”?")
-        }
-        return String(localized: "Delete \(count) Videos?")
+    private func requestDelete(_ ids: Set<String>) {
+        let selected = entries.filter { ids.contains($0.id) }
+        guard !selected.isEmpty else { return }
+        pendingDelete = LibraryDeletion(entries: selected, pairs: pairs.filter { ids.contains($0.key) })
     }
 
-    private func deletePending() {
-        for id in pendingDelete ?? [] {
-            manager.removeVideo(entryID: id)
+    private func swap(_ record: AppearancePair) {
+        do {
+            try record.edit(in: VideoDeploymentService.videosFolderURL, split: false)
+            VideoDeploymentService.notifyExtensionLibraryChanged()
+        } catch {
+            manager.optimizationAlertMessage = error.localizedDescription
+            manager.showOptimizationAlert = true
         }
-        videoSelection.subtract(pendingDelete ?? [])
-        pendingDelete = nil
+    }
+
+    private func delete(_ deletion: LibraryDeletion) {
+        var failures = [String]()
+        for entry in deletion.entries {
+            do {
+                if let pair = deletion.pairs[entry.id]?.saved {
+                    try VideoDeploymentService.removePair(pair)
+                } else {
+                    try VideoDeploymentService.removeVideo(entryID: entry.id)
+                }
+            } catch {
+                failures.append("\(entry.name) — \(error.localizedDescription)")
+            }
+        }
         loadEntries()
         workshop.refresh()
+        if !failures.isEmpty {
+            manager.optimizationAlertMessage = failures.joined(separator: "\n")
+            manager.showOptimizationAlert = true
+        } else if !deletion.pairs.isEmpty {
+            let message = deletion.isSinglePair
+                ? String(localized: "Deleted the pair “\(deletion.entries[0].name)” and both library copies.")
+                : String(localized: "Deleted the selected items and their library copies.")
+            deletionNotice = message
+            AccessibilityNotification.Announcement(message).post()
+        }
     }
 
     private func importDropped(_ urls: [URL]) {
@@ -549,26 +824,65 @@ struct LibraryWindow: View {
     }
 
     private func openWallpaperSettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!)
+        NSWorkspace.shared.open(WallpaperPrefsService.wallpaperSettingsURL)
+    }
+
+    private func visibleID(for id: String) -> String {
+        pairs.first { $0.value.saved?.contains(id) == true }?.key ?? id
     }
 
     private func loadEntries() {
-        entries = VideoDeploymentService.listEntries()
+        let directory = VideoDeploymentService.videosFolderURL
+        var records = (try? AppearancePair.read(in: directory)) ?? []
+        for pair in records where pair.deletionPending == true {
+            do {
+                try pair.finishDeletion(in: directory)
+                records.removeAll { $0.owner == pair.owner }
+            } catch {
+                Log.video.error("Could not finish deleting pair \(pair.owner): \(error.localizedDescription)")
+            }
+        }
+        let physical = VideoDeploymentService.listEntries()
+        files = Dictionary(uniqueKeysWithValues: physical.compactMap { entry in
+            FileIdentity(of: VideoDeploymentService.videoURL(for: entry)).map { (entry.id, $0) }
+        })
+        let byID = Dictionary(uniqueKeysWithValues: physical.map { ($0.id, $0) })
+        var groups = [String: VideoPairSelection]()
+        var hidden = Set<String>()
+        for record in records {
+            let first = byID[record.owner], second = byID[record.counterpart]
+            guard let visible = first ?? second else { continue }
+            groups[visible.id] = VideoPairSelection(first: first, second: second, saved: record)
+            if first != nil {
+                hidden.insert(record.counterpart)
+            }
+        }
+        pairs = groups
+        entries = physical.compactMap { source in
+            guard !hidden.contains(source.id) else { return nil }
+            var entry = source
+            entry.name = groups[source.id]?.saved?.name ?? source.name
+            return entry
+        }
+        videoSelection = Set(videoSelection.map(visibleID))
         videoSelection = videoSelection.filter { id in entries.contains { $0.id == id } }
-        if videoSelection.isEmpty, let initialSelectionID, entries.contains(where: { $0.id == initialSelectionID }) {
-            videoSelection = [initialSelectionID]
+        if videoSelection.isEmpty, let initialSelectionID, entries.contains(where: { $0.id == visibleID(for: initialSelectionID) }) {
+            videoSelection = [visibleID(for: initialSelectionID)]
         }
     }
 }
 
-/// Column widths, and a window minimum that holds them all at their widest.
-///
-/// Never let the window be narrower than the columns can be: SwiftUI leaves the split
-/// view's own minimum out of the window's `contentMinSize`, and a window below it sends
-/// AppKit into an endless Update Constraints loop that ends in an exception (#35).
-/// ``detailMin`` is what the detail column is left with when both side columns are at
-/// their widest; it is never applied as a `.frame(minWidth:)` on the detail, which
-/// starts the same loop at any window size.
+private extension ToolbarContent {
+    @ToolbarContentBuilder
+    func highVisibilityPriority() -> some ToolbarContent {
+        if #available(macOS 26.1, *) {
+            visibilityPriority(.high)
+        } else {
+            self
+        }
+    }
+}
+
 private enum Layout {
     static let sidebarMin: CGFloat = 180
     static let sidebarIdeal: CGFloat = 220
@@ -576,9 +890,6 @@ private enum Layout {
     static let inspectorMin: CGFloat = 260
     static let inspectorIdeal: CGFloat = 300
     static let inspectorMax: CGFloat = 340
-    static let detailMin: CGFloat = 420
-    static let dividers: CGFloat = 2
-    static let windowMinWidth = sidebarMax + inspectorMax + detailMin + dividers
 }
 
 // MARK: - Pieces
@@ -607,9 +918,6 @@ private struct WorkshopIntro: View {
 private struct MultipleSelectionInspector: View {
     let count: Int
     let detail: String
-    let actionTitle: String
-    let action: (() -> Void)?
-    var isDestructive = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -620,86 +928,8 @@ private struct MultipleSelectionInspector: View {
                 .font(.headline)
             Text(detail)
                 .foregroundStyle(.secondary)
-            if let action {
-                Button(role: isDestructive ? .destructive : nil, action: action) {
-                    Text(actionTitle)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .padding(.horizontal, 14)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(14)
-    }
-}
-
-// MARK: - Menu commands
-
-/// The library window's actions, published to the menu bar.
-struct LibraryActions {
-    let addVideo: () -> Void
-    let addFolder: () -> Void
-    let makeVideos: (() -> Void)?
-    let showAsIcons: () -> Void
-    let showAsList: () -> Void
-    let largerIcons: () -> Void
-    let smallerIcons: () -> Void
-    let viewMode: LibraryViewMode
-}
-
-extension FocusedValues {
-    @Entry var libraryActions: LibraryActions?
-}
-
-/// Every toolbar action also lives in the menu bar, with keyboard shortcuts.
-struct LibraryCommands: Commands {
-    @FocusedValue(\.libraryActions) private var actions
-
-    var body: some Commands {
-        CommandGroup(after: .newItem) {
-            Button("Add Video…") { actions?.addVideo() }
-                .keyboardShortcut("o")
-                .disabled(actions == nil)
-            Button("Add Wallpaper Engine Folder…") { actions?.addFolder() }
-                .keyboardShortcut("o", modifiers: [.command, .shift])
-                .disabled(actions == nil)
-            Divider()
-            Button("Make Videos…") { actions?.makeVideos?() }
-                .keyboardShortcut("m", modifiers: [.command, .shift])
-                .disabled(actions?.makeVideos == nil)
-        }
-        CommandGroup(before: .sidebar) {
-            Toggle("as Icons", isOn: Binding(
-                get: { actions?.viewMode == .icons },
-                set: {
-                    if $0 {
-                        actions?.showAsIcons()
-                    }
-                },
-            ))
-            .keyboardShortcut("1")
-            .disabled(actions == nil)
-            Toggle("as List", isOn: Binding(
-                get: { actions?.viewMode == .list },
-                set: {
-                    if $0 {
-                        actions?.showAsList()
-                    }
-                },
-            ))
-            .keyboardShortcut("2")
-            .disabled(actions == nil)
-            Divider()
-            Button("Make Icons Larger") { actions?.largerIcons() }
-                .keyboardShortcut("+")
-                .disabled(actions?.viewMode != .icons)
-            Button("Make Icons Smaller") { actions?.smallerIcons() }
-                .keyboardShortcut("-")
-                .disabled(actions?.viewMode != .icons)
-            Divider()
-        }
-        SidebarCommands()
-        InspectorCommands()
     }
 }

@@ -8,6 +8,7 @@ enum LibrarySection: Hashable, RawRepresentable {
     static let storageKey = "librarySection"
 
     case allVideos
+    case lightDarkPairs
     case inUse
     case fromWorkshop
     case workshopDownloads
@@ -18,6 +19,7 @@ enum LibrarySection: Hashable, RawRepresentable {
     init?(rawValue: String) {
         switch rawValue {
         case "all": self = .allVideos
+        case "lightDarkPairs": self = .lightDarkPairs
         case "inUse": self = .inUse
         case "fromWorkshop": self = .fromWorkshop
         case "workshop": self = .workshopDownloads
@@ -31,6 +33,7 @@ enum LibrarySection: Hashable, RawRepresentable {
     var rawValue: String {
         switch self {
         case .allVideos: "all"
+        case .lightDarkPairs: "lightDarkPairs"
         case .inUse: "inUse"
         case .fromWorkshop: "fromWorkshop"
         case .workshopDownloads: "workshop"
@@ -42,7 +45,7 @@ enum LibrarySection: Hashable, RawRepresentable {
     /// Whether the section lists Wallpaper Engine downloads rather than library videos.
     var isWorkshop: Bool {
         switch self {
-        case .allVideos, .inUse, .fromWorkshop: false
+        case .allVideos, .lightDarkPairs, .inUse, .fromWorkshop: false
         case .workshopDownloads, .workshopNotMade, .workshopSource: true
         }
     }
@@ -63,6 +66,7 @@ enum LibraryIconSize {
 /// One library video, flattened for sorting in a table.
 nonisolated struct VideoRow: Identifiable, Sendable {
     let entry: VideoDeploymentService.EntryInfo
+    let pair: VideoPairSelection?
     let isInUse: Bool
     let isFromWorkshop: Bool
     let fileSize: Int64
@@ -164,8 +168,8 @@ nonisolated struct WorkshopRow: Identifiable, Sendable {
 enum GridSelection {
     static func click(
         _ id: String, in ordered: [String], selection: inout Set<String>, anchor: inout String?,
+        modifiers: NSEvent.ModifierFlags = NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags,
     ) {
-        let modifiers = NSEvent.modifierFlags
         if modifiers.contains(.command) {
             if selection.contains(id) {
                 selection.remove(id)
@@ -180,5 +184,36 @@ enum GridSelection {
             selection = [id]
             anchor = id
         }
+    }
+}
+
+/// Keep the warning and the deletion bound to the same selection even if the library refreshes.
+struct LibraryDeletion {
+    let entries: [VideoDeploymentService.EntryInfo]
+    let pairs: [String: VideoPairSelection]
+
+    var isSinglePair: Bool {
+        entries.count == 1 && !pairs.isEmpty
+    }
+
+    var title: String {
+        if entries.count == 1, let entry = entries.first {
+            return isSinglePair ? String(localized: "Delete the pair “\(entry.name)”?") : String(localized: "Delete “\(entry.name)”?")
+        }
+        return String(localized: "Delete \(entries.count) Library Items?")
+    }
+
+    var message: String {
+        guard !pairs.isEmpty else { return String(localized: "The videos leave your library and System Settings.") }
+        let warning = isSinglePair
+            ? String(localized: "This removes the pair from your library and System Settings and permanently deletes both library copies.")
+            : String(localized: "The selected items will be removed from your library and System Settings. Both library copies of each pair below will be permanently deleted.")
+        let names = entries.compactMap { entry -> String? in
+            guard let selection = pairs[entry.id], let pair = selection.saved else { return nil }
+            let light = selection.entry(light: true, swapped: pair.swapped)?.name ?? (pair.swapped ? pair.validation.alternate : pair.validation.original).basename
+            let dark = selection.entry(light: false, swapped: pair.swapped)?.name ?? (pair.swapped ? pair.validation.original : pair.validation.alternate).basename
+            return String(localized: "Light — \(light)\nDark — \(dark)")
+        }
+        return ([warning] + names).joined(separator: "\n\n")
     }
 }

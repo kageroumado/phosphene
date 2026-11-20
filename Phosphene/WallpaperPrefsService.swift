@@ -10,6 +10,9 @@ import os
 @Observable
 final class WallpaperPrefsService {
     static let shared = WallpaperPrefsService()
+    static let wallpaperSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!
+    private static let hostID = "com.apple.wallpaper.agent"
+    private(set) var isRestartingWallpaperServices = false
 
     struct WallpaperSelection: Identifiable, Equatable {
         let id: String // "{displayUUID}" or "{displayUUID}:{spaceUUID}"
@@ -24,6 +27,43 @@ final class WallpaperPrefsService {
     }
 
     // MARK: - Prefs (app → extension)
+
+    private(set) var debugLoggingEnabled = false
+
+    func refreshDebugLogging() {
+        debugLoggingEnabled = DebugLogging.isEnabled(in: Self.extensionDocsURL)
+    }
+
+    func setDebugLogging(_ enabled: Bool) {
+        do {
+            try DebugLogging.setEnabled(enabled, in: Self.extensionDocsURL)
+            debugLoggingEnabled = enabled
+        } catch {
+            refreshDebugLogging()
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn’t Change Debug Logging")
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+    }
+
+    private var addVideoPlaceholderEnabled = true
+    var showAddVideoPlaceholder: Bool {
+        get { addVideoPlaceholderEnabled }
+        set {
+            guard newValue != addVideoPlaceholderEnabled, savePrefs(placeholderOverride: newValue) else { return }
+            addVideoPlaceholderEnabled = newValue
+            VideoDeploymentService.refreshWallpaperPicker()
+        }
+    }
+
+    var hdrMode: HDRMode = .automatic {
+        didSet { guard hdrMode != oldValue else { return }; savePrefs() }
+    }
+
+    var frameMatchedTransitions = false {
+        didSet { guard frameMatchedTransitions != oldValue else { return }; savePrefs() }
+    }
 
     var userPaused = false {
         didSet { guard userPaused != oldValue else { return }; savePrefs() }
@@ -117,6 +157,9 @@ final class WallpaperPrefsService {
     }
 
     private struct PrefsFile: Codable {
+        var showAddVideoPlaceholder: Bool?
+        var hdrMode: String?
+        var frameMatchedTransitions: Bool?
         var userPaused: Bool
         var alwaysPauseDesktop: Bool
         var pauseWhenOccluded: Bool
@@ -125,17 +168,6 @@ final class WallpaperPrefsService {
         var fullscreenDisplays: Set<UInt32>?
         var pausedDisplays: Set<UInt32>?
         var screenSaverIsOurs: Bool?
-
-        init(userPaused: Bool, alwaysPauseDesktop: Bool, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, occludedDisplays: Set<UInt32>? = nil, fullscreenDisplays: Set<UInt32>? = nil, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
-            self.userPaused = userPaused
-            self.alwaysPauseDesktop = alwaysPauseDesktop
-            self.pauseWhenOccluded = pauseWhenOccluded
-            self.desktopOccluded = desktopOccluded
-            self.occludedDisplays = occludedDisplays
-            self.fullscreenDisplays = fullscreenDisplays
-            self.pausedDisplays = pausedDisplays
-            self.screenSaverIsOurs = screenSaverIsOurs
-        }
     }
 
     private struct ContextState: Codable {
@@ -159,6 +191,9 @@ final class WallpaperPrefsService {
         checkSystemWallpaper()
         observeStateChanges()
         observeWallpaperStore()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(refreshSelectionMetadata(_:)), name: VideoDeploymentService.libraryChangedNotification, object: nil,
+        )
         observeDisplayChanges()
         observeSpaceChanges()
         observeAgentStuck()
@@ -167,8 +202,7 @@ final class WallpaperPrefsService {
     // MARK: - Spiral recovery (kill the stuck WallpaperAgent)
 
     /// The sandboxed extension can detect WallpaperAgent's spiral-of-death but can't kill it.
-    /// It Darwin-signals us (unsandboxed) to `killall WallpaperAgent`, which is the only thing
-    /// that resets the Agent's desynced state — it then relaunches and re-acquires cleanly.
+    /// It signals the app to terminate the current session's agent so launchd can relaunch it.
     /// Rate-limited so we never loop on kills.
     private var lastAgentKill: Date = .distantPast
 
@@ -192,7 +226,7 @@ final class WallpaperPrefsService {
             NSLog("[Phosphene] agentStuck signal ignored (no fresh recovery stamp from the extension)")
             return
         }
-        guard now.timeIntervalSince(lastAgentKill) > 15 else {
+        guard !isRestartingWallpaperServices, now.timeIntervalSince(lastAgentKill) > 15 else {
             NSLog("[Phosphene] agentStuck signal ignored (killed agent \(Int(now.timeIntervalSince(lastAgentKill)))s ago)")
             return
         }
@@ -218,16 +252,96 @@ final class WallpaperPrefsService {
 
     /// Manual restart from the menu bar — user-initiated, so no cooldown.
     func restartWallpaperAgent() {
+        guard !isRestartingWallpaperServices else { return }
         lastAgentKill = Date()
         killWallpaperAgent(reason: "manual restart from menu")
     }
 
     private func killWallpaperAgent(reason: String) {
-        NSLog("[Phosphene] killall WallpaperAgent — \(reason)")
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        task.arguments = ["WallpaperAgent"]
-        try? task.run()
+        do {
+            try Self.stopWallpaperHost(NSRunningApplication.runningApplications(withBundleIdentifier: Self.hostID))
+        } catch {
+            Log.general.error("Failed to restart WallpaperAgent (\(reason)): \(error)")
+        }
+    }
+
+    private static func stopWallpaperHost(_ hosts: [NSRunningApplication]) throws {
+        for host in hosts where !host.isTerminated {
+            let pid = host.processIdentifier
+            guard pid > 1 else { continue }
+            if kill(pid, SIGTERM) != 0 {
+                let code = errno
+                if code != ESRCH {
+                    throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+                }
+            }
+        }
+    }
+
+    func restartWallpaperHostAndSettings() async {
+        guard !isRestartingWallpaperServices else { return }
+        isRestartingWallpaperServices = true
+        lastAgentKill = Date()
+        defer { isRestartingWallpaperServices = false }
+        do {
+            let hosts = NSRunningApplication.runningApplications(withBundleIdentifier: Self.hostID)
+            do {
+                try Self.stopWallpaperHost(hosts)
+            } catch let error as POSIXError where error.code == .EPERM || error.code == .EACCES {
+                try Self.restartHostWithAuthorization()
+            }
+            try await Self.waitForRestartStep("The wallpaper host did not quit.") {
+                hosts.allSatisfy(\.isTerminated)
+            }
+
+            let settings = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences")
+            for app in settings where !app.isTerminated {
+                app.terminate()
+            }
+            try await Self.waitForRestartStep("System Settings is still open. Finish any open dialog and try again.") {
+                settings.allSatisfy(\.isTerminated)
+            }
+            guard NSWorkspace.shared.open(Self.wallpaperSettingsURL) else {
+                throw RestartError(errorDescription: String(localized: "Wallpaper Settings could not be opened."))
+            }
+            // Opening the pane also requests the launch-on-demand agent when it was not running.
+            try await Self.waitForRestartStep("The wallpaper host did not start.") {
+                NSRunningApplication.runningApplications(withBundleIdentifier: Self.hostID).contains { !$0.isTerminated }
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn’t Complete Restart")
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+    }
+
+    private struct RestartError: LocalizedError {
+        var errorDescription: String?
+    }
+
+    private static func waitForRestartStep(_ message: LocalizedStringResource, until ready: () -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(8)
+        while !ready() {
+            guard ContinuousClock.now < deadline else { throw RestartError(errorDescription: String(localized: message)) }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    private static func restartHostWithAuthorization() throws {
+        // Authorization can take time. Address the login session's service, never a previously observed PID.
+        let command = "/bin/launchctl kickstart -k gui/\(getuid())/\(hostID)"
+        let script = NSAppleScript(source: "do shell script \"\(command)\" with administrator privileges")
+        var info: NSDictionary?
+        guard unsafe script?.executeAndReturnError(&info) != nil else {
+            if info?[NSAppleScript.errorNumber] as? Int == -128 {
+                throw CancellationError()
+            }
+            throw RestartError(errorDescription: info?[NSAppleScript.errorMessage] as? String ??
+                String(localized: "macOS could not authorize the wallpaper host restart."))
+        }
     }
 
     // MARK: - Public
@@ -246,7 +360,11 @@ final class WallpaperPrefsService {
 
     // MARK: - Prefs Persistence
 
+    @ObservationIgnored private var loadingPrefs = false
+
     private func loadPrefs() {
+        loadingPrefs = true
+        defer { loadingPrefs = false }
         let data: Data
         do {
             data = try Data(contentsOf: Self.prefsURL)
@@ -255,6 +373,9 @@ final class WallpaperPrefsService {
         }
         do {
             let prefs = try JSONDecoder().decode(PrefsFile.self, from: data)
+            addVideoPlaceholderEnabled = prefs.showAddVideoPlaceholder ?? true
+            hdrMode = prefs.hdrMode.flatMap(HDRMode.init(rawValue:)) ?? .automatic
+            frameMatchedTransitions = prefs.frameMatchedTransitions ?? false
             userPaused = prefs.userPaused
             alwaysPauseDesktop = prefs.alwaysPauseDesktop
             pauseWhenOccluded = prefs.pauseWhenOccluded
@@ -267,8 +388,13 @@ final class WallpaperPrefsService {
         }
     }
 
-    private func savePrefs() {
+    @discardableResult
+    private func savePrefs(placeholderOverride: Bool? = nil) -> Bool {
+        guard !loadingPrefs else { return false }
         let prefs = PrefsFile(
+            showAddVideoPlaceholder: placeholderOverride ?? addVideoPlaceholderEnabled,
+            hdrMode: hdrMode.rawValue,
+            frameMatchedTransitions: frameMatchedTransitions,
             userPaused: userPaused,
             alwaysPauseDesktop: alwaysPauseDesktop,
             pauseWhenOccluded: pauseWhenOccluded,
@@ -278,9 +404,19 @@ final class WallpaperPrefsService {
             pausedDisplays: pausedDisplays.isEmpty ? nil : pausedDisplays,
             screenSaverIsOurs: screenSaverIsOurs,
         )
-        guard let data = try? JSONEncoder().encode(prefs) else { return }
-        try? data.write(to: Self.prefsURL, options: .atomic)
+        do {
+            if placeholderOverride != nil {
+                try FileManager.default.createDirectory(at: Self.extensionDocsURL, withIntermediateDirectories: true)
+            }
+            try JSONEncoder().encode(prefs).write(to: Self.prefsURL, options: .atomic)
+        } catch {
+            Log.general.error("Failed to save wallpaper preferences: \(error)")
+            return false
+        }
 
+        if placeholderOverride != nil {
+            return true
+        }
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterPostNotification(
             center,
@@ -289,6 +425,7 @@ final class WallpaperPrefsService {
             nil,
             true,
         )
+        return true
     }
 
     // MARK: - State Observation
@@ -349,7 +486,6 @@ final class WallpaperPrefsService {
         let displayMap = resolveDisplayMap().mapValues {
             WallpaperStoreParser.DisplayInfo(displayID: $0.displayID, name: $0.name)
         }
-        let entries = VideoDeploymentService.listEntries()
         let parsed = WallpaperStoreParser.parseSelections(
             plist: plist,
             displayMap: displayMap,
@@ -359,9 +495,8 @@ final class WallpaperPrefsService {
 
         // Layer the library video's display name and on-disk URL onto each parsed
         // selection; the parser resolves everything the store itself knows.
-        selections = parsed.map { sel in
-            let entry = entries.first { $0.id == sel.videoID }
-            return WallpaperSelection(
+        selections = resolvingMetadata(for: parsed.map { sel in
+            WallpaperSelection(
                 id: sel.id,
                 videoID: sel.videoID,
                 displayUUID: sel.displayUUID,
@@ -369,9 +504,25 @@ final class WallpaperPrefsService {
                 displayID: sel.displayID,
                 spaceUUID: sel.spaceUUID,
                 spaceName: sel.spaceName,
-                videoName: entry?.name,
-                videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) },
             )
+        })
+    }
+
+    @objc
+    private func refreshSelectionMetadata(_: Notification) {
+        selections = resolvingMetadata(for: selections)
+    }
+
+    private func resolvingMetadata(for selections: [WallpaperSelection]) -> [WallpaperSelection] {
+        guard !selections.isEmpty else { return [] }
+        let entries = VideoDeploymentService.listEntries()
+        let pairs = (try? AppearancePair.read(in: VideoDeploymentService.videosFolderURL)) ?? []
+        return selections.map { selection in
+            let entry = entries.first { $0.id == selection.videoID }
+            var result = selection
+            result.videoName = pairs.first { $0.contains(selection.videoID) }?.name ?? entry?.name
+            result.videoURL = entry.map(VideoDeploymentService.videoURL(for:))
+            return result
         }
     }
 
@@ -401,7 +552,9 @@ final class WallpaperPrefsService {
             }
         }
 
-        return map
+        guard map.values.contains(where: { SidecarDisplay.isIPad($0.displayID, name: $0.name) }) else { return map }
+        let deviceNames = SidecarDisplay.connectedNames()
+        return map.mapValues { ($0.displayID, deviceNames[$0.displayID] ?? $0.name) }
     }
 
     // MARK: - Space Resolution
@@ -417,13 +570,7 @@ final class WallpaperPrefsService {
             return [:]
         }
 
-        // Each monitor record is keyed by its display's UUID, except the primary
-        // display's, which is "Main". When Spaces span every display, "Main" is the
-        // only record holding Spaces and its Spaces belong to all displays.
-        let separateSpaces = monitors.contains { monitor in
-            (monitor["Display Identifier"] as? String) != "Main"
-                && !((monitor["Spaces"] as? [[String: Any]]) ?? []).isEmpty
-        }
+        let separateSpaces = NSScreen.screensHaveSeparateSpaces
         let mainDisplayID = CGMainDisplayID()
         let mainDisplayUUID = displayMap.first { $0.value.displayID == mainDisplayID }?.key
 
@@ -431,7 +578,11 @@ final class WallpaperPrefsService {
         for monitor in monitors {
             guard let spaces = monitor["Spaces"] as? [[String: Any]] else { continue }
             let identifier = monitor["Display Identifier"] as? String
-            let owner = identifier == "Main" ? (separateSpaces ? mainDisplayUUID : nil) : identifier?.uppercased()
+            let displayUUID = identifier == "Main" ? mainDisplayUUID : identifier?.uppercased()
+            if separateSpaces, displayUUID == nil {
+                continue
+            }
+            let owner = separateSpaces ? displayUUID : nil
             for (index, space) in spaces.enumerated() {
                 if let uuid = space["uuid"] as? String {
                     map[uuid] = WallpaperStoreParser.SpaceInfo(
@@ -468,7 +619,8 @@ final class WallpaperPrefsService {
 
     // MARK: - Display Change Observer
 
-    @ObservationIgnored private var displayReconfigToken: (any NSObjectProtocol)?
+    @ObservationIgnored private var displayReconfigTokens: [any NSObjectProtocol] = []
+
     @ObservationIgnored private var knownDisplayIDs: Set<UInt32> = WallpaperPrefsService.connectedDisplayIDs()
     @ObservationIgnored private var displaySetRestart: DispatchWorkItem?
 
@@ -479,14 +631,14 @@ final class WallpaperPrefsService {
     }
 
     private func observeDisplayChanges() {
-        displayReconfigToken = NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil,
-            queue: .main,
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.checkSystemWallpaper()
-                self?.restartAgentIfDisplaySetChanged()
+        displayReconfigTokens = [NSApplication.didChangeScreenParametersNotification, SidecarDisplay.connectedDevicesChanged].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.checkSystemWallpaper()
+                    if name == NSApplication.didChangeScreenParametersNotification {
+                        self?.restartAgentIfDisplaySetChanged()
+                    }
+                }
             }
         }
     }
@@ -505,9 +657,7 @@ final class WallpaperPrefsService {
         displaySetRestart?.cancel()
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                guard !self.selections.isEmpty else { return }
-                guard Date().timeIntervalSince(self.lastAgentKill) > 15 else { return }
+                guard let self, !self.selections.isEmpty, Date().timeIntervalSince(self.lastAgentKill) > 15 else { return }
                 self.lastAgentKill = Date()
                 self.killWallpaperAgent(reason: "connected displays changed")
             }

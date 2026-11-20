@@ -49,10 +49,24 @@
 			);
 			target = 0B3364822F4FCB4B00060732 /* PhospheneExtension */;
 		};
+		7E5700000000000000000AA3 /* Shared media types in Phosphene */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AppearancePair.swift,
+				DebugLogging.swift,
+				FileIdentity.swift,
+				HDRMode.swift,
+			);
+			target = AA9B91C82E900B9E008812A9 /* Phosphene */;
+		};
 		7E5700000000000000000AA1 /* Exceptions for "PhospheneExtension" folder in "PhospheneTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				CachedFrame.swift,
+				AppearancePair.swift,
+				FileIdentity.swift,
 				GeometryVerdict.swift,
+				HDRMode.swift,
 				PlaybackModel.swift,
 				PlaybackPolicy.swift,
 				RampMath.swift,
@@ -63,6 +77,8 @@
 		7E5700000000000000000AA2 /* Exceptions for "Phosphene" folder in "PhospheneTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				VideoProbe.swift,
+				PairEligibility.swift,
 				OcclusionMath.swift,
 				PathSafety.swift,
 				WallpaperEngine/GL.swift,
@@ -85,6 +101,7 @@
 		0B3364842F4FCB4B00060732 /* PhospheneExtension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				7E5700000000000000000AA3 /* Shared media types in Phosphene */,
 				0B33648E2F4FCB4B00060732 /* Exceptions for "PhospheneExtension" folder in "PhospheneExtension" target */,
 				7E5700000000000000000AA1 /* Exceptions for "PhospheneExtension" folder in "PhospheneTests" target */,
 			);

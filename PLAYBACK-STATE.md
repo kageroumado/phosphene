@@ -22,7 +22,7 @@ How the extension decides whether each wallpaper surface plays, and how that dec
 | `SystemEvents.swift`, `PrefsSource.swift`, `PowerMonitor.swift` | Event sources: display sleep/wake, loginwindow lock/unlock, the app's prefs file, power/thermal/Game Mode/backlight. |
 | `WallpaperXPCHandler.swift` | The agent protocol. Emits `surfaceAcquired`, `agentUpdate`, `surfaceRemoved`, `shufflePicked`, `videoRemoved`. |
 | `SurfaceRegistry.swift` | Resources only: remote `CAContext`, root layer, renderer per surface, and the WallpaperID → surface map. |
-| `VideoRenderer.swift` | The AVFoundation pipeline. Its pause, ramp, and deep-pause state is confined to its own serial queue. |
+| `VideoRenderer.swift`, `VideoRenderer+Playback.swift`, `VideoRenderer+Appearance.swift` | The AVFoundation pipeline, playback policy application, and appearance transitions. The renderer’s serial queue owns playback state. |
 
 ## Rules the design enforces
 
@@ -30,6 +30,7 @@ How the extension decides whether each wallpaper surface plays, and how that dec
 - **Presentation is per surface.** Each WallpaperID (Space, lock screen, Settings preview) keeps its own `mode` and `activity`, taken from the `update` addressed to it. A preview's `idle` cannot pause the desktop.
 - **Everything is an input to the policy.** Display sleep, the loginwindow lock, per-display prefs and power are all read by `PlaybackReducer.target`, so no path can resume playback that another input requires paused.
 - **Level-triggered renderers.** A renderer never receives commands, only its surface's current target, via `Observations`. `PlaybackStore.follow` applies the current target before `start()`, so a renderer attached after a lock, pause or sleep starts in the right state. Bursts coalesce: the renderer sees the latest target, not every intermediate one.
+- **Dynamic range follows each surface.** A prefs change carries `hdrMode` in `SurfaceTarget`, including while the display sleeps. The renderer queue updates the attached layer independently of playback rate and reader lifetime.
 - **Ramps are part of the target.** The event that changed a surface decides whether the change ramps: a presentation change in lock-screen-only mode, or a window-coverage change. Everything else cuts.
 - **Published state is derived.** The current video is the choice of the newest live desktop surface, falling back to the last one seen. The agent does not send `selectedChoicesDidChange` to third-party providers on macOS 27.
 

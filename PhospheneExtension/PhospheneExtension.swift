@@ -6,6 +6,7 @@ import Foundation
 final class PhospheneExtension: NSObject, AppExtension {
     override required init() {
         super.init()
+        observeDebugLogging()
 
         let frameworkPath = "/System/Library/PrivateFrameworks/WallpaperExtensionKit.framework/WallpaperExtensionKit"
         if let handle = dlopen(frameworkPath, RTLD_LAZY) {
@@ -71,14 +72,19 @@ final class PhospheneExtension: NSObject, AppExtension {
             center,
             observer,
             { _, _, _, _, _ in
-                VideoLibrary.shared.scan()
+                guard VideoLibrary.shared.scan() else { return }
                 extensionLog("[Extension] Library changed notification received, re-scanned")
-                SurfaceRegistry.shared.reloadReplacedVideos()
+                Lifecycle.queue.async { SurfaceRegistry.shared.reconcileLibrary() }
                 SettingsPush.libraryDidChange()
             },
             "glass.kagerou.phosphene.libraryChanged" as CFString,
             nil,
             .deliverImmediately,
+        )
+        CFNotificationCenterAddObserver(
+            center, observer,
+            { _, _, _, _, _ in SettingsPush.libraryDidChange() },
+            "glass.kagerou.phosphene.pickerChanged" as CFString, nil, .deliverImmediately,
         )
     }
 

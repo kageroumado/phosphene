@@ -23,7 +23,7 @@
 - **Scenarios exercised**: <!-- e.g. fresh WallpaperAgent restart, rapid switching in System Settings, sleep/wake, multi-display -->
 - **Result**: <!-- what you observed; screenshots / screen recordings welcome -->
 
-<!-- If the change touches acquire / teardown / presentation policy, capture the extension log while reproducing, ideally with verbose logging on (see the bug-report template for the VERBOSE_LOG flag):
+<!-- If the change touches acquire / teardown / presentation policy, turn on Settings → General → Debug Logging while reproducing and capture the extension log at
      ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/extension.log -->
 
 ## Risk / regressions

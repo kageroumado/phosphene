@@ -18,6 +18,7 @@ nonisolated enum PreviewImage {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPixels,
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
@@ -374,17 +375,47 @@ struct MakeVideoSheet: View {
     }
 }
 
+// MARK: - Item actions
+
+struct WorkshopItemActions: View {
+    let ids: Set<String>
+    let library: WorkshopLibrary
+    /// Receives the generated video's library entry ID.
+    let showVideo: (String) -> Void
+
+    var body: some View {
+        let items = ids.isEmpty ? [] : library.items.filter { ids.contains($0.id) }
+        if !items.isEmpty {
+            Button("Show in Finder", systemImage: "folder") {
+                NSWorkspace.shared.activateFileViewerSelecting(items.map(\.folder))
+            }
+        }
+        if items.count == 1, let item = items.first {
+            if let page = item.workshopPageURL {
+                Button("Open Workshop Page", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(page) }
+            }
+            switch library.status(of: item) {
+            case let .made(entryID), let .outdated(entryID):
+                Button("Show in Library", systemImage: "film") { showVideo(entryID) }
+            default:
+                EmptyView()
+            }
+        }
+        if items.contains(where: { library.current == $0.id || library.queue.contains($0.id) }) {
+            Button(role: .destructive) {
+                library.cancelAll()
+            } label: {
+                Label("Stop Making Videos", systemImage: "stop.circle")
+            }
+        }
+    }
+}
+
 // MARK: - Inspector
 
 struct WorkshopInspectorView: View {
     let item: WorkshopItem
-    @Bindable var library: WorkshopLibrary
-    /// Select the library video made from this item.
-    var onShowVideo: (String) -> Void
-
-    private var status: WorkshopLibrary.ItemStatus {
-        library.status(of: item)
-    }
+    let library: WorkshopLibrary
 
     var body: some View {
         ScrollView {
@@ -398,24 +429,6 @@ struct WorkshopInspectorView: View {
                 chips
                 statusCard
                 notes
-                primaryButton
-                HStack(spacing: 8) {
-                    if let page = item.workshopPageURL {
-                        Button {
-                            NSWorkspace.shared.open(page)
-                        } label: {
-                            Text("Workshop Page")
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    Button {
-                        NSWorkspace.shared.activateFileViewerSelecting([item.folder])
-                    } label: {
-                        Text("Show in Finder")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .buttonStyle(.bordered)
             }
             .padding(14)
         }
@@ -459,6 +472,7 @@ struct WorkshopInspectorView: View {
                 .kerning(0.6)
                 .textCase(.uppercase)
                 .foregroundStyle(.tertiary)
+            let status = library.status(of: item)
             switch status {
             case let .rendering(progress, phase):
                 ProgressView(value: progress) {
@@ -467,7 +481,7 @@ struct WorkshopInspectorView: View {
                 }
             case .queued:
                 Text("Waiting for the videos ahead of it.")
-            case let .made(entryID), let .outdated(entryID):
+            case .made, .outdated:
                 if let record = library.records[item.id]?.record {
                     Text(madeDescription(record))
                 }
@@ -475,8 +489,6 @@ struct WorkshopInspectorView: View {
                     Text("The author has updated this wallpaper since. Make the video again to get the changes.")
                         .foregroundStyle(.orange)
                 }
-                Button("Show in Library") { onShowVideo(entryID) }
-                    .controlSize(.small)
             case let .failed(reason):
                 Text(reason)
                     .foregroundStyle(.red)
@@ -534,38 +546,6 @@ struct WorkshopInspectorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(11)
             .background(.quinary, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        }
-    }
-
-    @ViewBuilder
-    private var primaryButton: some View {
-        switch status {
-        case .rendering, .queued:
-            Button(role: .destructive) {
-                library.cancelAll()
-            } label: {
-                Text("Stop Making Videos")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-        case .unsupported:
-            EmptyView()
-        case .made, .outdated:
-            Button {
-                library.makeVideos([item.id])
-            } label: {
-                Text("Make Video Again")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-        default:
-            Button {
-                library.makeVideos([item.id])
-            } label: {
-                Text("Make Video")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
         }
     }
 }

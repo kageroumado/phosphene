@@ -11,7 +11,7 @@
 │                         │         │                              │
 │  • Library management   │  Darwin │  • XPC handler                │
 │  • Per-video metadata   │ ──────▶ │  • AVSampleBufferDisplayLayer │
-│  • Optimization (HEVC)  │  notif. │  • Power / thermal monitor    │
+│  • Optimization (H.264)  │  notif. │  • Power / thermal monitor    │
 │  • Preferences          │         │  • Snapshot generator         │
 └─────────────────────────┘         └──────────────────────────────┘
                   │                              │
@@ -21,7 +21,7 @@
                   (~/Library/Containers/glass.kagerou.phosphene.extension
                        /Data/Documents)
                   • Video library + variants
-                  • WallpaperPrefs.plist
+                  • phosphene-prefs.json
                   • BMP snapshot cache
 ```
 
@@ -38,6 +38,12 @@
 **`PlaybackPolicy`** is the single source of truth for playback behavior. Inputs (thermal state, battery, presentation mode, user pause, occlusion, etc.) collapse to one of `full / reduced / minimal / paused`. Events reach it through a reducer and one observable target per surface; see [PLAYBACK-STATE.md](PLAYBACK-STATE.md).
 
 **`VideoRenderer`** owns the decode pipeline. Instead of `AVPlayerLayer` — which silently fails inside a remote `CAContext` — it drives `AVSampleBufferDisplayLayer` manually: one `AVAssetReader` for the current loop, a preloaded one for the next, and a PTS offset that grows across loops to keep the timeline monotonically increasing. Result is glitch-free looping without flushing the renderer.
+
+Each `videos/<UUID>/metadata.json` can include `sourceIsHDR`. The host inspects the original on import, replacement and startup enrichment. SDR sources can use legacy H.264 variants. HDR sources use validated 10-bit HEVC variants, or Rec. 709 variants explicitly generated with **Convert to SDR**. An unknown source range selects the original. Optimized light/dark pairs share a playback tier, and each tier is checked for matching timing, color format and independent keyframes before publication. Pausing still saves decoding work for every source. The optional global `hdrMode` in `phosphene-prefs.json` accepts `automatic`, `standard`, `constrainedHigh` and `high`. An absent or unknown value selects `automatic`.
+
+Live wallpaper snapshots use the displayed frame or decode a frame at the current playback position. With no renderer, the extension requests the first frame of the selected appearance. Snapshots can preserve HDR when the surface’s HDR setting allows it.
+
+The lock-screen fallback BMP uses the first frame of the selected appearance, tone-mapped to SDR for HDR sources and stored as unprofiled sRGB pixels. The extension checks the wallpaper choice, source-file identity and display size against a record in its Caches directory before reusing a BMP.
 
 ## Quirks worth knowing
 
@@ -60,19 +66,20 @@ gated behind **verbose logging**.
 
 ### Enable verbose logging
 
-Create a marker file in the extension's container, then restart the wallpaper agent so the
-extension relaunches and picks it up:
+Turn on **Settings → General → Debug Logging**. Changes take effect while the wallpaper
+extension is running. For command-line troubleshooting, create the same marker and
+notify the extension:
 
 ```sh
 touch ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG
-killall WallpaperAgent
+notifyutil -p glass.kagerou.phosphene.verboseLoggingChanged
 ```
 
-Disable it again by removing the marker and restarting the agent:
+Disable it again by removing the marker and posting the notification:
 
 ```sh
 trash ~/Library/Containers/glass.kagerou.phosphene.extension/Data/Documents/VERBOSE_LOG   # or rm
-killall WallpaperAgent
+notifyutil -p glass.kagerou.phosphene.verboseLoggingChanged
 ```
 
 Attach the (verbose) log to a bug report — see `.github/ISSUE_TEMPLATE`.

@@ -1,3 +1,6 @@
+excluded:
+  - .build
+
 disabled_rules:
   # Formatting handled by SwiftFormat
   - trailing_whitespace

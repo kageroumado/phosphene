@@ -24,11 +24,13 @@ func makeStillSampleBuffer(from image: CGImage) -> CMSampleBuffer? {
     CVPixelBufferLockBaseAddress(pixelBuffer, [])
     defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
 
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    CVBufferSetAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey, colorSpace, .shouldPropagate)
     guard let context = CGContext(
         data: CVPixelBufferGetBaseAddress(pixelBuffer),
         width: width, height: height, bitsPerComponent: 8,
         bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
-        space: CGColorSpaceCreateDeviceRGB(),
+        space: colorSpace,
         bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue,
     ) else { return nil }
     context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))

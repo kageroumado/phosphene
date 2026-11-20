@@ -1,18 +1,19 @@
-import AppKit
 import SwiftUI
 
-/// The popover's hero card: the entry's first-frame thumbnail, like the tiles in
-/// Wallpaper Settings. A live player here spawns its own VTDecoderXPCService and
-/// software-scales full-resolution frames for as long as the popover is open
-/// (~50% CPU), all to preview a video that
-/// is already playing full-screen behind the popover.
+/// The popover uses the Wallpaper Settings thumbnail while the desktop plays the video.
 struct VideoPreviewCard: View {
     var videoID: String?
     var videoURL: URL?
     var displayID: UInt32?
 
+    @State private var loadedSelection: (videoID: String, pair: VideoPairSelection?)?
     @State private var isHovering = false
-    @State private var thumbnail: NSImage?
+    @State private var libraryRevision = 0
+
+    private struct PairRequest: Equatable {
+        let videoID: String?
+        let revision: Int
+    }
 
     private enum Layout {
         static let playButtonDiameter: CGFloat = 56
@@ -22,28 +23,62 @@ struct VideoPreviewCard: View {
         .shared
     }
 
+    private var pair: VideoPairSelection? {
+        loadedSelection?.videoID == videoID ? loadedSelection?.pair : nil
+    }
+
     var body: some View {
         ZStack {
-            if let thumbnail {
-                Color.black
-                Image(nsImage: thumbnail)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
+            if let pair, let record = pair.saved {
+                PairComparisonView(selection: pair, swapped: record.swapped)
+            } else if let videoID, loadedSelection?.videoID == videoID {
+                VideoThumbnail(videoID: videoID, legacyVideoURL: videoURL) { thumbnail in
+                    if let thumbnail {
+                        Color.black
+                            .overlay {
+                                Image(nsImage: thumbnail)
+                                    .resizable()
+                                    .scaledToFill()
+                            }
+                            .clipped()
+                    } else {
+                        placeholder
+                    }
+                }
             } else {
                 placeholder
             }
 
-            playOverlay
+            if pair == nil {
+                playOverlay
+            }
         }
         .aspectRatio(16 / 9, contentMode: .fit)
         .frame(maxWidth: .infinity)
         .clipped()
+        .overlay(alignment: .topTrailing) {
+            if pair != nil, canToggleWallpaper {
+                Button("Wallpaper", systemImage: isEffectivelyPaused ? "play.fill" : "pause.fill", action: toggleWallpaperPlayback)
+                    .buttonStyle(.glass)
+                    .labelStyle(.titleAndIcon)
+                    .controlSize(.small)
+                    .accessibilityLabel(Text(wallpaperPlaybackLabel))
+                    .help(Text(wallpaperPlaybackLabel))
+                    .padding(8)
+            }
+        }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovering = hovering
             }
         }
-        .task(id: videoID) { await loadThumbnail() }
+        .task(id: PairRequest(videoID: videoID, revision: libraryRevision)) {
+            await loadPair()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification)) { _ in
+            libraryRevision += 1
+        }
+        .onDisappear { isHovering = false }
     }
 
     // MARK: - Placeholder
@@ -62,24 +97,31 @@ struct VideoPreviewCard: View {
             }
     }
 
-    // MARK: - Play Overlay
+    // MARK: - Wallpaper Playback
 
     private var playOverlay: some View {
         PlayOverlayButton(
             isPaused: isEffectivelyPaused,
             isVisible: shouldShowOverlay,
             diameter: Layout.playButtonDiameter,
-        ) {
-            // A global user pause (the popover's "Paused" scope) outranks per-display
-            // pause, so while it is set the play button resumes globally — toggling a
-            // display underneath it would visibly do nothing.
-            if prefsService.userPaused {
-                prefsService.userPaused = false
-            } else if let displayID {
-                prefsService.togglePause(displayID: displayID)
-            } else {
-                prefsService.togglePause()
-            }
+            action: toggleWallpaperPlayback,
+        )
+        .accessibilityLabel(Text(wallpaperPlaybackLabel))
+        .help(Text(wallpaperPlaybackLabel))
+    }
+
+    private var wallpaperPlaybackLabel: LocalizedStringKey {
+        isEffectivelyPaused ? "Resume Desktop Wallpaper" : "Pause Desktop Wallpaper"
+    }
+
+    private func toggleWallpaperPlayback() {
+        // Resume a global user pause before changing any per-display state.
+        if prefsService.userPaused {
+            prefsService.userPaused = false
+        } else if let displayID {
+            prefsService.togglePause(displayID: displayID)
+        } else {
+            prefsService.togglePause()
         }
     }
 
@@ -109,37 +151,32 @@ struct VideoPreviewCard: View {
         prefsService.alwaysPauseDesktop || isPausedByOcclusion
     }
 
-    private var shouldShowOverlay: Bool {
-        videoURL != nil && !isAutoPaused && (isHovering || isEffectivelyPaused)
+    private var canToggleWallpaper: Bool {
+        videoURL != nil && !isAutoPaused
     }
 
-    // MARK: - Thumbnail
+    private var shouldShowOverlay: Bool {
+        canToggleWallpaper && (isHovering || isEffectivelyPaused)
+    }
 
-    private func loadThumbnail() async {
-        guard let videoID else {
-            thumbnail = nil
+    private func loadPair() async {
+        guard let videoID else { return }
+        let record = await Self.pairRecord(for: videoID, in: VideoDeploymentService.videosFolderURL)
+        guard !Task.isCancelled else { return }
+        guard let record else {
+            loadedSelection = (videoID, nil)
             return
         }
-        if let url = VideoDeploymentService.thumbnailURL(for: videoID),
-           let image = NSImage(contentsOf: url) {
-            thumbnail = image
-            return
-        }
-        // Entries deployed before thumbnails existed have no thumbnail.jpg yet:
-        // generate one into the entry folder so every later load is a file read.
-        guard let videoURL else {
-            thumbnail = nil
-            return
-        }
-        await VideoDeploymentService.generateThumbnail(
-            for: videoURL,
-            in: videoURL.deletingLastPathComponent(),
+        let entries = VideoDeploymentService.listEntries()
+        loadedSelection = (
+            videoID,
+            VideoPairSelection(first: entries.first { $0.id == record.owner }, second: entries.first { $0.id == record.counterpart }, saved: record),
         )
-        if let url = VideoDeploymentService.thumbnailURL(for: videoID) {
-            thumbnail = NSImage(contentsOf: url)
-        } else {
-            thumbnail = nil
-        }
+    }
+
+    @concurrent
+    private nonisolated static func pairRecord(for videoID: String, in directory: URL) async -> AppearancePair? {
+        try? AppearancePair.read(in: directory).first { $0.contains(videoID) }
     }
 }
 

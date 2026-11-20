@@ -47,7 +47,7 @@ struct WallpaperPlacementHelp: View {
                 detail: "With “Show on all Spaces” off, switch to that desktop, then choose the video.",
             )
             Button("Open Wallpaper Settings") {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!)
+                NSWorkspace.shared.open(WallpaperPrefsService.wallpaperSettingsURL)
             }
         }
         .font(.callout)

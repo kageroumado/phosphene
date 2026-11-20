@@ -164,12 +164,12 @@ final class PowerMonitor: Sendable {
         while case let service = IOIteratorNext(iter), service != IO_OBJECT_NULL {
             defer { IOObjectRelease(service) }
             guard let propsRef = unsafe IORegistryEntryCreateCFProperty(
-                service,
-                "IODisplayParameters" as CFString,
-                kCFAllocatorDefault,
-                0,
-            ) else { continue }
-            guard let params = unsafe propsRef.takeRetainedValue() as? [String: Any],
+                      service,
+                      "IODisplayParameters" as CFString,
+                      kCFAllocatorDefault,
+                      0,
+                  ),
+                  let params = unsafe propsRef.takeRetainedValue() as? [String: Any],
                   let brightnessParam = params["brightness"] as? [String: Any],
                   let value = brightnessParam["value"] as? Int,
                   let min = brightnessParam["min"] as? Int,

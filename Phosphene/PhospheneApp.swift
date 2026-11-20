@@ -47,21 +47,6 @@ struct PhospheneApp: App {
                 }
                 try? listing.write(to: out.appendingPathComponent("videos.txt"), atomically: true, encoding: .utf8)
             }
-            // The library at launch, for driving it without the menu bar (a locked
-            // screen never opens the popover): `--args -PHOSPHENE_OPEN_LIBRARY YES`.
-            if UserDefaults.standard.bool(forKey: "PHOSPHENE_OPEN_LIBRARY") {
-                DispatchQueue.main.async {
-                    let controller = NSHostingController(rootView: LibraryWindow(manager: manager))
-                    controller.sceneBridgingOptions = [.toolbars, .title]
-                    let window = NSWindow(contentViewController: controller)
-                    window.identifier = NSUserInterfaceItemIdentifier("library")
-                    window.title = "Phosphene"
-                    window.styleMask.insert(.fullSizeContentView)
-                    window.setContentSize(NSSize(width: 1_180, height: 820))
-                    window.center()
-                    window.makeKeyAndOrderFront(nil)
-                }
-            }
         #endif
     }
 
@@ -77,26 +62,66 @@ struct PhospheneApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        windows.commands { appMenu }
+    }
+
+    @SceneBuilder private var windows: some Scene {
         Window("Phosphene", id: "library") {
             LibraryWindow(manager: manager)
         }
+        #if DEBUG
+        .defaultLaunchBehavior(UserDefaults.standard.bool(forKey: "PHOSPHENE_OPEN_LIBRARY") ? .presented : .automatic)
+        #endif
         // phosphene://library opens the window directly (used by the Settings-pane
         // context menu). Promotion to a regular app happens in LibraryWindow.onAppear
         // so every open path gets the Dock icon and activation.
         .handlesExternalEvents(matching: ["library"])
         .defaultSize(width: 1_180, height: 760)
         .commands { LibraryCommands() }
-        .commands {
-            CommandGroup(replacing: .appInfo) {
-                Button("About Phosphene") {
-                    NSApp.orderFrontStandardAboutPanel(options: [
-                        .credits: Self.aboutCredits,
-                    ])
-                    NSApp.activate()
+
+        Window("Custom Conversion", id: "custom-conversion") {
+            ConversionToolView(mode: .single)
+        }
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: 620, height: 660)
+
+        WindowGroup("Light/Dark Pair Converter", id: "pair-converter", for: PairConverterRequest.self) { $request in
+            ConversionToolView(mode: .pair, pairRequest: request ?? .blank)
+        }
+        .commandsRemoved()
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: 660, height: 740)
+
+        Settings {
+            PhospheneSettingsView(manager: manager)
+        }
+    }
+
+    @CommandsBuilder private var appMenu: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Phosphene") {
+                NSApp.orderFrontStandardAboutPanel(options: [
+                    .credits: Self.aboutCredits,
+                ])
+                NSApp.activate()
+            }
+            Button("Check for Updates…") {
+                SilentUpdates.shared.checkForUpdates(autoInstall: manager.autoUpdate)
+            }
+            if let version = SilentUpdates.shared.justUpdatedVersion {
+                Button("What's New") {
+                    WhatsNewWindow.present(version: version, context: .justUpdated)
                 }
             }
-            SidebarCommands()
-            InspectorCommands()
+        }
+        CommandMenu("Tools") {
+            Button("Custom Conversion…") { openWindow(id: "custom-conversion") }
+            Button("Light/Dark Pair Converter…") { openWindow(value: PairConverterRequest.blank) }
+            Divider()
+            Button("Restart Wallpaper Host and System Settings") {
+                Task { await WallpaperPrefsService.shared.restartWallpaperHostAndSettings() }
+            }
+            .disabled(WallpaperPrefsService.shared.isRestartingWallpaperServices)
         }
     }
 

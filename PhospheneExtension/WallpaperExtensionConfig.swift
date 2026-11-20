@@ -15,6 +15,62 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
 
         let exported = NSXPCInterface(with: (any WallpaperExtensionXPCProtocol).self)
 
+        guard let classes = allowedClasses() else {
+            extensionLog("XPC rejected: could not bridge allowed classes")
+            return false
+        }
+        configureAllowedClasses(classes, on: exported)
+
+        connection.exportedInterface = exported
+        connection.remoteObjectInterface = NSXPCInterface(with: (any WallpaperExtensionProxyXPCProtocol).self)
+
+        let handler = WallpaperXPCHandler()
+        handler.connectionPID = connection.processIdentifier
+        connection.exportedObject = handler
+
+        connection.interruptionHandler = { traceLog("XPC interrupted") }
+        connection.invalidationHandler = { [weak handler] in
+            guard let handler else { extensionLog("XPC invalidated (handler gone)"); return }
+            handler.agentProxy = nil
+            SettingsPush.unregister(handler)
+            let pid = handler.connectionPID
+
+            // Spiral-of-death detection: a connection accepted then invalidated WITHOUT ever
+            // serving a method is "empty". A run of these with no healthy connection to
+            // cancel it means WallpaperAgent is stuck (see SpiralRecovery) → self-heal via
+            // relaunch. A connection that served any method already reset the run.
+            if handler.didServeMethod {
+                SpiralRecovery.noteHealthyConnection()
+            } else {
+                SpiralRecovery.noteEmptyConnection(pid: pid)
+                extensionLog("XPC invalidated (pid: \(pid)) — EMPTY (no method served)")
+            }
+
+            // Context-reuse model: DO NOT tear down contexts on connection drop.
+            // Every wallpaper pick (and idle transition) drops the connection holding
+            // the current render and re-acquires ~1s later. Our contexts are keyed by
+            // display slot (not by connection) and outlive the connection, so the
+            // re-acquire reuses the SAME CAContext (returns the same contextId) — the
+            // Agent never drops its host, so there's no gray gap and no exit/recovery
+            // is needed. A destroy-on-drop is exactly what caused issue #13 (a routine
+            // preview/thumbnail disconnect killing the live wallpaper) and the
+            // escalating gray. Library changes retire deleted videos. RunningBoard
+            // suspends genuinely idle processes, pausing their renderers.
+            traceLog("XPC invalidated (pid: \(pid)) — kept \(SurfaceRegistry.shared.count) surface(s) for reuse")
+        }
+
+        // Publish the proxy before resuming so an early incoming callback can't
+        // observe a nil agentProxy (and skip its invalidateSnapshots).
+        handler.agentProxy = connection.remoteObjectProxy as? (any WallpaperExtensionProxyXPCProtocol)
+        SettingsPush.register(handler)
+
+        connection.resume()
+
+        traceLog("XPC accepted with full protocol")
+        return true
+    }
+
+    private nonisolated func allowedClasses() -> Set<AnyHashable>? {
         // Build class whitelist from runtime-loaded WallpaperExtensionKit classes
         let typeNames = [
             "WallpaperIDXPC",
@@ -54,8 +110,10 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
         allTypes.add(NSURL.self)
         allTypes.add(NSError.self)
 
-        let classes = allTypes as! Set<AnyHashable>
+        return allTypes as? Set<AnyHashable>
+    }
 
+    private nonisolated func configureAllowedClasses(_ classes: Set<AnyHashable>, on exported: NSXPCInterface) {
         let selectors: [(Selector, Int, Bool)] = [
             (#selector(WallpaperXPCHandler.acquire(withId:request:reply:)), 0, false),
             (#selector(WallpaperXPCHandler.acquire(withId:request:reply:)), 1, false),
@@ -94,54 +152,5 @@ struct WallpaperExtensionConfig: AppExtensionConfiguration {
         for (sel, idx, isReply) in selectors {
             exported.setClasses(classes, for: sel, argumentIndex: idx, ofReply: isReply)
         }
-
-        connection.exportedInterface = exported
-        connection.remoteObjectInterface = NSXPCInterface(with: (any WallpaperExtensionProxyXPCProtocol).self)
-
-        let handler = WallpaperXPCHandler()
-        handler.connectionPID = connection.processIdentifier
-        connection.exportedObject = handler
-
-        connection.interruptionHandler = { traceLog("XPC interrupted") }
-        connection.invalidationHandler = { [weak handler] in
-            guard let handler else { extensionLog("XPC invalidated (handler gone)"); return }
-            handler.agentProxy = nil
-            SettingsPush.unregister(handler)
-            let pid = handler.connectionPID
-
-            // Spiral-of-death detection: a connection accepted then invalidated WITHOUT ever
-            // serving a method is "empty". A run of these with no healthy connection to
-            // cancel it means WallpaperAgent is stuck (see SpiralRecovery) → self-heal via
-            // relaunch. A connection that served any method already reset the run.
-            if handler.didServeMethod {
-                SpiralRecovery.noteHealthyConnection()
-            } else {
-                SpiralRecovery.noteEmptyConnection(pid: pid)
-                extensionLog("XPC invalidated (pid: \(pid)) — EMPTY (no method served)")
-            }
-
-            // Context-reuse model: DO NOT tear down contexts on connection drop.
-            // Every wallpaper pick (and idle transition) drops the connection holding
-            // the current render and re-acquires ~1s later. Our contexts are keyed by
-            // display slot (not by connection) and outlive the connection, so the
-            // re-acquire reuses the SAME CAContext (returns the same contextId) — the
-            // Agent never drops its host, so there's no gray gap and no exit/recovery
-            // is needed. A destroy-on-drop is exactly what caused issue #13 (a routine
-            // preview/thumbnail disconnect killing the live wallpaper) and the
-            // escalating gray. Contexts are only freed when their video is removed
-            // (`removeChoiceRequest`); a genuinely idle process is suspended by
-            // RunningBoard, which pauses the renderers at no cost.
-            traceLog("XPC invalidated (pid: \(pid)) — kept \(SurfaceRegistry.shared.count) surface(s) for reuse")
-        }
-
-        // Publish the proxy before resuming so an early incoming callback can't
-        // observe a nil agentProxy (and skip its invalidateSnapshots).
-        handler.agentProxy = connection.remoteObjectProxy as? (any WallpaperExtensionProxyXPCProtocol)
-        SettingsPush.register(handler)
-
-        connection.resume()
-
-        traceLog("XPC accepted with full protocol")
-        return true
     }
 }

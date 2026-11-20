@@ -12,13 +12,17 @@ final class PhospheneManager {
 
     // MARK: - Optimization State
 
-    private(set) var isOptimizing = false
     private(set) var optimizationProgress: Double = 0
-    private(set) var optimizationTierLabel = ""
     private(set) var optimizingEntryID: String?
+    private(set) var isCancellingOptimization = false
     var showOptimizationAlert = false
     var optimizationAlertMessage = ""
+    @ObservationIgnored private var optimizationJobID: UUID?
     @ObservationIgnored private var optimizationTask: Task<Void, Never>?
+
+    var isOptimizing: Bool {
+        optimizingEntryID != nil
+    }
 
     // MARK: - Preferences
 
@@ -86,6 +90,11 @@ final class PhospheneManager {
         // its own, so the setting was never read.
         defaults.removeObject(forKey: "resumeLastWallpaper")
 
+        if !defaults.bool(forKey: "didPublishNonPurgeableChoices") {
+            VideoDeploymentService.notifyExtensionLibraryChanged()
+            defaults.set(true, forKey: "didPublishNonPurgeableChoices")
+        }
+
         // Migrate entries imported before metadata probing was added
         migrateEntryMetadata()
 
@@ -94,7 +103,7 @@ final class PhospheneManager {
         occlusionMonitor.startMonitoring()
 
         SilentUpdates.shared.start(autoInstall: autoUpdate)
-        UsageCounting.start()
+        UsageCounting.shared.noteUse()
     }
 
     // MARK: - Library Actions
@@ -117,74 +126,74 @@ final class PhospheneManager {
     /// Import a video into the extension library.
     /// Does NOT set it as the active wallpaper — the user selects in System Settings.
     func importVideo(_ url: URL) async {
-        guard url.startAccessingSecurityScopedResource() else {
-            Log.general.error("Failed to access security-scoped resource for \(url.lastPathComponent)")
-            return
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if scoped {
+                url.stopAccessingSecurityScopedResource()
+            }
         }
-        defer { url.stopAccessingSecurityScopedResource() }
 
         let name = url.deletingPathExtension().lastPathComponent
-        await VideoDeploymentService.deployVideo(url: url, name: name)
+        await VideoDeploymentService.deployVideo(url: url, name: name) { error in
+            self.optimizationAlertMessage = error.localizedDescription
+            self.showOptimizationAlert = true
+        }
     }
 
-    func removeVideo(entryID: String) {
-        VideoDeploymentService.removeVideo(entryID: entryID)
-    }
-
-    func optimizeVideo(entryID: String, preset: OptimizationPreset) {
-        guard !isOptimizing else { return }
-        isOptimizing = true
-        optimizingEntryID = entryID
-        optimizationProgress = 0
-
-        let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID })
-        guard let entry else {
-            isOptimizing = false
-            optimizingEntryID = nil
+    func optimize(_ target: VideoOptimizationTarget, preset: OptimizationPreset, convertToSDR: Bool) {
+        guard !isOptimizing, target.tiers.isEmpty else { return }
+        if let error = target.eligibilityError {
+            optimizationAlertMessage = error.localizedDescription
+            showOptimizationAlert = true
             return
         }
 
-        let sourceURL = VideoDeploymentService.videoURL(for: entry)
-        let target = preset.targetResolution(source: entry.resolution)
+        let entryID = target.id
+        let jobID = UUID()
+        optimizationJobID = jobID
+        optimizationProgress = 0
+        optimizingEntryID = entryID
 
-        optimizationTask = Task.detached {
-            do {
-                let variants = try await VideoOptimizationService.createVariants(
-                    sourceURL: sourceURL,
-                    targetResolution: target,
-                    progress: { @MainActor in self.optimizationProgress = $0 },
-                )
-                await MainActor.run {
-                    VideoDeploymentService.deployVariants(entryID: entryID, variants: variants)
-                }
-                for (url, _) in variants {
-                    try? FileManager.default.removeItem(at: url)
-                }
-            } catch is CancellationError {
-                // user cancelled
-            } catch {
-                await MainActor.run {
-                    self.optimizationAlertMessage = error.localizedDescription
-                    self.showOptimizationAlert = true
-                }
+        optimizationTask = Task {
+            defer {
+                assert(optimizationJobID == jobID && optimizingEntryID == entryID)
+                optimizationTask = nil
+                optimizationJobID = nil
+                optimizingEntryID = nil
+                isCancellingOptimization = false
             }
-
-            await MainActor.run {
-                self.isOptimizing = false
-                self.optimizingEntryID = nil
+            do {
+                try Task.checkCancellation()
+                try await target.optimize(preset: preset, convertToSDR: convertToSDR && target.entry.sourceIsHDR == true) { progress in
+                    guard self.optimizationJobID == jobID, !self.isCancellingOptimization else { return }
+                    self.optimizationProgress = max(self.optimizationProgress, progress)
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                optimizationAlertMessage = error.localizedDescription
+                showOptimizationAlert = true
             }
         }
     }
 
-    func removeVariants(entryID: String) {
-        VideoDeploymentService.removeVariants(entryID: entryID)
+    func removeVariants(for target: VideoOptimizationTarget) {
+        guard optimizingEntryID != target.id else { return }
+        do {
+            if let pair = target.pair?.saved {
+                try VideoDeploymentService.removePairVariants(pair)
+            } else {
+                try VideoDeploymentService.removeVariants(entryID: target.id)
+            }
+        } catch {
+            optimizationAlertMessage = error.localizedDescription
+            showOptimizationAlert = true
+        }
     }
 
-    func cancelOptimization() {
-        optimizationTask?.cancel()
-        optimizationTask = nil
-        isOptimizing = false
-        optimizingEntryID = nil
+    func cancelOptimization(entryID: String) {
+        guard optimizingEntryID == entryID, let optimizationTask, !isCancellingOptimization else { return }
+        isCancellingOptimization = true
+        optimizationTask.cancel()
     }
 
     // MARK: - Private
@@ -192,13 +201,18 @@ final class PhospheneManager {
     private func migrateEntryMetadata() {
         _ = VideoDeploymentService.prettifyLegacyNames()
         let entries = VideoDeploymentService.listEntries()
-        let needsProbing = entries.filter { $0.resolution == .zero && $0.fps == 0 }
+        let needsProbing = entries.filter { $0.sourceIsHDR == nil || ($0.resolution == .zero && $0.fps == 0) }
         guard !needsProbing.isEmpty else { return }
         Task {
+            var changed = false
             for entry in needsProbing {
-                await VideoDeploymentService.probeAndUpdateMetadata(for: entry.id)
+                if await VideoDeploymentService.probeAndUpdateMetadata(for: entry) {
+                    changed = true
+                }
             }
-            NotificationCenter.default.post(name: VideoDeploymentService.libraryChangedNotification, object: nil)
+            if changed {
+                VideoDeploymentService.notifyExtensionLibraryChanged()
+            }
         }
     }
 

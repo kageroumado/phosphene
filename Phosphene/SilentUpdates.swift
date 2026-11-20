@@ -1,7 +1,9 @@
 import AppKit
+import AppUpdater
 import Foundation
 import Observation
 import os
+import SwiftUI
 import Tiptoe
 import TiptoeGitHub
 
@@ -17,11 +19,11 @@ import TiptoeGitHub
 /// does.
 ///
 /// One check loop serves both modes: with auto-update off the check still runs and still
-/// answers ``availableVersion`` — the menu bar badge and version chip draw from it — but nothing
+/// answers ``availableVersion`` for the menu bar badge, but nothing
 /// downloads or installs except through ``updateNow()``.
 ///
 /// The loop ticks every ``checkInterval``; between ticks, opening the popover or waking the Mac
-/// repeats the check once it is ``staleAfter`` old, and the version chip's refresh button makes
+/// repeats the check once it is ``staleAfter`` old, and the Check for Updates button makes
 /// one on demand. Each is a single GitHub metadata request, which GitHub itself caches for a
 /// minute.
 @MainActor
@@ -31,8 +33,9 @@ final class SilentUpdates {
 
     static let owner = "kageroumado"
     static let repo = "phosphene"
+    static let releasesPageURL = URL(string: "https://github.com/\(owner)/\(repo)/releases/latest")!
 
-    /// The chip announces a release within hours of it shipping, so a fix reaches people the
+    /// The app announces a release within hours of it shipping, so a fix reaches people the
     /// same day; the request is one cached metadata call.
     private static let checkInterval: TimeInterval = 4 * 60 * 60
 
@@ -44,17 +47,11 @@ final class SilentUpdates {
     /// fails and leaves the next try to the loop.
     private static let wakeGrace: Duration = .seconds(20)
 
-    /// How long ``checkedUpToDate`` stays true after a manual check that found nothing newer.
-    private static let upToDateNotice: Duration = .seconds(3)
-
     /// How often ``refresh()`` copies Tiptoe's in-memory state into the observable properties,
     /// so the menu bar badge appears without the popover being opened. No network involved.
     private static let mirrorInterval: Duration = .seconds(60)
 
-    /// Where the update-failed affordance sends the user.
-    static let releasesPageURL = URL(string: "https://github.com/\(owner)/\(repo)/releases/latest")!
-
-    /// Progress of a user-initiated install, for the version chip. A successful install replaces
+    /// Progress of a user-initiated install. A successful install replaces
     /// the process, so the only terminal state this side of the swap is `.failed`.
     enum ManualPhase: Equatable {
         case idle
@@ -69,21 +66,12 @@ final class SilentUpdates {
     /// observable.
     private(set) var availableVersion: String?
 
-    /// The version the automatic path has downloaded and is holding for a quiet moment, if any.
-    /// A stronger claim than ``availableVersion``; refreshed by ``refresh()``.
-    private(set) var pendingVersion: String?
-
     /// The version a silent (or manual) install brought us to, until the user has seen the
     /// notice. Read from Tiptoe's store at launch; cleared by ``acknowledgeUpdate()``.
     private(set) var justUpdatedVersion: String?
 
-    /// True while a check the user asked for is in flight, for the version chip.
-    private(set) var isChecking = false
-
-    /// True for ``upToDateNotice`` after a check the user asked for found nothing newer. "Nothing
-    /// newer" and "couldn't reach GitHub" look the same from here, so this can be a beat
-    /// optimistic offline; the loop and the next popover open self-correct.
-    private(set) var checkedUpToDate = false
+    @ObservationIgnored private var checkingPanel: NSPanel?
+    @ObservationIgnored private let updater: AppUpdater
 
     /// The updater: check loop, plus the quiet-moment install when auto-update is on.
     /// Created up front so its `Tiptoe` reconciles the recorded wait and the post-update notice
@@ -104,7 +92,9 @@ final class SilentUpdates {
     @ObservationIgnored private var checkInFlight: Task<Void, Never>?
 
     private init() {
-        github = TiptoeGitHub(owner: Self.owner, repo: Self.repo, checkInterval: Self.checkInterval)
+        let updater = AppUpdater(owner: Self.owner, repo: Self.repo)
+        self.updater = updater
+        github = TiptoeGitHub(updater: updater, checkInterval: Self.checkInterval)
             .gate("a video optimization is running") { await Self.noOptimizationRunning() }
             .installsAutomatically(false)
         github.onChecksFailing = { error in
@@ -151,31 +141,102 @@ final class SilentUpdates {
     /// every ``mirrorInterval``, and after update actions — Tiptoe has no change callback.
     func refresh() {
         availableVersion = github.availableVersion
-        pendingVersion = github.tiptoe.pending?.version
     }
 
     // MARK: - Checking
 
-    /// The user pressed the chip's refresh: the same request the loop makes, off-schedule, with
-    /// the chip saying what it is doing and, briefly, what it found.
-    func checkForUpdates() async {
-        guard !isChecking else { return }
-        isChecking = true
-        checkedUpToDate = false
-        await check()
-        isChecking = false
-        guard availableVersion == nil, pendingVersion == nil else { return }
-        checkedUpToDate = true
-        Task(name: "Clear the up-to-date notice") { [weak self] in
-            try? await Task.sleep(for: Self.upToDateNotice)
-            self?.checkedUpToDate = false
+    func checkForUpdates(autoInstall: Bool) {
+        if let checkingPanel {
+            checkingPanel.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let content = NSHostingView(rootView: UpdateCheckProgressView { [weak self] in
+            self?.dismissCheck()
+        })
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: content.fittingSize),
+            styleMask: [.titled], backing: .buffered, defer: false,
+        )
+        panel.title = String(localized: "Software Update")
+        panel.isReleasedWhenClosed = false
+        panel.contentView = content
+        checkingPanel = panel
+        panel.center()
+        panel.makeKeyAndOrderFront(nil)
+
+        Task { [weak panel] in
+            let result: Result<String?, any Error>
+            do {
+                result = try await .success(updater.check()?.version)
+            } catch {
+                result = .failure(error)
+            }
+            // AppUpdater shares its metadata request with the background updater.
+            guard let panel, checkingPanel === panel else { return }
+            dismissCheck()
+            switch result {
+            case let .success(version?):
+                showAvailableUpdate(version: version, autoInstall: autoInstall)
+            case .success(nil):
+                let notice = NSAlert()
+                let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+                notice.messageText = String(localized: "You’re up to date!")
+                notice.informativeText = String(localized: "Phosphene \(version) is currently the newest version available.")
+                notice.runModal()
+            case let .failure(error):
+                Log.update.error("Manual update check failed: \(error.localizedDescription, privacy: .public)")
+                let notice = NSAlert()
+                notice.alertStyle = .warning
+                notice.messageText = String(localized: "Couldn’t check for updates")
+                notice.informativeText = error.localizedDescription
+                notice.addButton(withTitle: String(localized: "Try Again"))
+                notice.addButton(withTitle: String(localized: "Cancel")).keyEquivalent = "\u{1b}"
+                if notice.runModal() == .alertFirstButtonReturn {
+                    checkForUpdates(autoInstall: autoInstall)
+                }
+            }
+        }
+    }
+
+    private func dismissCheck() {
+        checkingPanel?.close()
+        checkingPanel = nil
+    }
+
+    private func showAvailableUpdate(version: String, autoInstall: Bool) {
+        if case .failed = manualPhase {
+            manualPhase = .idle
+        }
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Phosphene \(version) is available")
+        alert.alertStyle = .informational
+        #if DEBUG
+            alert.addButton(withTitle: String(localized: "View on GitHub"))
+        #else
+            alert.addButton(withTitle: String(localized: "Update Now"))
+        #endif
+        alert.addButton(withTitle: String(localized: "Later")).keyEquivalent = "\u{1b}"
+        alert.addButton(withTitle: String(localized: "Release Notes"))
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            #if DEBUG
+                NSWorkspace.shared.open(Self.releasesPageURL)
+            #else
+                WhatsNewWindow.present(version: version, context: .updateAvailable(autoInstall: autoInstall))
+                Task { await updateNow() }
+            #endif
+        case .alertThirdButtonReturn:
+            WhatsNewWindow.present(version: version, context: .updateAvailable(autoInstall: autoInstall))
+        default:
+            break
         }
     }
 
     /// The check the popover's appearance and the Mac's waking make, when the last one is old
     /// enough to be worth repeating. Quiet: the chip shows its result, never its progress.
     func checkIfStale() {
-        // A development build does not poll GitHub on its own; the chip's refresh is the one
+        // A development build does not poll GitHub on its own; the manual check is the one
         // request it makes, and only when asked.
         #if !DEBUG
             if let lastCheckedAt, Date.now.timeIntervalSince(lastCheckedAt) < Self.staleAfter {
@@ -226,30 +287,16 @@ final class SilentUpdates {
             await checkInFlight?.value
 
             guard await github.updateNow() else {
-                // `availableVersion` is set only by a check that reached GitHub and found an
-                // installable DMG; without it there is nothing to download, whatever the network.
-                manualPhase = .failed(
-                    github.availableVersion == nil
-                        ? String(localized: "Couldn't find a download for this update. Get it from the releases page.")
-                        : String(localized: "Couldn't download the update. Check your connection, or get it from the releases page."),
-                )
                 refresh()
+                manualPhase = .failed(String(localized: "Couldn't download the update. Check your connection, or get it from the releases page."))
                 return
             }
 
-            // A successful swap terminates this process on its own schedule, possibly a beat
-            // after the install call returns — wait it out before declaring failure.
+            // A successful swap can terminate this process a beat after the install returns.
             try? await Task.sleep(for: .seconds(4))
             refresh()
             manualPhase = .failed(String(localized: "The update couldn't be installed. Try again, or get it from the releases page."))
         #endif
-    }
-
-    /// The user has seen the failure notice (the version chip was clicked).
-    func dismissFailure() {
-        if case .failed = manualPhase {
-            manualPhase = .idle
-        }
     }
 
     /// The user has seen the post-update notice.
@@ -265,6 +312,36 @@ final class SilentUpdates {
     /// answers "not safe" — an update is never so urgent that it is worth guessing.
     private static func noOptimizationRunning() async -> Bool {
         guard let manager = PhospheneManager.shared else { return false }
-        return !manager.isOptimizing
+        return !manager.isOptimizing && ConversionToolModel.runningJobCount == 0
+    }
+}
+
+private struct UpdateCheckProgressView: View {
+    let cancel: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 60, height: 60)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Checking for updates…")
+                    .font(.headline)
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .accessibilityLabel("Checking for updates…")
+                Button(action: cancel) {
+                    Text("Cancel").frame(minWidth: 72)
+                }
+                .keyboardShortcut(.cancelAction)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .frame(width: 400)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
