@@ -1,6 +1,16 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Phosphene Settings…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 设置…"
+          }
+        }
+      }
+    },
     "Diagnostics": {
       "localizations": {
         "zh-Hans": {
@@ -2612,12 +2622,12 @@
         }
       }
     },
-    "Looking for Wallpaper Engine downloads": {
+    "Scanning Workshop…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在查找 Wallpaper Engine 下载内容"
+            "value": "正在扫描创意工坊…"
           }
         }
       }

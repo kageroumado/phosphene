@@ -3,6 +3,7 @@ import SwiftUI
 /// The library window's sidebar: the videos Phosphene plays, then the Wallpaper
 /// Engine downloads it can make videos from, one row per place they come from.
 struct LibrarySidebar: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var section: LibrarySection
     let counts: Counts
     @Bindable var workshop: WorkshopLibrary
@@ -52,7 +53,27 @@ struct LibrarySidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom) { bottomBar }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                if workshop.isScanning {
+                    VStack(spacing: 0) {
+                        Divider()
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityHidden(true)
+                            Text("Scanning Workshop…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .transition(.opacity)
+                }
+                bottomBar
+            }
+            .animation(reduceMotion ? nil : .default, value: workshop.isScanning)
+        }
     }
 
     private var notMadeCount: Int {
@@ -92,11 +113,12 @@ struct LibrarySidebar: View {
             .accessibilityLabel("Add")
             .help("Add a video or a folder of Wallpaper Engine wallpapers")
             Spacer()
-            if workshop.isScanning {
-                ProgressView()
-                    .controlSize(.small)
-                    .help("Looking for Wallpaper Engine downloads")
+            SettingsLink {
+                Label("Phosphene Settings…", systemImage: "gearshape")
             }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .help("Phosphene Settings…")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
