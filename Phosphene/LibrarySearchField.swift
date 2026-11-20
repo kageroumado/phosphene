@@ -13,7 +13,26 @@ struct LibrarySearchField: NSViewRepresentable {
     func makeNSView(context: Context) -> Field {
         let field = Field()
         field.delegate = context.coordinator
+        // Clicking empty browser space can leave the toolbar field as first responder.
+        let coordinator = context.coordinator
+        coordinator.clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak field, weak coordinator] event in
+            if let field, let window = unsafe field.window, event.window === window, field.stringValue.isEmpty,
+               !field.bounds.contains(field.convert(event.locationInWindow, from: nil)) {
+                DispatchQueue.main.async { [weak coordinator] in
+                    guard let coordinator, coordinator.search.text.isEmpty else { return }
+                    coordinator.search.dismiss()
+                }
+            }
+            return event
+        }
         return field
+    }
+
+    static func dismantleNSView(_: Field, coordinator: Coordinator) {
+        if let monitor = coordinator.clickMonitor {
+            NSEvent.removeMonitor(monitor)
+            coordinator.clickMonitor = nil
+        }
     }
 
     func updateNSView(_ field: Field, context: Context) {
@@ -37,6 +56,7 @@ struct LibrarySearchField: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var search: LibrarySearchField
+        var clickMonitor: Any?
 
         init(_ search: LibrarySearchField) {
             self.search = search
@@ -45,6 +65,11 @@ struct LibrarySearchField: NSViewRepresentable {
         func controlTextDidChange(_ notification: Notification) {
             guard let field = notification.object as? NSSearchField else { return }
             search.text = field.stringValue
+        }
+
+        func controlTextDidEndEditing(_ notification: Notification) {
+            guard let field = notification.object as? NSSearchField, field.stringValue.isEmpty else { return }
+            search.dismiss()
         }
 
         func control(_: NSControl, textView _: NSTextView, doCommandBy selector: Selector) -> Bool {

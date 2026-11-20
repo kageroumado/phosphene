@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// The library: a sidebar of places, a browser of the selected place as icons or a
 /// sortable list, and an inspector for what is selected.
 struct LibraryWindow: View {
+    @Environment(\.appearsActive) private var appearsActive
     @Bindable var manager: PhospheneManager
     var initialSelectionID: String?
 
@@ -129,6 +130,11 @@ struct LibraryWindow: View {
             .onChange(of: search) {
                 if !section.isWorkshop {
                     videoSelection.formIntersection(videoRows.map(\.id))
+                }
+            }
+            .onChange(of: appearsActive) {
+                if !appearsActive, search.isEmpty {
+                    searchPresented = false
                 }
             }
     }
@@ -455,6 +461,7 @@ struct LibraryWindow: View {
     @ToolbarContentBuilder
     private var searchItem: some ToolbarContent {
         if searchPresented {
+            ToolbarSpacer(.fixed)
             ToolbarItem {
                 LibrarySearchField(text: $search, prompt: searchPrompt) {
                     search = ""
@@ -462,7 +469,6 @@ struct LibraryWindow: View {
                 }
                 .frame(width: 144)
             }
-            .sharedBackgroundVisibility(.hidden)
         } else {
             ToolbarItem {
                 Button {

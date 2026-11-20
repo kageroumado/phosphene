@@ -170,6 +170,28 @@ struct BrowserHoverPreview<Content: View>: View {
     }
 }
 
+private struct BrowserGrid<Content: View>: View {
+    let iconSize: Double
+    let clearSelection: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        GeometryReader { viewport in
+            ScrollView {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: iconSize, maximum: iconSize), spacing: 18, alignment: .top)],
+                    alignment: .leading, spacing: 22, content: content,
+                )
+                .padding(20)
+                .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .topLeading)
+                .background {
+                    Color.clear.contentShape(Rectangle()).onTapGesture(perform: clearSelection)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Videos
 
 struct VideoEntryTitle: View {
@@ -277,34 +299,24 @@ struct VideoBrowser<ItemMenu: View>: View {
     }
 
     private var grid: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: iconSize, maximum: iconSize), spacing: 18, alignment: .top)],
-                alignment: .leading,
-                spacing: 22,
-            ) {
-                ForEach(rows) { row in
-                    let ids: Set<String> = selection.contains(row.id) ? selection : [row.id]
-                    VideoCardView(
-                        entry: row.entry, pair: row.pair,
-                        isSelected: selection.contains(row.id),
-                        isInUse: row.isInUse,
-                        isOptimizing: manager.isOptimizing && manager.optimizingEntryID == row.id,
-                        optimizationProgress: manager.optimizationProgress,
-                        onSelect: { modifiers in
-                            GridSelection.click(row.id, in: rows.map(\.id), selection: &selection, anchor: &anchor, modifiers: modifiers)
-                        },
-                    )
-                    .contextMenu { itemMenu(ids) }
-                }
+        BrowserGrid(iconSize: iconSize, clearSelection: {
+            selection.removeAll()
+            anchor = nil
+        }) {
+            ForEach(rows) { row in
+                let ids: Set<String> = selection.contains(row.id) ? selection : [row.id]
+                VideoCardView(
+                    entry: row.entry, pair: row.pair,
+                    isSelected: selection.contains(row.id),
+                    isInUse: row.isInUse,
+                    isOptimizing: manager.isOptimizing && manager.optimizingEntryID == row.id,
+                    optimizationProgress: manager.optimizationProgress,
+                    onSelect: { modifiers in
+                        GridSelection.click(row.id, in: rows.map(\.id), selection: &selection, anchor: &anchor, modifiers: modifiers)
+                    },
+                )
+                .contextMenu { itemMenu(ids) }
             }
-            .padding(20)
-        }
-        .background {
-            // A click on empty space clears the selection, as in Finder.
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { selection.removeAll() }
         }
         .onDeleteCommand { onDelete(selection) }
     }
@@ -374,32 +386,23 @@ struct WorkshopBrowser: View {
     }
 
     private var grid: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: iconSize, maximum: iconSize), spacing: 18, alignment: .top)],
-                alignment: .leading,
-                spacing: 22,
-            ) {
-                ForEach(rows) { row in
-                    WorkshopTileView(
-                        item: row.item,
-                        status: row.status,
-                        isStaged: library.staged.contains(row.id),
-                        onTap: {
-                            GridSelection.click(
-                                row.id, in: rows.map(\.id), selection: &library.staged, anchor: &anchor,
-                            )
-                        },
-                    )
-                    .contextMenu { contextMenu(for: library.staged.contains(row.id) ? library.staged : [row.id]) }
-                }
+        BrowserGrid(iconSize: iconSize, clearSelection: {
+            library.staged.removeAll()
+            anchor = nil
+        }) {
+            ForEach(rows) { row in
+                WorkshopTileView(
+                    item: row.item,
+                    status: row.status,
+                    isStaged: library.staged.contains(row.id),
+                    onTap: {
+                        GridSelection.click(
+                            row.id, in: rows.map(\.id), selection: &library.staged, anchor: &anchor,
+                        )
+                    },
+                )
+                .contextMenu { contextMenu(for: library.staged.contains(row.id) ? library.staged : [row.id]) }
             }
-            .padding(20)
-        }
-        .background {
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { library.staged.removeAll() }
         }
     }
 
