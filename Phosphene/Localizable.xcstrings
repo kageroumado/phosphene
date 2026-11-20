@@ -20,6 +20,26 @@
         }
       }
     },
+    "%@, crossfade": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@，淡入衔接"
+          }
+        }
+      }
+    },
+    "%@, seamless": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@，无缝"
+          }
+        }
+      }
+    },
     "%lld Selected": {
       "localizations": {
         "zh-Hans": {
@@ -32,6 +52,24 @@
     },
     "%lld can become videos": {
       "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld can become a video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld can become videos"
+                }
+              }
+            }
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
@@ -76,8 +114,30 @@
       "localizations": {
         "en": {
           "stringUnit": {
-            "state": "new",
-            "value": "%1$lld videos · %2$@"
+            "state": "translated",
+            "value": "%#@videos@ · %2$@"
+          },
+          "substitutions": {
+            "videos": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg video"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg videos"
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "zh-Hans": {
@@ -90,6 +150,24 @@
     },
     "%lld wallpapers": {
       "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld wallpaper"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld wallpapers"
+                }
+              }
+            }
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
@@ -784,6 +862,16 @@
         }
       }
     },
+    "Deletes the %@ copies.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除 %@ 的版本。"
+          }
+        }
+      }
+    },
     "Delete…": {
       "localizations": {
         "zh-Hans": {
@@ -1000,6 +1088,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "HEVC"
+          }
+        }
+      }
+    },
+    "HEVC (smaller)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HEVC（更小）"
           }
         }
       }
@@ -1496,6 +1594,16 @@
         }
       }
     },
+    "Not Made": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未制作"
+          }
+        }
+      }
+    },
     "Not Made Yet": {
       "localizations": {
         "zh-Hans": {
@@ -1656,6 +1764,16 @@
         }
       }
     },
+    "Open Wallpaper Settings…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开墙纸设置…"
+          }
+        }
+      }
+    },
     "Open the Wallpaper Engine Workshop in Sevoflurane’s Steam": {
       "localizations": {
         "zh-Hans": {
@@ -1762,6 +1880,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在优化…"
+          }
+        }
+      }
+    },
+    "Outdated": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已过时"
           }
         }
       }
@@ -2279,6 +2407,16 @@
         }
       }
     },
+    "Status": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态"
+          }
+        }
+      }
+    },
     "Steam Workshop": {
       "localizations": {
         "zh-Hans": {
@@ -2349,6 +2487,34 @@
         }
       }
     },
+    "The %lld videos leave your library and System Settings.": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "The video leaves your library and System Settings."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "The %lld videos leave your library and System Settings."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这 %lld 个视频会从资料库和“系统设置”中移除。"
+          }
+        }
+      }
+    },
     "The author has updated this wallpaper since. Make the video again to get the changes.": {
       "localizations": {
         "zh-Hans": {
@@ -2396,6 +2562,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "视频省略了 %@，这些内容需要 Wallpaper Engine 运行。"
+          }
+        }
+      }
+    },
+    "The video leaves out %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频省略了 %@。"
           }
         }
       }
@@ -2533,6 +2709,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "未知"
+          }
+        }
+      }
+    },
+    "Unsupported": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不支持"
           }
         }
       }
@@ -2971,6 +3157,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "文字和时钟"
+          }
+        }
+      }
+    },
+    "the audio visualizer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频可视化效果"
           }
         }
       }
