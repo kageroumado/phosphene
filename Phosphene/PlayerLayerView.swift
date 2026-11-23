@@ -26,6 +26,10 @@ struct PlayerLayerView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         if let playerLayer = context.coordinator.playerLayer {
+            // SwiftUI keeps this view when its player is swapped for another.
+            if playerLayer.player !== player {
+                playerLayer.player = player
+            }
             let newFrame = nsView.bounds
             if newFrame != playerLayer.frame {
                 playerLayer.frame = newFrame

@@ -47,21 +47,6 @@ struct PhospheneApp: App {
                 }
                 try? listing.write(to: out.appendingPathComponent("videos.txt"), atomically: true, encoding: .utf8)
             }
-            // The library at launch, for driving it without the menu bar (a locked
-            // screen never opens the popover): `--args -PHOSPHENE_OPEN_LIBRARY YES`.
-            if UserDefaults.standard.bool(forKey: "PHOSPHENE_OPEN_LIBRARY") {
-                DispatchQueue.main.async {
-                    let controller = NSHostingController(rootView: LibraryWindow(manager: manager))
-                    controller.sceneBridgingOptions = [.toolbars, .title]
-                    let window = NSWindow(contentViewController: controller)
-                    window.identifier = NSUserInterfaceItemIdentifier("library")
-                    window.title = "Phosphene"
-                    window.styleMask.insert(.fullSizeContentView)
-                    window.setContentSize(NSSize(width: 1_180, height: 820))
-                    window.center()
-                    window.makeKeyAndOrderFront(nil)
-                }
-            }
         #endif
     }
 
@@ -74,6 +59,16 @@ struct PhospheneApp: App {
             let announcing = SilentUpdates.shared.availableVersion != nil
                 || SilentUpdates.shared.justUpdatedVersion != nil
             Image(nsImage: MenuBarIcon.image(updateBadge: announcing))
+            #if DEBUG
+                // The library at launch, in its own scene, for driving it without the
+                // menu bar (a locked screen never opens the popover):
+                // `--args -PHOSPHENE_OPEN_LIBRARY YES`.
+                .task {
+                    if UserDefaults.standard.bool(forKey: "PHOSPHENE_OPEN_LIBRARY") {
+                        showLibraryWindow()
+                    }
+                }
+            #endif
         }
         .menuBarExtraStyle(.window)
 

@@ -335,21 +335,36 @@ struct LibraryGrid: View {
     let selection: Set<String>
 
     @Environment(LibraryStore.self) private var store
-    @Environment(\.controlActiveState) private var controlActiveState
-    @FocusState private var isFocused: Bool
-    /// The column count; it changes only when a column is gained or lost, so resizing the
-    /// window re-renders the grid only then.
-    @State private var columns = 1
-    @State private var geometry = GridGeometry()
-
-    /// The grid's width, kept outside observation: only the column count follows it.
-    private final class GridGeometry {
-        var width: CGFloat = 0
-    }
 
     var body: some View {
         let size = CGFloat(store.iconSize)
-        let columns = columns
+        // The reader takes whatever width the split view leaves and has no minimum of its
+        // own, so the grid never holds the column wider than the window can give it: a
+        // browser that needs room for its columns makes the split view hide the sidebar
+        // while the inspector opens. The column count follows the width in the same
+        // layout pass.
+        GeometryReader { proxy in
+            LibraryGridColumns(
+                tiles: tiles, selection: selection, tileWidth: size,
+                columns: LibraryGridMetrics.columns(in: proxy.size.width, tileWidth: size),
+            )
+        }
+    }
+}
+
+/// The grid at a column count. Its inputs change only when a column is gained or lost,
+/// so resizing the window re-renders it only then.
+private struct LibraryGridColumns: View {
+    let tiles: [LibraryTileModel]
+    let selection: Set<String>
+    let tileWidth: CGFloat
+    let columns: Int
+
+    @Environment(LibraryStore.self) private var store
+    @Environment(\.controlActiveState) private var controlActiveState
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
         let isEmphasized = controlActiveState == .key
         ScrollViewReader { proxy in
             ScrollView {
@@ -361,7 +376,7 @@ struct LibraryGrid: View {
                     ForEach(Array(tiles.enumerated()), id: \.element.id) { index, tile in
                         CellPlacement(placement: LibraryGridMetrics.placement(ofColumn: index % columns, columns: columns)) {
                             LibraryTile(
-                                model: tile, width: size, isSelected: selection.contains(tile.id),
+                                model: tile, width: tileWidth, isSelected: selection.contains(tile.id),
                                 isEmphasized: isEmphasized, revision: store.revision,
                             )
                         }
@@ -375,11 +390,6 @@ struct LibraryGrid: View {
                     .contentShape(Rectangle())
                     .onTapGesture { store.clearSelection() }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
-                geometry.width = width
-                updateColumns()
-            }
-            .onChange(of: store.iconSize) { updateColumns() }
             .focusable()
             .focusEffectDisabled()
             .focused($isFocused)
@@ -395,13 +405,6 @@ struct LibraryGrid: View {
             }
             .onDeleteCommand { store.requestDelete() }
             .revealsSelection(tiles.first { selection.contains($0.id) }?.id, in: store.section)
-        }
-    }
-
-    private func updateColumns() {
-        let count = LibraryGridMetrics.columns(in: geometry.width, tileWidth: CGFloat(store.iconSize))
-        if count != columns {
-            columns = count
         }
     }
 }
