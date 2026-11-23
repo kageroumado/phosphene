@@ -470,6 +470,16 @@
         }
       }
     },
+    "All Wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有壁纸"
+          }
+        }
+      }
+    },
     "Application": {
       "localizations": {
         "zh-Hans": {
@@ -1594,6 +1604,16 @@
         }
       }
     },
+    "No Wallpapers Yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚无壁纸"
+          }
+        }
+      }
+    },
     "Not Made": {
       "localizations": {
         "zh-Hans": {
@@ -1660,6 +1680,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "不发送任何内容。"
+          }
+        }
+      }
+    },
+    "Nothing to Make": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有可制作的壁纸"
           }
         }
       }
@@ -2127,6 +2157,16 @@
         }
       }
     },
+    "Ready to Make": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可制作"
+          }
+        }
+      }
+    },
     "Remove": {
       "localizations": {
         "zh-Hans": {
@@ -2233,6 +2273,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "搜索视频"
+          }
+        }
+      }
+    },
+    "Search Wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索壁纸"
           }
         }
       }

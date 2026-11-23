@@ -9,9 +9,10 @@ enum LibrarySection: Hashable, RawRepresentable {
 
     case allVideos
     case inUse
-    case fromWorkshop
-    case workshopDownloads
-    case workshopNotMade
+    /// Every Wallpaper Engine wallpaper found on this Mac.
+    case workshopAll
+    /// The wallpapers that can become a video and have no current one.
+    case workshopReady
     /// One Steam library or added folder, by ``WorkshopSource/id``.
     case workshopSource(String)
 
@@ -19,9 +20,8 @@ enum LibrarySection: Hashable, RawRepresentable {
         switch rawValue {
         case "all": self = .allVideos
         case "inUse": self = .inUse
-        case "fromWorkshop": self = .fromWorkshop
-        case "workshop": self = .workshopDownloads
-        case "workshop.notMade": self = .workshopNotMade
+        case "workshop": self = .workshopAll
+        case "workshop.ready": self = .workshopReady
         default:
             guard rawValue.hasPrefix("source:") else { return nil }
             self = .workshopSource(String(rawValue.dropFirst("source:".count)))
@@ -32,9 +32,8 @@ enum LibrarySection: Hashable, RawRepresentable {
         switch self {
         case .allVideos: "all"
         case .inUse: "inUse"
-        case .fromWorkshop: "fromWorkshop"
-        case .workshopDownloads: "workshop"
-        case .workshopNotMade: "workshop.notMade"
+        case .workshopAll: "workshop"
+        case .workshopReady: "workshop.ready"
         case let .workshopSource(id): "source:\(id)"
         }
     }
@@ -42,8 +41,8 @@ enum LibrarySection: Hashable, RawRepresentable {
     /// Whether the section lists Wallpaper Engine downloads rather than library videos.
     var isWorkshop: Bool {
         switch self {
-        case .allVideos, .inUse, .fromWorkshop: false
-        case .workshopDownloads, .workshopNotMade, .workshopSource: true
+        case .allVideos, .inUse: false
+        case .workshopAll, .workshopReady, .workshopSource: true
         }
     }
 }
@@ -70,7 +69,6 @@ enum LibraryIconSize {
 nonisolated struct VideoRow: Identifiable, Sendable {
     let entry: VideoDeploymentService.EntryInfo
     let isInUse: Bool
-    let isFromWorkshop: Bool
     let fileSize: Int64
 
     var id: String {

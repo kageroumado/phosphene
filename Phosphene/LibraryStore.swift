@@ -96,23 +96,13 @@ final class LibraryStore {
         Set(manager.prefsService.selections.map(\.videoID))
     }
 
-    private var workshopEntryIDs: Set<String> {
-        Set(workshop.records.values.map(\.entryID))
-    }
-
     /// The videos of the current section that match the search, in sort order.
     var videoRows: [VideoRow] {
         let inUse = inUseIDs
-        let fromWorkshop = workshopEntryIDs
         return entries.compactMap { entry -> VideoRow? in
-            let row = VideoRow(
-                entry: entry, isInUse: inUse.contains(entry.id), isFromWorkshop: fromWorkshop.contains(entry.id),
-                fileSize: fileSizes[entry.id] ?? 0,
-            )
-            switch section {
-            case .inUse where !row.isInUse: return nil
-            case .fromWorkshop where !row.isFromWorkshop: return nil
-            default: break
+            let row = VideoRow(entry: entry, isInUse: inUse.contains(entry.id), fileSize: fileSizes[entry.id] ?? 0)
+            if section == .inUse, !row.isInUse {
+                return nil
             }
             guard search.isEmpty || entry.name.localizedStandardContains(search) else { return nil }
             return row
@@ -127,7 +117,7 @@ final class LibraryStore {
         return workshop.items.compactMap { item -> WorkshopRow? in
             let status = workshop.status(of: item)
             switch section {
-            case .workshopNotMade where !Self.isNotMade(status):
+            case .workshopReady where !Self.isReadyToMake(status):
                 return nil
             case let .workshopSource(id) where item.sourceID != id:
                 return nil
@@ -143,9 +133,10 @@ final class LibraryStore {
         .sorted(using: workshopSort)
     }
 
-    /// Whether a download belongs in Not Made Yet: it has no current video, or one is
-    /// being made. The section's rows and its sidebar count both use this.
-    private static func isNotMade(_ status: WorkshopLibrary.ItemStatus) -> Bool {
+    /// Whether a wallpaper belongs in Ready to Make: it can become a video and has no
+    /// current one, or one is being made. The section's rows and its sidebar count both
+    /// use this.
+    private static func isReadyToMake(_ status: WorkshopLibrary.ItemStatus) -> Bool {
         switch status {
         case .available, .outdated, .failed, .queued, .rendering: true
         case .made, .unsupported: false
@@ -155,21 +146,24 @@ final class LibraryStore {
     struct Counts: Equatable {
         var all = 0
         var inUse = 0
-        var fromWorkshop = 0
-        var downloads = 0
-        var notMade = 0
+        var wallpapers = 0
+        var readyToMake = 0
     }
 
     var counts: Counts {
         let inUse = inUseIDs
-        let fromWorkshop = workshopEntryIDs
         return Counts(
             all: entries.count,
             inUse: entries.count { inUse.contains($0.id) },
-            fromWorkshop: entries.count { fromWorkshop.contains($0.id) },
-            downloads: workshop.items.count,
-            notMade: workshop.items.count { Self.isNotMade(workshop.status(of: $0)) },
+            wallpapers: workshop.items.count,
+            readyToMake: workshop.items.count { Self.isReadyToMake(workshop.status(of: $0)) },
         )
+    }
+
+    /// Whether the sidebar lists each place wallpapers come from: with several places,
+    /// or with an added folder, which its row removes.
+    var showsSources: Bool {
+        workshop.sources.count > 1 || workshop.sources.contains { $0.kind == .folder }
     }
 
     var selectedVideos: [VideoDeploymentService.EntryInfo] {

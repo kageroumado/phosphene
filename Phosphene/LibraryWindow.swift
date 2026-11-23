@@ -79,7 +79,7 @@ private struct LibraryRoot: View {
         // the Wallpaper Engine section.
         .onOpenURL { url in
             if url.host == "library", url.path == "/wallpaper-engine" {
-                store.section = .workshopDownloads
+                store.section = .workshopAll
             }
         }
         .onAppear {
@@ -135,7 +135,7 @@ private struct LibraryDetail: View {
             .searchable(
                 text: $store.search,
                 placement: .toolbar,
-                prompt: store.section.isWorkshop ? Text("Search Downloads") : Text("Search Videos"),
+                prompt: store.section.isWorkshop ? Text("Search Wallpapers") : Text("Search Videos"),
             )
             .toolbar { LibraryToolbar() }
     }
@@ -182,19 +182,18 @@ private struct LibraryContent: View {
     private var videoTitle: String {
         switch store.section {
         case .inUse: String(localized: "In Use")
-        case .fromWorkshop: String(localized: "From Workshop")
         default: String(localized: "All Videos")
         }
     }
 
     private var workshopTitle: String {
         switch store.section {
-        case .workshopNotMade:
-            String(localized: "Not Made Yet")
+        case .workshopReady:
+            String(localized: "Ready to Make")
         case let .workshopSource(id):
-            workshop.sources.first { $0.id == id }?.label ?? String(localized: "Downloads")
+            workshop.sources.first { $0.id == id }?.label ?? String(localized: "Wallpaper Engine")
         default:
-            String(localized: "Downloads")
+            String(localized: "Wallpaper Engine")
         }
     }
 
@@ -383,14 +382,6 @@ private struct VideoEmptyState: View {
             } actions: {
                 Button("Open Wallpaper Settings") { store.openWallpaperSettings() }
             }
-        case .fromWorkshop:
-            ContentUnavailableView {
-                Label("No Videos from Wallpaper Engine", systemImage: "wand.and.sparkles")
-            } description: {
-                Text("Select Wallpaper Engine downloads and choose Make Videos.")
-            } actions: {
-                Button("Show Downloads") { store.section = .workshopDownloads }
-            }
         default:
             ContentUnavailableView {
                 Label("No Videos", systemImage: "film.stack")
@@ -409,9 +400,9 @@ private struct WorkshopEmptyState: View {
     @Environment(WorkshopLibrary.self) private var workshop
 
     var body: some View {
-        if store.section == .workshopNotMade, !workshop.items.isEmpty {
+        if store.section == .workshopReady, !workshop.items.isEmpty {
             ContentUnavailableView {
-                Label("Every Download Has a Video", systemImage: "checkmark.circle")
+                Label("Nothing to Make", systemImage: "checkmark.circle")
             } description: {
                 Text("Subscribe to more wallpapers on the Steam Workshop and they appear here.")
             } actions: {
@@ -419,7 +410,7 @@ private struct WorkshopEmptyState: View {
             }
         } else if !workshop.sources.isEmpty {
             ContentUnavailableView {
-                Label("No Downloads Yet", systemImage: "square.and.arrow.down")
+                Label("No Wallpapers Yet", systemImage: "square.and.arrow.down")
             } description: {
                 Text("Wallpaper Engine is installed. Subscribe to wallpapers on the Steam Workshop and they appear here.")
             } actions: {

@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The library window's sidebar: the videos Phosphene plays, then the Wallpaper
-/// Engine downloads it can make videos from, one row per place they come from.
+/// The library window's sidebar: the videos Phosphene plays, then the Wallpaper Engine
+/// wallpapers it can make videos from. The places wallpapers come from get rows of their
+/// own when there are several, or when one is an added folder.
 struct LibrarySidebar: View {
     @Environment(LibraryStore.self) private var store
     @Environment(WorkshopLibrary.self) private var workshop
@@ -13,13 +14,12 @@ struct LibrarySidebar: View {
             Section("Library") {
                 row(Text("All Videos"), symbol: "film.stack", count: counts.all, tag: .allVideos)
                 row(Text("In Use"), symbol: "play.rectangle", count: counts.inUse, tag: .inUse)
-                row(Text("From Workshop"), symbol: "wand.and.sparkles", count: counts.fromWorkshop, tag: .fromWorkshop)
             }
 
             Section("Wallpaper Engine") {
-                row(Text("Downloads"), symbol: "square.and.arrow.down", count: counts.downloads, tag: .workshopDownloads)
-                row(Text("Not Made Yet"), symbol: "circle.dashed", count: counts.notMade, tag: .workshopNotMade)
-                ForEach(workshop.sources) { source in
+                row(Text("All Wallpapers"), symbol: "rectangle.stack", count: counts.wallpapers, tag: .workshopAll)
+                row(Text("Ready to Make"), symbol: "wand.and.sparkles", count: counts.readyToMake, tag: .workshopReady)
+                ForEach(store.showsSources ? workshop.sources : []) { source in
                     row(
                         Text(verbatim: source.label), symbol: symbol(for: source),
                         count: workshop.items.count { $0.sourceID == source.id }, tag: .workshopSource(source.id),
@@ -38,6 +38,12 @@ struct LibrarySidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .task(id: store.showsSources) {
+            // A place's row can be the stored selection after its row has gone.
+            if !store.showsSources, case .workshopSource = store.section {
+                store.section = .workshopAll
+            }
+        }
         .safeAreaInset(edge: .bottom) { bottomBar }
     }
 
