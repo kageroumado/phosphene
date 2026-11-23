@@ -36,6 +36,14 @@ struct OcclusionMathTests {
         #expect(OcclusionMath.hasFullscreenApp(full: full, visible: visible, windows: [window(visible, layer: 26)]))
     }
 
+    /// Floating panels sit between layer 0 and the menu bar; ChatGPT keeps a
+    /// transparent display-sized one at layer 3 on every display.
+    @Test
+    func `display sized floating panel does not own the display`() {
+        #expect(!OcclusionMath.hasFullscreenApp(full: full, visible: visible, windows: [window(visible, layer: 3)]))
+        #expect(!OcclusionMath.hasFullscreenApp(full: full, visible: visible, windows: [window(full, layer: 3)]))
+    }
+
     @Test
     func `elevated window below threshold does not own the display`() {
         let ninetyPercent = CGRect(x: 0, y: 24, width: 2_560 * 0.9, height: 1_416)

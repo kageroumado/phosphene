@@ -19,15 +19,19 @@ enum OcclusionMath {
     /// Grid cell size in points. 8pt gives good precision without excessive memory.
     static let cellSize: CGFloat = 8
 
+    /// The menu bar's window layer (24). Borderless games sit above it.
+    static let menuBarLayer = Int(CGWindowLevelForKey(.mainMenuWindow))
+
     /// A single window owning (nearly) the whole display marks it as running a
     /// fullscreen app:
     ///
     /// - At layer 0 covering ≥99% of the FULL frame, menu bar region included —
     ///   a native fullscreen Space, or a borderless window sized to the display.
-    /// - At an elevated layer covering ≥95% of the visible frame — borderless
-    ///   fullscreen games: Wine parks them just above the menu bar (Genshin: 26),
-    ///   and ordinary app windows never sit at elevated layers, so a maximized
-    ///   browser can't trip this.
+    /// - Above the menu bar's layer, covering ≥95% of the visible frame —
+    ///   borderless fullscreen games: Wine parks them just above the menu bar
+    ///   (Genshin: 26). Layers between 0 and the menu bar hold floating panels,
+    ///   and some apps keep a transparent display-sized one there (ChatGPT's at
+    ///   layer 3), so those never mark a display.
     static func hasFullscreenApp(full: CGRect, visible: CGRect, windows: [Window]) -> Bool {
         let fullArea = full.width * full.height
         let visibleArea = visible.width * visible.height
@@ -37,7 +41,7 @@ enum OcclusionMath {
                 if overlap.width * overlap.height >= fullArea * 0.99 {
                     return true
                 }
-            } else {
+            } else if window.layer > menuBarLayer {
                 let overlap = window.rect.intersection(visible)
                 if overlap.width * overlap.height >= visibleArea * 0.95 {
                     return true

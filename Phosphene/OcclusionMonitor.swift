@@ -125,11 +125,14 @@ final class OcclusionMonitor {
     /// the Dock's window (layer 20), its desktop-reveal overlay (18), Notification
     /// Center's sidebar canvas (21). Counting those marks displays permanently —
     /// or, for the reveal overlay, exactly while the user admires the wallpaper.
+    /// A hidden app covers nothing, even when the window server still lists a
+    /// window it keeps on screen (ChatGPT's display-sized canvases).
     private static func isRegularApp(_ pid: pid_t, cache: inout [pid_t: Bool]) -> Bool {
         if let cached = cache[pid] {
             return cached
         }
-        let regular = NSRunningApplication(processIdentifier: pid)?.activationPolicy == .regular
+        let app = NSRunningApplication(processIdentifier: pid)
+        let regular = app?.activationPolicy == .regular && app?.isHidden == false
         cache[pid] = regular
         return regular
     }
