@@ -17,15 +17,19 @@ struct LibraryWindow: View {
     }
 }
 
-/// Column widths, and a window minimum that holds them all at their widest.
+/// Column widths, and the window minimum that holds them all at their widest.
 ///
 /// Never let the window be narrower than the columns can be: SwiftUI leaves the split
 /// view's own minimum out of the window's `contentMinSize`, and a window below it sends
 /// AppKit into an endless Update Constraints loop that ends in an exception (#35).
-/// ``contentMin`` is what the browser is left with when the sidebar is at its widest and
-/// the inspector is open; it is never applied as a `.frame(minWidth:)` on the detail,
-/// which starts the same loop at any window size.
-private enum Layout {
+/// ``contentMin`` is what the browser is left with when the sidebar is at its widest; it
+/// is never applied as a `.frame(minWidth:)` on the detail, which starts the same loop at
+/// any window size.
+///
+/// The minimum counts the inspector only while it is shown. AppKit takes the minimum for
+/// the width the browser must keep, so an inspector that opens in a window narrower than
+/// the minimum plus its own width pushes the whole split view aside while it animates.
+enum LibraryLayout {
     static let sidebarMin: CGFloat = 180
     static let sidebarIdeal: CGFloat = 210
     static let sidebarMax: CGFloat = 260
@@ -33,8 +37,11 @@ private enum Layout {
     static let inspectorWidth: CGFloat = 280
     static let contentMin: CGFloat = 420
     static let dividers: CGFloat = 2
-    static let windowMinWidth = sidebarMax + inspectorWidth + contentMin + dividers
     static let windowMinHeight: CGFloat = 520
+
+    static func windowMinWidth(inspector: Bool) -> CGFloat {
+        sidebarMax + contentMin + dividers + (inspector ? inspectorWidth : 0)
+    }
 }
 
 // MARK: - Root
@@ -52,12 +59,20 @@ private struct LibraryRoot: View {
         NavigationSplitView {
             LibrarySidebar()
                 .navigationSplitViewColumnWidth(
-                    min: Layout.sidebarMin, ideal: Layout.sidebarIdeal, max: Layout.sidebarMax,
+                    min: LibraryLayout.sidebarMin, ideal: LibraryLayout.sidebarIdeal, max: LibraryLayout.sidebarMax,
                 )
         } detail: {
             LibraryDetail()
         }
-        .frame(minWidth: Layout.windowMinWidth, minHeight: Layout.windowMinHeight)
+        .frame(
+            minWidth: LibraryLayout.windowMinWidth(inspector: store.showInspector),
+            minHeight: LibraryLayout.windowMinHeight,
+        )
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            store.windowWidth = width
+        }
         .sheet(isPresented: $store.isMakeVideosPresented) {
             MakeVideosSheet()
         }
@@ -123,14 +138,16 @@ private struct LibraryRoot: View {
 /// inspector belongs to the detail column, so showing it moves the browser alone.
 private struct LibraryDetail: View {
     @Environment(LibraryStore.self) private var store
+    @Environment(WorkshopLibrary.self) private var workshop
 
     var body: some View {
         @Bindable var store = store
         LibraryContent()
+            .navigationTitle(title)
             .safeAreaInset(edge: .bottom, spacing: 0) { LibraryStatusBar() }
             .inspector(isPresented: $store.showInspector) {
                 LibraryInspector()
-                    .inspectorColumnWidth(Layout.inspectorWidth)
+                    .inspectorColumnWidth(LibraryLayout.inspectorWidth)
             }
             .searchable(
                 text: $store.search,
@@ -138,6 +155,21 @@ private struct LibraryDetail: View {
                 prompt: store.section.isWorkshop ? Text("Search Wallpapers") : Text("Search Videos"),
             )
             .toolbar { LibraryToolbar() }
+    }
+
+    private var title: String {
+        switch store.section {
+        case .allVideos:
+            String(localized: "All Videos")
+        case .inUse:
+            String(localized: "In Use")
+        case .workshopAll:
+            String(localized: "Wallpaper Engine")
+        case .workshopReady:
+            String(localized: "Ready to Make")
+        case let .workshopSource(id):
+            workshop.sources.first { $0.id == id }?.label ?? String(localized: "Wallpaper Engine")
+        }
     }
 }
 
@@ -151,17 +183,13 @@ private struct LibraryContent: View {
             let rows = store.workshopRows
             Group {
                 if !rows.isEmpty {
-                    VStack(spacing: 0) {
-                        WorkshopIntro()
-                        WorkshopBrowser(rows: rows)
-                    }
+                    WorkshopBrowser(rows: rows)
                 } else if !store.search.isEmpty {
                     ContentUnavailableView.search(text: store.search)
                 } else {
                     WorkshopEmptyState()
                 }
             }
-            .navigationTitle(workshopTitle)
             .navigationSubtitle(Text("\(rows.count) wallpapers"))
         } else {
             let rows = store.videoRows
@@ -174,26 +202,7 @@ private struct LibraryContent: View {
                     VideoEmptyState()
                 }
             }
-            .navigationTitle(videoTitle)
             .navigationSubtitle(videoSubtitle(rows))
-        }
-    }
-
-    private var videoTitle: String {
-        switch store.section {
-        case .inUse: String(localized: "In Use")
-        default: String(localized: "All Videos")
-        }
-    }
-
-    private var workshopTitle: String {
-        switch store.section {
-        case .workshopReady:
-            String(localized: "Ready to Make")
-        case let .workshopSource(id):
-            workshop.sources.first { $0.id == id }?.label ?? String(localized: "Wallpaper Engine")
-        default:
-            String(localized: "Wallpaper Engine")
         }
     }
 
@@ -247,29 +256,17 @@ private struct LibraryToolbar: ToolbarContent {
         ToolbarSpacer(.fixed)
         ToolbarItem {
             Button("Inspector", systemImage: "sidebar.trailing") {
-                store.showInspector.toggle()
+                store.toggleInspector()
             }
             .help(store.showInspector ? "Hide Inspector" : "Show Inspector")
         }
     }
 
     private var makeVideosButton: some View {
-        Button {
+        Button("Make Videos…") {
             store.requestMakeVideos()
-        } label: {
-            Label(makeVideosTitle, systemImage: "film.stack")
-                .labelStyle(.titleAndIcon)
         }
         .help("Turn the selected wallpapers into looping videos")
-    }
-
-    private var makeVideosTitle: String {
-        let count = store.renderableSelection.count
-        switch count {
-        case 0: return String(localized: "Make Videos…")
-        case 1: return String(localized: "Make Video…")
-        default: return String(localized: "Make \(count) Videos…")
-        }
     }
 }
 
@@ -339,31 +336,6 @@ private struct LibraryStatusBar: View {
         let waiting = workshop.queue.count
         let base = String(localized: "Making “\(item.title)” · \(percent)")
         return waiting > 0 ? String(localized: "\(base) · \(waiting) waiting") : base
-    }
-}
-
-// MARK: - Wallpaper Engine pieces
-
-/// One line at the top of a Wallpaper Engine list saying what the list is for.
-private struct WorkshopIntro: View {
-    @Environment(WorkshopLibrary.self) private var workshop
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "info.circle")
-            Text("Subscribe on the Steam Workshop and downloads appear here. Select wallpapers, then choose Make Videos.")
-                .lineLimit(2)
-            Spacer(minLength: 0)
-            Button("Open Workshop") { workshop.openWorkshop() }
-                .controlSize(.small)
-                .help(workshop.isSevofluraneInstalled
-                    ? "Open the Wallpaper Engine Workshop in Sevoflurane’s Steam"
-                    : "Open the Wallpaper Engine Workshop in your browser")
-        }
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, LibraryGridMetrics.padding)
-        .padding(.vertical, 8)
     }
 }
 
@@ -509,6 +481,12 @@ struct LibraryCommands: Commands {
             Divider()
         }
         SidebarCommands()
-        InspectorCommands()
+        CommandGroup(after: .sidebar) {
+            Button(store?.showInspector == true ? "Hide Inspector" : "Show Inspector") {
+                store?.toggleInspector()
+            }
+            .keyboardShortcut("i", modifiers: [.command, .control])
+            .disabled(store == nil)
+        }
     }
 }

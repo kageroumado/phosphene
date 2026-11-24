@@ -49,6 +49,8 @@ final class LibraryStore {
 
     var search = ""
     var showInspector = true
+    /// The window's width at its last layout.
+    @ObservationIgnored var windowWidth: CGFloat = 0
     var videoSort = [KeyPathComparator(\VideoRow.dateAdded, order: .reverse)]
     var workshopSort = [KeyPathComparator(\WorkshopRow.modified, order: .reverse)]
 
@@ -368,6 +370,15 @@ final class LibraryStore {
         }
         guard !renderableSelection.isEmpty else { return }
         isMakeVideosPresented = true
+    }
+
+    /// Show or hide the inspector. A window too narrow to hold it widens to fit in one
+    /// step: animated, AppKit pushes the whole split view aside until the animation ends.
+    func toggleInspector() {
+        var transaction = Transaction()
+        let opens = !showInspector
+        transaction.disablesAnimations = opens && windowWidth < LibraryLayout.windowMinWidth(inspector: true)
+        withTransaction(transaction) { showInspector.toggle() }
     }
 
     func stepIconSize(by steps: Double) {

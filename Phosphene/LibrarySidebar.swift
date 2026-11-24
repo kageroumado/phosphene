@@ -66,6 +66,8 @@ struct LibrarySidebar: View {
             Menu {
                 Button("Add Video…") { store.addVideo() }
                 Button("Add Wallpaper Engine Folder…") { store.addFolder() }
+                Divider()
+                Button("Open Steam Workshop") { workshop.openWorkshop() }
             } label: {
                 Image(systemName: "plus")
             }

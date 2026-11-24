@@ -90,8 +90,6 @@ struct PhospheneApp: App {
                     NSApp.activate()
                 }
             }
-            SidebarCommands()
-            InspectorCommands()
         }
     }
 

@@ -1804,42 +1804,12 @@
         }
       }
     },
-    "Open the Wallpaper Engine Workshop in Sevoflurane’s Steam": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在 Sevoflurane 的 Steam 中打开 Wallpaper Engine 创意工坊"
-          }
-        }
-      }
-    },
-    "Open the Wallpaper Engine Workshop in your browser": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在浏览器中打开 Wallpaper Engine 创意工坊"
-          }
-        }
-      }
-    },
     "Open Wallpaper Settings": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "打开墙纸设置"
-          }
-        }
-      }
-    },
-    "Open Workshop": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开创意工坊"
           }
         }
       }
@@ -2493,16 +2463,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "停止制作视频"
-          }
-        }
-      }
-    },
-    "Subscribe on the Steam Workshop and downloads appear here. Select wallpapers, then choose Make Videos.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在 Steam 创意工坊订阅后，下载内容会出现在这里。选择壁纸，然后选择“制作视频”。"
           }
         }
       }
