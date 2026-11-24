@@ -49,8 +49,11 @@ final class LibraryStore {
 
     var search = ""
     var showInspector = true
-    /// The window's width at its last layout.
-    @ObservationIgnored var windowWidth: CGFloat = 0
+    private(set) var columnVisibility = NavigationSplitViewVisibility.all
+
+    var showsSidebar: Bool {
+        columnVisibility != .detailOnly
+    }
     var videoSort = [KeyPathComparator(\VideoRow.dateAdded, order: .reverse)]
     var workshopSort = [KeyPathComparator(\WorkshopRow.modified, order: .reverse)]
 
@@ -372,13 +375,45 @@ final class LibraryStore {
         isMakeVideosPresented = true
     }
 
-    /// Show or hide the inspector. A window too narrow to hold it widens to fit in one
-    /// step: animated, AppKit pushes the whole split view aside until the animation ends.
+    /// Show or hide the inspector.
     func toggleInspector() {
-        var transaction = Transaction()
         let opens = !showInspector
-        transaction.disablesAnimations = opens && windowWidth < LibraryLayout.windowMinWidth(inspector: true)
-        withTransaction(transaction) { showInspector.toggle() }
+        change(opening: opens, needs: LibraryLayout.windowMinWidth(sidebar: showsSidebar, inspector: true)) {
+            showInspector.toggle()
+        }
+    }
+
+    /// Show or hide the sidebar, as the split view asks.
+    func setColumnVisibility(_ visibility: NavigationSplitViewVisibility) {
+        let opens = visibility != .detailOnly && !showsSidebar
+        change(opening: opens, needs: LibraryLayout.windowMinWidth(sidebar: true, inspector: showInspector)) {
+            columnVisibility = visibility
+        }
+    }
+
+    /// Show or hide a column. A window narrower than `width` is too narrow for a column
+    /// that opens, so it widens first; a window that cannot widen keeps the column shut.
+    /// A column that opens in too narrow a window is pushed aside by AppKit with the whole
+    /// split view, or ends its layout in an exception.
+    private func change(opening: Bool, needs width: CGFloat, _ body: () -> Void) {
+        guard !opening || makeRoom(width) else { return }
+        body()
+    }
+
+    /// Widen the library window to `width`, moving it left where the screen ends. False
+    /// when the window stays narrower, as in full screen beside another app.
+    private func makeRoom(_ width: CGFloat) -> Bool {
+        guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue == LibraryLayout.windowID }) else {
+            return true
+        }
+        var frame = window.frame
+        guard frame.width < width else { return true }
+        frame.size.width = width
+        if let visible = window.screen?.visibleFrame {
+            frame.origin.x = max(visible.minX, min(frame.origin.x, visible.maxX - width))
+        }
+        window.setFrame(frame, display: true)
+        return window.frame.width >= width
     }
 
     func stepIconSize(by steps: Double) {

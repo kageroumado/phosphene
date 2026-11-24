@@ -17,7 +17,7 @@ struct LibraryWindow: View {
     }
 }
 
-/// Column widths, and the window minimum that holds them all at their widest.
+/// Column widths, and the window minimum that holds the columns at their widest.
 ///
 /// Never let the window be narrower than the columns can be: SwiftUI leaves the split
 /// view's own minimum out of the window's `contentMinSize`, and a window below it sends
@@ -26,9 +26,10 @@ struct LibraryWindow: View {
 /// is never applied as a `.frame(minWidth:)` on the detail, which starts the same loop at
 /// any window size.
 ///
-/// The minimum counts the inspector only while it is shown. AppKit takes the minimum for
-/// the width the browser must keep, so an inspector that opens in a window narrower than
-/// the minimum plus its own width pushes the whole split view aside while it animates.
+/// The minimum counts the sidebar and the inspector only while each is shown. AppKit
+/// takes the minimum for the width the browser must keep, so a column that opens in a
+/// window narrower than the minimum plus the column pushes the whole split view aside
+/// while it animates.
 enum LibraryLayout {
     static let sidebarMin: CGFloat = 180
     static let sidebarIdeal: CGFloat = 210
@@ -38,9 +39,13 @@ enum LibraryLayout {
     static let contentMin: CGFloat = 420
     static let dividers: CGFloat = 2
     static let windowMinHeight: CGFloat = 520
+    /// Longer than a column takes to slide in.
+    static let columnSettle: Duration = .milliseconds(500)
+    /// The library window's scene and `NSWindow` identifier.
+    static let windowID = "library"
 
-    static func windowMinWidth(inspector: Bool) -> CGFloat {
-        sidebarMax + contentMin + dividers + (inspector ? inspectorWidth : 0)
+    static func windowMinWidth(sidebar: Bool, inspector: Bool) -> CGFloat {
+        contentMin + dividers + (sidebar ? sidebarMax : 0) + (inspector ? inspectorWidth : 0)
     }
 }
 
@@ -53,10 +58,20 @@ private struct LibraryRoot: View {
     @Environment(LibraryStore.self) private var store
     @Environment(WorkshopLibrary.self) private var workshop
 
+    /// Whether the window's minimum width counts each column. One turns true once its
+    /// column has finished opening: a minimum raised as the column starts to open is the
+    /// one AppKit holds the browser to.
+    @State private var minimumHoldsSidebar = true
+    @State private var minimumHoldsInspector = true
+
     var body: some View {
         @Bindable var store = store
         @Bindable var manager = manager
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: Binding {
+            store.columnVisibility
+        } set: { visibility in
+            store.setColumnVisibility(visibility)
+        }) {
             LibrarySidebar()
                 .navigationSplitViewColumnWidth(
                     min: LibraryLayout.sidebarMin, ideal: LibraryLayout.sidebarIdeal, max: LibraryLayout.sidebarMax,
@@ -65,13 +80,22 @@ private struct LibraryRoot: View {
             LibraryDetail()
         }
         .frame(
-            minWidth: LibraryLayout.windowMinWidth(inspector: store.showInspector),
+            minWidth: LibraryLayout.windowMinWidth(sidebar: minimumHoldsSidebar, inspector: minimumHoldsInspector),
             minHeight: LibraryLayout.windowMinHeight,
         )
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { width in
-            store.windowWidth = width
+        .task(id: store.showsSidebar) {
+            if store.showsSidebar {
+                try? await Task.sleep(for: LibraryLayout.columnSettle)
+                guard !Task.isCancelled else { return }
+            }
+            minimumHoldsSidebar = store.showsSidebar
+        }
+        .task(id: store.showInspector) {
+            if store.showInspector {
+                try? await Task.sleep(for: LibraryLayout.columnSettle)
+                guard !Task.isCancelled else { return }
+            }
+            minimumHoldsInspector = store.showInspector
         }
         .sheet(isPresented: $store.isMakeVideosPresented) {
             MakeVideosSheet()
@@ -239,10 +263,11 @@ private struct LibraryToolbar: ToolbarContent {
                 // Prominent only while it can act: a filled button reads as the action to take.
                 if store.renderableSelection.isEmpty {
                     makeVideosButton
+                        .buttonStyle(.glass)
                         .disabled(true)
                 } else {
                     makeVideosButton
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.glassProminent)
                 }
             }
         } else {
