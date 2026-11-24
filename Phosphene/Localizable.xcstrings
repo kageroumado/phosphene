@@ -179,6 +179,16 @@
     "%lld × %lld": {
       "shouldTranslate": false
     },
+    "%@ wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 张壁纸"
+          }
+        }
+      }
+    },
     "10 seconds": {
       "localizations": {
         "zh-Hans": {
@@ -570,6 +580,16 @@
         }
       }
     },
+    "Can’t Reach the Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法连接创意工坊"
+          }
+        }
+      }
+    },
     "Check for updates": {
       "localizations": {
         "zh-Hans": {
@@ -586,6 +606,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "立即检查更新"
+          }
+        }
+      }
+    },
+    "Check your internet connection, or open the Workshop in Steam.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请检查网络连接，或在 Steam 中打开创意工坊。"
           }
         }
       }
@@ -748,6 +778,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法优化视频。"
+          }
+        }
+      }
+    },
+    "Couldn’t load more wallpapers.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法载入更多壁纸。"
           }
         }
       }
@@ -922,6 +962,16 @@
         }
       }
     },
+    "Downloaded": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已下载"
+          }
+        }
+      }
+    },
     "Downloads": {
       "localizations": {
         "zh-Hans": {
@@ -1072,12 +1122,32 @@
         }
       }
     },
+    "Get": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获取"
+          }
+        }
+      }
+    },
     "Get Sevoflurane": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "获取 Sevoflurane"
+          }
+        }
+      }
+    },
+    "Getting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获取中"
           }
         }
       }
@@ -1228,6 +1298,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "自动安装更新"
+          }
+        }
+      }
+    },
+    "Install Wallpaper Engine in Sevoflurane’s Steam to get wallpapers from here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Sevoflurane 的 Steam 中安装 Wallpaper Engine 后即可在此获取壁纸。"
           }
         }
       }
@@ -1534,12 +1614,32 @@
         }
       }
     },
+    "Most Subscribed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最多订阅"
+          }
+        }
+      }
+    },
     "Name": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "名称"
+          }
+        }
+      }
+    },
+    "Newest": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最新"
           }
         }
       }
@@ -2007,6 +2107,16 @@
         }
       }
     },
+    "Phosphene gets wallpapers through Sevoflurane, which runs Windows Steam on your Mac.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 通过 Sevoflurane 获取壁纸，Sevoflurane 可在 Mac 上运行 Windows 版 Steam。"
+          }
+        }
+      }
+    },
     "Phosphene updated itself at a quiet moment — here's what changed.": {
       "localizations": {
         "zh-Hans": {
@@ -2237,6 +2347,16 @@
         }
       }
     },
+    "Search the Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索创意工坊"
+          }
+        }
+      }
+    },
     "Search Videos": {
       "localizations": {
         "zh-Hans": {
@@ -2263,6 +2383,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "查看 %@ 版本的新功能"
+          }
+        }
+      }
+    },
+    "Select a wallpaper to view its details.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一张壁纸以查看其详细信息。"
           }
         }
       }
@@ -2347,6 +2477,16 @@
         }
       }
     },
+    "Show in All Wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“所有壁纸”中显示"
+          }
+        }
+      }
+    },
     "Show Inspector": {
       "localizations": {
         "zh-Hans": {
@@ -2397,6 +2537,26 @@
         }
       }
     },
+    "Sort": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排序"
+          }
+        }
+      }
+    },
+    "Sort the Workshop’s wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排序创意工坊的壁纸"
+          }
+        }
+      }
+    },
     "Source": {
       "localizations": {
         "zh-Hans": {
@@ -2437,6 +2597,16 @@
         }
       }
     },
+    "Steam is downloading it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 正在下载"
+          }
+        }
+      }
+    },
     "Steam Workshop": {
       "localizations": {
         "zh-Hans": {
@@ -2467,6 +2637,16 @@
         }
       }
     },
+    "Subscribe on the Steam Workshop; Steam downloads the wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Steam 创意工坊订阅，由 Steam 下载壁纸"
+          }
+        }
+      }
+    },
     "Subscribe to more wallpapers on the Steam Workshop and they appear here.": {
       "localizations": {
         "zh-Hans": {
@@ -2493,6 +2673,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 Steam 创意工坊订阅壁纸，Phosphene 就能把它们做成视频墙纸。Wallpaper Engine 在 Windows 版 Steam 里运行；Sevoflurane 能把这个 Steam 带到你的 Mac 上，免费，出自 Phosphene 的开发者。"
+          }
+        }
+      }
+    },
+    "Subscribers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "订阅数"
           }
         }
       }
@@ -2663,6 +2853,26 @@
         }
       }
     },
+    "Trending": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "热门"
+          }
+        }
+      }
+    },
+    "Try Again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试"
+          }
+        }
+      }
+    },
     "Turn off “Show on all Spaces”, move the System Settings window onto that display, then choose the video.": {
       "localizations": {
         "zh-Hans": {
@@ -2759,6 +2969,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "更新失败"
+          }
+        }
+      }
+    },
+    "Update Sevoflurane to get wallpapers from here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新 Sevoflurane 后即可在此获取壁纸。"
           }
         }
       }
@@ -3059,6 +3279,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "不含%@"
+          }
+        }
+      }
+    },
+    "Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创意工坊"
           }
         }
       }

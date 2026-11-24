@@ -26,9 +26,47 @@ nonisolated enum ThumbnailCache {
         if let cached = unsafe cache.object(forKey: url as NSURL) {
             return cached
         }
-        guard let image = PreviewImage.thumbnail(at: url, maxPixels: maxPixels) else { return nil }
+        let decoded = if url.isFileURL {
+            PreviewImage.thumbnail(at: url, maxPixels: maxPixels)
+        } else {
+            await remoteThumbnail(at: url)
+        }
+        guard let image = decoded else { return nil }
         unsafe cache.setObject(image, forKey: url as NSURL)
         return image
+    }
+
+    /// Fetches web images with nothing kept on disk and no cookies.
+    private static let remote: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 20
+        return URLSession(configuration: configuration)
+    }()
+
+    private enum Remote {
+        /// The bytes asked for first. A Workshop preview is often an animated GIF of a
+        /// megabyte whose first frame lies in its first tenth.
+        static let head = 192 * 1_024
+    }
+
+    /// A still of a web image: from its first bytes when they hold a whole frame,
+    /// otherwise from the whole file.
+    private static func remoteThumbnail(at url: URL) async -> NSImage? {
+        var request = URLRequest(url: url)
+        request.setValue("bytes=0-\(Remote.head - 1)", forHTTPHeaderField: "Range")
+        if let (data, response) = try? await remote.data(for: request),
+           let status = (response as? HTTPURLResponse)?.statusCode {
+            if status == 200 {
+                return PreviewImage.thumbnail(of: data, maxPixels: maxPixels)
+            }
+            if status == 206, let image = PreviewImage.firstFrame(ofPartial: data, maxPixels: maxPixels) {
+                return image
+            }
+        }
+        guard let (data, response) = try? await remote.data(from: url),
+              (response as? HTTPURLResponse)?.statusCode == 200
+        else { return nil }
+        return PreviewImage.thumbnail(of: data, maxPixels: maxPixels)
     }
 
     static func removeAll() {
@@ -333,6 +371,10 @@ struct WorkshopBrowser: View {
 struct LibraryGrid: View {
     let tiles: [LibraryTileModel]
     let selection: Set<String>
+    /// A thumbnail's width over its height.
+    var tileAspect: CGFloat = 16 / 9
+    /// Called as the last tile comes into view, for a list that loads in pages.
+    var onReachEnd: (() -> Void)?
 
     @Environment(LibraryStore.self) private var store
 
@@ -347,6 +389,7 @@ struct LibraryGrid: View {
             LibraryGridColumns(
                 tiles: tiles, selection: selection, tileWidth: size,
                 columns: LibraryGridMetrics.columns(in: proxy.size.width, tileWidth: size),
+                tileAspect: tileAspect, onReachEnd: onReachEnd,
             )
         }
     }
@@ -359,6 +402,8 @@ private struct LibraryGridColumns: View {
     let selection: Set<String>
     let tileWidth: CGFloat
     let columns: Int
+    let tileAspect: CGFloat
+    let onReachEnd: (() -> Void)?
 
     @Environment(LibraryStore.self) private var store
     @Environment(\.controlActiveState) private var controlActiveState
@@ -376,9 +421,15 @@ private struct LibraryGridColumns: View {
                     ForEach(Array(tiles.enumerated()), id: \.element.id) { index, tile in
                         CellPlacement(placement: LibraryGridMetrics.placement(ofColumn: index % columns, columns: columns)) {
                             LibraryTile(
-                                model: tile, width: tileWidth, isSelected: selection.contains(tile.id),
+                                model: tile, width: tileWidth, aspect: tileAspect,
+                                isSelected: selection.contains(tile.id),
                                 isEmphasized: isEmphasized, revision: store.revision,
                             )
+                        }
+                        .onAppear {
+                            if index == tiles.count - 1 {
+                                onReachEnd?()
+                            }
                         }
                     }
                 }
@@ -456,6 +507,8 @@ final class LoopingPlayer {
 struct LibraryTile: View {
     let model: LibraryTileModel
     let width: CGFloat
+    /// The thumbnail's width over its height.
+    let aspect: CGFloat
     let isSelected: Bool
     /// Whether the selection draws in the accent color: in the key window.
     let isEmphasized: Bool
@@ -555,6 +608,13 @@ struct LibraryTile: View {
                             .resizable()
                             .interpolation(.high)
                     }
+                case .fit:
+                    Rectangle()
+                        .fill(.black)
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
                 }
             } else {
                 Rectangle()
@@ -567,7 +627,7 @@ struct LibraryTile: View {
                 PlayerLayerView(player: preview.player)
             }
         }
-        .frame(width: width, height: (width * 9 / 16).rounded())
+        .frame(width: width, height: (width / aspect).rounded())
         .unsupportedDimming(model.isDimmed)
         .clipShape(RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
         .overlay {
@@ -599,6 +659,15 @@ struct LibraryTile: View {
             symbolBadge("nosign", fill: AnyShapeStyle(.gray))
         case .waiting:
             pill { Text("Waiting") }
+        case .getting:
+            pill {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(.white)
+                Text("Getting")
+            }
+        case .downloaded:
+            symbolBadge("arrow.down", fill: AnyShapeStyle(.black.opacity(0.55)))
         case let .working(label, progress):
             pill {
                 ProgressView(value: progress)
@@ -642,6 +711,7 @@ struct LibraryItemMenu: View {
 
     @Environment(LibraryStore.self) private var store
     @Environment(WorkshopLibrary.self) private var workshop
+    @Environment(CatalogStore.self) private var catalog
 
     init(ids: Set<String>) {
         explicit = ids
@@ -658,18 +728,31 @@ struct LibraryItemMenu: View {
             return explicit
         }
         guard let clicked else { return [] }
-        let selection = store.section.isWorkshop ? workshop.staged : store.videoSelection
+        let selection = store.selection
         return selection.contains(clicked) ? selection : [clicked]
     }
 
     var body: some View {
         let ids = ids
         if !ids.isEmpty {
-            if store.section.isWorkshop {
-                downloadItems(ids)
-            } else {
-                videoItems(ids)
+            switch store.section.content {
+            case .videos: videoItems(ids)
+            case .downloads: downloadItems(ids)
+            case .catalog: catalogItems(ids)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func catalogItems(_ ids: Set<String>) -> some View {
+        if let id = ids.first {
+            let downloaded = workshop.item(id) != nil
+            if downloaded {
+                Button("Show in All Wallpapers") { store.reveal(downloadID: id) }
+            } else if workshop.subscribeBlocker == nil {
+                Button("Get") { catalog.get(id) }
+            }
+            Button("Open Workshop Page") { workshop.openWorkshopPage(ofID: id) }
         }
     }
 

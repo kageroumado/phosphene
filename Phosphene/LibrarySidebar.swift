@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// The library window's sidebar: the videos Phosphene plays, then the Wallpaper Engine
-/// wallpapers it can make videos from. The places wallpapers come from get rows of their
-/// own when there are several, or when one is an added folder.
+/// wallpapers it can make videos from and the Steam Workshop to get more. The places
+/// wallpapers come from get rows of their own when there are several, or when one is an
+/// added folder.
 struct LibrarySidebar: View {
     @Environment(LibraryStore.self) private var store
     @Environment(WorkshopLibrary.self) private var workshop
@@ -19,6 +20,7 @@ struct LibrarySidebar: View {
             Section("Wallpaper Engine") {
                 row(Text("All Wallpapers"), symbol: "rectangle.stack", count: counts.wallpapers, tag: .workshopAll)
                 row(Text("Ready to Make"), symbol: "wand.and.sparkles", count: counts.readyToMake, tag: .workshopReady)
+                row(Text("Workshop"), symbol: "globe", count: 0, tag: .catalog)
                 ForEach(store.showsSources ? workshop.sources : []) { source in
                     row(
                         Text(verbatim: source.label), symbol: symbol(for: source),
@@ -47,6 +49,7 @@ struct LibrarySidebar: View {
         .safeAreaInset(edge: .bottom) { bottomBar }
     }
 
+    /// A sidebar row. A count of zero shows no badge.
     private func row(_ title: Text, symbol: String, count: Int, tag: LibrarySection) -> some View {
         Label { title } icon: { Image(systemName: symbol) }
             .badge(count)

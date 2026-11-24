@@ -5,9 +5,20 @@ import VideoToolbox
 /// The inspector column: what is selected in the current section.
 struct LibraryInspector: View {
     @Environment(LibraryStore.self) private var store
+    @Environment(CatalogStore.self) private var catalog
 
     var body: some View {
-        if store.section.isWorkshop {
+        switch store.section.content {
+        case .videos:
+            let selected = store.selectedVideos
+            if selected.count == 1, let entry = selected.first {
+                VideoInspector(entry: entry)
+            } else if selected.count > 1 {
+                SelectionSummary(count: selected.count, detail: nil)
+            } else {
+                emptySelection(Text("Select a video to view its details."))
+            }
+        case .downloads:
             let selected = store.selectedDownloads
             if selected.count == 1, let item = selected.first {
                 DownloadInspector(item: item)
@@ -20,14 +31,11 @@ struct LibraryInspector: View {
             } else {
                 emptySelection(Text("Select wallpapers to see what Phosphene can make of them."))
             }
-        } else {
-            let selected = store.selectedVideos
-            if selected.count == 1, let entry = selected.first {
-                VideoInspector(entry: entry)
-            } else if selected.count > 1 {
-                SelectionSummary(count: selected.count, detail: nil)
+        case .catalog:
+            if let item = catalog.selectedItem {
+                CatalogInspector(item: item)
             } else {
-                emptySelection(Text("Select a video to view its details."))
+                emptySelection(Text("Select a wallpaper to view its details."))
             }
         }
     }
@@ -649,6 +657,129 @@ private struct DownloadPreview: View {
             let loaded = await PreviewImage.animatedImage(at: url)
             guard !Task.isCancelled else { return }
             image = loaded
+        }
+    }
+}
+
+// MARK: - Workshop wallpaper
+
+/// One wallpaper on the Steam Workshop: its preview, the way to get it, and its facts.
+private struct CatalogInspector: View {
+    let item: CatalogItem
+
+    @Environment(LibraryStore.self) private var store
+    @Environment(CatalogStore.self) private var catalog
+    @Environment(WorkshopLibrary.self) private var workshop
+
+    var body: some View {
+        let status = catalog.status(of: item.id, downloaded: workshop.item(item.id) == nil ? [] : [item.id])
+        let blocker = workshop.subscribeBlocker
+        ScrollView {
+            VStack(alignment: .leading, spacing: InspectorMetrics.sectionSpacing) {
+                CatalogPreview(url: item.preview, placeholder: item.kind.symbol)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(verbatim: item.title)
+                        .font(.headline)
+                        .lineLimit(3)
+                    action(status, blocker: blocker)
+                }
+                if status == .available, let blocker {
+                    Text(Self.explanation(of: blocker))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                InfoRows(rows: facts)
+                if status != .available || blocker == nil {
+                    Button("Open Workshop Page") { workshop.openWorkshopPage(ofID: item.id) }
+                        .buttonStyle(.link)
+                }
+            }
+            .inspectorPadding()
+        }
+    }
+
+    @ViewBuilder
+    private func action(_ status: CatalogStore.Status, blocker: WorkshopLibrary.SubscribeBlocker?) -> some View {
+        switch status {
+        case .downloaded:
+            Button("Show in All Wallpapers") { store.reveal(downloadID: item.id) }
+        case .getting:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Steam is downloading it")
+                    .foregroundStyle(.secondary)
+            }
+        case .available:
+            if blocker == nil {
+                Button("Get") { catalog.get(item.id) }
+                    .buttonStyle(.borderedProminent)
+                    .help("Subscribe on the Steam Workshop; Steam downloads the wallpaper")
+            } else {
+                Button("Open Workshop Page") { workshop.openWorkshopPage(ofID: item.id) }
+            }
+        }
+    }
+
+    private static func explanation(of blocker: WorkshopLibrary.SubscribeBlocker) -> LocalizedStringKey {
+        switch blocker {
+        case .sevofluraneMissing:
+            "Phosphene gets wallpapers through Sevoflurane, which runs Windows Steam on your Mac."
+        case .sevofluraneOutdated:
+            "Update Sevoflurane to get wallpapers from here."
+        case .wallpaperEngineMissing:
+            "Install Wallpaper Engine in Sevoflurane’s Steam to get wallpapers from here."
+        }
+    }
+
+    private var facts: [InfoRow] {
+        [
+            InfoRow(label: String(localized: "Type"), value: item.kind.name),
+            InfoRow(
+                label: String(localized: "Size"),
+                value: ByteCountFormatter.string(fromByteCount: item.fileSize, countStyle: .file),
+            ),
+            InfoRow(label: String(localized: "Subscribers"), value: item.subscriptions.formatted()),
+            InfoRow(
+                label: String(localized: "Updated"), value: item.updated.formatted(date: .abbreviated, time: .omitted),
+            ),
+        ]
+    }
+}
+
+/// A Workshop wallpaper's preview, square as authors upload them.
+private struct CatalogPreview: View {
+    let url: URL?
+    let placeholder: String
+
+    @State private var image: NSImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Rectangle()
+                    .fill(.black)
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            } else {
+                Rectangle()
+                    .fill(.quaternary)
+                Image(systemName: placeholder)
+                    .font(.title)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: InspectorMetrics.previewRadius, style: .continuous))
+        .accessibilityLabel("Preview")
+        .task(id: url) {
+            image = ThumbnailCache.cached(url)
+            if image == nil {
+                image = await ThumbnailCache.image(at: url)
+            }
         }
     }
 }

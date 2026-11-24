@@ -15,6 +15,8 @@ enum LibrarySection: Hashable, RawRepresentable {
     case workshopReady
     /// One Steam library or added folder, by ``WorkshopSource/id``.
     case workshopSource(String)
+    /// The Steam Workshop's listing of Wallpaper Engine wallpapers.
+    case catalog
 
     init?(rawValue: String) {
         switch rawValue {
@@ -22,6 +24,7 @@ enum LibrarySection: Hashable, RawRepresentable {
         case "inUse": self = .inUse
         case "workshop": self = .workshopAll
         case "workshop.ready": self = .workshopReady
+        case "workshop.catalog": self = .catalog
         default:
             guard rawValue.hasPrefix("source:") else { return nil }
             self = .workshopSource(String(rawValue.dropFirst("source:".count)))
@@ -35,14 +38,25 @@ enum LibrarySection: Hashable, RawRepresentable {
         case .workshopAll: "workshop"
         case .workshopReady: "workshop.ready"
         case let .workshopSource(id): "source:\(id)"
+        case .catalog: "workshop.catalog"
         }
     }
 
-    /// Whether the section lists Wallpaper Engine downloads rather than library videos.
-    var isWorkshop: Bool {
+    /// What a section lists.
+    enum Content {
+        /// The library's videos.
+        case videos
+        /// Wallpaper Engine wallpapers on this Mac.
+        case downloads
+        /// Wallpapers on the Steam Workshop.
+        case catalog
+    }
+
+    var content: Content {
         switch self {
-        case .allVideos, .inUse: false
-        case .workshopAll, .workshopReady, .workshopSource: true
+        case .allVideos, .inUse: .videos
+        case .workshopAll, .workshopReady, .workshopSource: .downloads
+        case .catalog: .catalog
         }
     }
 }
@@ -170,6 +184,10 @@ nonisolated struct LibraryTileModel: Identifiable, Equatable {
         case failed
         case unsupported
         case waiting
+        /// Asked of Steam, with the download yet to arrive.
+        case getting
+        /// A Workshop wallpaper that is on this Mac.
+        case downloaded
         /// Work on the item, with its completed fraction.
         case working(label: String, progress: Double)
     }
@@ -180,6 +198,9 @@ nonisolated struct LibraryTileModel: Identifiable, Equatable {
         case fill
         /// Fit at no more than one image pixel per screen pixel: a Workshop preview.
         case actualSize
+        /// Scaled to fit the tile, small images enlarged: the Workshop listing, whose
+        /// previews are squares of a few hundred pixels.
+        case fit
     }
 
     let id: String

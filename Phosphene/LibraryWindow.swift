@@ -13,6 +13,7 @@ struct LibraryWindow: View {
         LibraryRoot(initialSelectionID: initialSelectionID)
             .environment(manager)
             .environment(manager.library)
+            .environment(manager.library.catalog)
             .environment(manager.workshop)
     }
 }
@@ -176,13 +177,23 @@ private struct LibraryDetail: View {
             .searchable(
                 text: $store.search,
                 placement: .toolbar,
-                prompt: store.section.isWorkshop ? Text("Search Wallpapers") : Text("Search Videos"),
+                prompt: searchPrompt,
             )
             .toolbar { LibraryToolbar() }
     }
 
+    private var searchPrompt: Text {
+        switch store.section.content {
+        case .videos: Text("Search Videos")
+        case .downloads: Text("Search Wallpapers")
+        case .catalog: Text("Search the Workshop")
+        }
+    }
+
     private var title: String {
         switch store.section {
+        case .catalog:
+            String(localized: "Workshop")
         case .allVideos:
             String(localized: "All Videos")
         case .inUse:
@@ -200,22 +211,11 @@ private struct LibraryDetail: View {
 /// The current section's rows, or what to do when it has none.
 private struct LibraryContent: View {
     @Environment(LibraryStore.self) private var store
-    @Environment(WorkshopLibrary.self) private var workshop
+    @Environment(CatalogStore.self) private var catalog
 
     var body: some View {
-        if store.section.isWorkshop {
-            let rows = store.workshopRows
-            Group {
-                if !rows.isEmpty {
-                    WorkshopBrowser(rows: rows)
-                } else if !store.search.isEmpty {
-                    ContentUnavailableView.search(text: store.search)
-                } else {
-                    WorkshopEmptyState()
-                }
-            }
-            .navigationSubtitle(Text("\(rows.count) wallpapers"))
-        } else {
+        switch store.section.content {
+        case .videos:
             let rows = store.videoRows
             Group {
                 if !rows.isEmpty {
@@ -227,7 +227,29 @@ private struct LibraryContent: View {
                 }
             }
             .navigationSubtitle(videoSubtitle(rows))
+        case .downloads:
+            let rows = store.workshopRows
+            Group {
+                if !rows.isEmpty {
+                    WorkshopBrowser(rows: rows)
+                } else if !store.search.isEmpty {
+                    ContentUnavailableView.search(text: store.search)
+                } else {
+                    WorkshopEmptyState()
+                }
+            }
+            .navigationSubtitle(Text("\(rows.count) wallpapers"))
+        case .catalog:
+            CatalogBrowser()
+                .navigationSubtitle(catalogSubtitle)
         }
+    }
+
+    /// How many wallpapers the listing holds, in short form: "2.6M wallpapers".
+    private var catalogSubtitle: String {
+        guard catalog.total > 0 else { return "" }
+        let count = catalog.total.formatted(.number.notation(.compactName))
+        return String(localized: "\(count) wallpapers")
     }
 
     private func videoSubtitle(_ rows: [VideoRow]) -> String {
@@ -242,23 +264,39 @@ private struct LibraryContent: View {
 
 private struct LibraryToolbar: ToolbarContent {
     @Environment(LibraryStore.self) private var store
+    @Environment(CatalogStore.self) private var catalog
 
     var body: some ToolbarContent {
         @Bindable var store = store
-        ToolbarItem {
-            Picker("View", selection: $store.viewMode) {
-                Label("Icons", systemImage: "square.grid.2x2")
-                    .accessibilityLabel("Icons")
-                    .tag(LibraryViewMode.icons)
-                Label("List", systemImage: "list.bullet")
-                    .accessibilityLabel("List")
-                    .tag(LibraryViewMode.list)
+        @Bindable var catalog = catalog
+        let content = store.section.content
+        if content == .catalog {
+            ToolbarItem {
+                Picker("Sort", selection: $catalog.sort) {
+                    ForEach(CatalogSort.allCases, id: \.self) { sort in
+                        Text(verbatim: sort.name).tag(sort)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(catalog.isSearching)
+                .help("Sort the Workshop’s wallpapers")
             }
-            .pickerStyle(.segmented)
-            .help("Show as icons or as a list")
+        } else {
+            ToolbarItem {
+                Picker("View", selection: $store.viewMode) {
+                    Label("Icons", systemImage: "square.grid.2x2")
+                        .accessibilityLabel("Icons")
+                        .tag(LibraryViewMode.icons)
+                    Label("List", systemImage: "list.bullet")
+                        .accessibilityLabel("List")
+                        .tag(LibraryViewMode.list)
+                }
+                .pickerStyle(.segmented)
+                .help("Show as icons or as a list")
+            }
         }
         ToolbarSpacer(.fixed)
-        if store.section.isWorkshop {
+        if content == .downloads {
             ToolbarItem {
                 // Prominent only while it can act: a filled button reads as the action to take.
                 if store.renderableSelection.isEmpty {
@@ -270,7 +308,7 @@ private struct LibraryToolbar: ToolbarContent {
                         .buttonStyle(.glassProminent)
                 }
             }
-        } else {
+        } else if content == .videos {
             ToolbarItem {
                 Button("Add Video", systemImage: "plus") {
                     store.addVideo()
@@ -329,7 +367,7 @@ private struct LibraryStatusBar: View {
                 WallpaperPlacementHelpButton()
             }
             Spacer(minLength: 0)
-            if store.viewMode == .icons {
+            if store.showsIcons {
                 // The slider goes when the column is too narrow for it, so the status bar
                 // never sets the detail column's minimum width.
                 ViewThatFits(in: .horizontal) {
@@ -479,10 +517,10 @@ struct LibraryCommands: Commands {
             Divider()
             Button("Quick Look") { store?.toggleQuickLook() }
                 .keyboardShortcut("y")
-                .disabled(!(store?.hasSelection ?? false))
+                .disabled(!(store?.hasLocalSelection ?? false))
             Button("Show in Finder") { store?.showSelectionInFinder() }
                 .keyboardShortcut("r")
-                .disabled(!(store?.hasSelection ?? false))
+                .disabled(!(store?.hasLocalSelection ?? false))
             Button("Delete…") { store?.requestDelete() }
                 .keyboardShortcut(.delete)
                 .disabled(store?.videoSelection.isEmpty ?? true)
@@ -499,10 +537,10 @@ struct LibraryCommands: Commands {
             }
             Button("Make Icons Larger") { store?.stepIconSize(by: 1) }
                 .keyboardShortcut("+")
-                .disabled(store?.viewMode != .icons)
+                .disabled(store?.showsIcons != true)
             Button("Make Icons Smaller") { store?.stepIconSize(by: -1) }
                 .keyboardShortcut("-")
-                .disabled(store?.viewMode != .icons)
+                .disabled(store?.showsIcons != true)
             Divider()
         }
         SidebarCommands()

@@ -6,6 +6,8 @@ import SwiftUI
 @Observable
 final class LibraryStore {
     @ObservationIgnored private unowned let manager: PhospheneManager
+    /// The Steam Workshop listing the Workshop section browses.
+    @ObservationIgnored let catalog: CatalogStore
 
     private enum Key {
         static let viewMode = "libraryViewMode"
@@ -84,6 +86,7 @@ final class LibraryStore {
 
     init(manager: PhospheneManager) {
         self.manager = manager
+        catalog = CatalogStore(workshop: manager.workshop)
         let defaults = UserDefaults.standard
         section = defaults.string(forKey: LibrarySection.storageKey).flatMap(LibrarySection.init(rawValue:)) ?? .allVideos
         viewMode = defaults.string(forKey: Key.viewMode).flatMap(LibraryViewMode.init(rawValue:)) ?? .icons
@@ -196,7 +199,17 @@ final class LibraryStore {
     }
 
     var hasSelection: Bool {
-        section.isWorkshop ? !workshop.staged.isEmpty : !videoSelection.isEmpty
+        !selection.isEmpty
+    }
+
+    /// Whether the section shows as a grid of icons: the Workshop listing always does.
+    var showsIcons: Bool {
+        viewMode == .icons || section.content == .catalog
+    }
+
+    /// Whether the selection is files on this Mac, which Quick Look and Finder can show.
+    var hasLocalSelection: Bool {
+        section.content != .catalog && hasSelection
     }
 
     // MARK: - Loading
@@ -223,25 +236,49 @@ final class LibraryStore {
         videoSelection = [videoID]
     }
 
+    /// Show one Wallpaper Engine wallpaper selected in All Wallpapers.
+    func reveal(downloadID: String) {
+        guard workshop.item(downloadID) != nil else { return }
+        section = .workshopAll
+        workshop.staged = [downloadID]
+    }
+
     // MARK: - Selection
 
     private var orderedIDs: [String] {
-        section.isWorkshop ? workshopRows.map(\.id) : videoRows.map(\.id)
+        switch section.content {
+        case .videos: videoRows.map(\.id)
+        case .downloads: workshopRows.map(\.id)
+        case .catalog: catalog.items.map(\.id)
+        }
     }
 
-    private var selection: Set<String> {
-        get { section.isWorkshop ? workshop.staged : videoSelection }
+    /// The current section's selection.
+    private(set) var selection: Set<String> {
+        get {
+            switch section.content {
+            case .videos: videoSelection
+            case .downloads: workshop.staged
+            case .catalog: catalog.selection
+            }
+        }
         set {
-            if section.isWorkshop {
-                workshop.staged = newValue
-            } else {
-                videoSelection = newValue
+            switch section.content {
+            case .videos: videoSelection = newValue
+            case .downloads: workshop.staged = newValue
+            case .catalog: catalog.selection = newValue
             }
         }
     }
 
-    /// A click on a grid tile, with Finder's modifier rules.
+    /// A click on a grid tile, with Finder's modifier rules. The Workshop listing selects
+    /// one wallpaper at a time.
     func click(_ id: String) {
+        guard section.content != .catalog else {
+            selection = [id]
+            anchor = id
+            return
+        }
         var current = selection
         GridSelection.click(id, in: orderedIDs, selection: &current, anchor: &anchor)
         selection = current
@@ -291,13 +328,16 @@ final class LibraryStore {
             quickLookURL = nil
             return
         }
-        if section.isWorkshop {
-            let item = id.flatMap(workshop.item) ?? workshopRows.first { workshop.staged.contains($0.id) }?.item
-            quickLookURL = item.flatMap(quickLookURL(for:))
-        } else {
+        switch section.content {
+        case .videos:
             let entry = id.flatMap { id in entries.first { $0.id == id } }
                 ?? videoRows.first { videoSelection.contains($0.id) }?.entry
             quickLookURL = entry.map(VideoDeploymentService.videoURL(for:))
+        case .downloads:
+            let item = id.flatMap(workshop.item) ?? workshopRows.first { workshop.staged.contains($0.id) }?.item
+            quickLookURL = item.flatMap(quickLookURL(for:))
+        case .catalog:
+            break
         }
     }
 
@@ -320,22 +360,22 @@ final class LibraryStore {
     }
 
     func showInFinder(_ ids: Set<String>) {
-        let urls: [URL] = if section.isWorkshop {
-            workshop.items.filter { ids.contains($0.id) }.map(\.folder)
-        } else {
-            entries.filter { ids.contains($0.id) }.map(VideoDeploymentService.videoURL(for:))
+        let urls: [URL] = switch section.content {
+        case .videos: entries.filter { ids.contains($0.id) }.map(VideoDeploymentService.videoURL(for:))
+        case .downloads: workshop.items.filter { ids.contains($0.id) }.map(\.folder)
+        case .catalog: []
         }
         guard !urls.isEmpty else { return }
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
     func showSelectionInFinder() {
-        showInFinder(section.isWorkshop ? workshop.staged : videoSelection)
+        showInFinder(selection)
     }
 
     /// Ask to delete `ids`, or the selected videos.
     func requestDelete(_ ids: Set<String>? = nil) {
-        guard !section.isWorkshop else { return }
+        guard section.content == .videos else { return }
         let ids = ids ?? videoSelection
         pendingDelete = ids.isEmpty ? nil : ids
     }
@@ -367,7 +407,7 @@ final class LibraryStore {
     /// Ask for the Make Videos sheet for `ids`, or for the selected downloads. Every way
     /// of making a video goes through the sheet, which names the wallpapers and the size.
     func requestMakeVideos(_ ids: Set<String>? = nil) {
-        guard section.isWorkshop else { return }
+        guard section.content == .downloads else { return }
         if let ids, ids != workshop.staged {
             workshop.staged = ids
         }

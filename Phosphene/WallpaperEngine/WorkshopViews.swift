@@ -12,9 +12,29 @@ nonisolated enum PreviewImage {
 
     /// A still of at most `maxPixels` on a side.
     static func thumbnail(at url: URL, maxPixels: Int) -> NSImage? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-              fits(source, within: maxSourcePixels)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
         else { return nil }
+        return thumbnail(of: source, maxPixels: maxPixels)
+    }
+
+    /// A still of at most `maxPixels` on a side, from an image file's bytes.
+    static func thumbnail(of data: Data, maxPixels: Int) -> NSImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary)
+        else { return nil }
+        return thumbnail(of: source, maxPixels: maxPixels)
+    }
+
+    /// The first frame of an image file from its leading bytes, or `nil` when they end
+    /// before the frame does.
+    static func firstFrame(ofPartial data: Data, maxPixels: Int) -> NSImage? {
+        let source = CGImageSourceCreateIncremental(nil)
+        CGImageSourceUpdateData(source, data as CFData, false)
+        guard CGImageSourceGetStatusAtIndex(source, 0) == .statusComplete else { return nil }
+        return thumbnail(of: source, maxPixels: maxPixels)
+    }
+
+    private static func thumbnail(of source: CGImageSource, maxPixels: Int) -> NSImage? {
+        guard fits(source, within: maxSourcePixels) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,

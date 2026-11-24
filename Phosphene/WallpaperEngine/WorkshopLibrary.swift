@@ -104,6 +104,58 @@ final class WorkshopLibrary {
         NSWorkspace.shared.open([steam], withApplicationAt: sevoflurane, configuration: NSWorkspace.OpenConfiguration())
     }
 
+    /// What keeps Phosphene from asking Steam for a Workshop wallpaper itself.
+    enum SubscribeBlocker {
+        case sevofluraneMissing
+        /// The installed Sevoflurane predates its subscribe link.
+        case sevofluraneOutdated
+        /// Sevoflurane's Steam has no Wallpaper Engine, so it downloads no wallpapers.
+        case wallpaperEngineMissing
+    }
+
+    private enum Subscribe {
+        /// The last Sevoflurane release without the subscribe link.
+        static let lastVersionWithout = "1.16.0"
+    }
+
+    /// `nil` when ``subscribe(to:)`` can work: Sevoflurane takes the request and its
+    /// Steam has Wallpaper Engine to download for.
+    var subscribeBlocker: SubscribeBlocker? {
+        guard let sevoflurane = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: WorkshopDiscovery.sevofluraneBundleID,
+        ) else { return .sevofluraneMissing }
+        let version = Bundle(url: sevoflurane)?.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        if version.compare(Subscribe.lastVersionWithout, options: .numeric) != .orderedDescending {
+            return .sevofluraneOutdated
+        }
+        return sources.contains { $0.kind == .sevoflurane && $0.assets != nil } ? nil : .wallpaperEngineMissing
+    }
+
+    /// Ask Sevoflurane's Steam to subscribe to a Workshop wallpaper. Steam downloads it
+    /// into the folder this library watches. Sevoflurane stays in the background. False
+    /// when the request could not be sent.
+    func subscribe(to id: String) -> Bool {
+        guard subscribeBlocker == nil,
+              let sevoflurane = NSWorkspace.shared.urlForApplication(
+                  withBundleIdentifier: WorkshopDiscovery.sevofluraneBundleID,
+              ),
+              let url = URL(string: "sevoflurane://workshop/subscribe?app=\(WorkshopDiscovery.appID)&id=\(id)")
+        else { return false }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        NSWorkspace.shared.open([url], withApplicationAt: sevoflurane, configuration: configuration)
+        return true
+    }
+
+    /// Open a Workshop wallpaper's page by its id, the way ``openWorkshop()`` opens the
+    /// Workshop.
+    func openWorkshopPage(ofID id: String) {
+        guard let steam = URL(string: "steam://url/CommunityFilePage/\(id)"),
+              let web = URL(string: "https://steamcommunity.com/sharedfiles/filedetails/?id=\(id)")
+        else { return }
+        openSteamLink(steam, orWeb: web)
+    }
+
     /// Scratch and output files a bake that never returned (a crash mid-render)
     /// left in the temporary folder. A day old is past any bake still running.
     private nonisolated static func sweepScratch() {

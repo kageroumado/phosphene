@@ -75,6 +75,7 @@
 				WallpaperEngine/WEScene.swift,
 				WallpaperEngine/WEShader.swift,
 				WallpaperEngine/WETexture.swift,
+				WallpaperEngine/WorkshopCatalog.swift,
 				WallpaperEngine/WorkshopDiscovery.swift,
 				WallpaperStoreParser.swift,
 			);
