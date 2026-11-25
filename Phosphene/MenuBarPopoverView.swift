@@ -322,7 +322,6 @@ struct MenuBarPopoverView: View {
         if let justUpdated = updates.justUpdatedVersion {
             Button {
                 WhatsNewWindow.present(version: justUpdated, context: .justUpdated)
-                updates.acknowledgeUpdate()
             } label: {
                 Label("v\(justUpdated)", systemImage: "checkmark")
                     .foregroundStyle(Theme.onAccent)

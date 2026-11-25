@@ -1,7 +1,9 @@
 import AppKit
+import AppUpdater
 import Foundation
 import Observation
 import os
+import SwiftUI
 import Tiptoe
 import TiptoeGitHub
 
@@ -92,6 +94,8 @@ final class SilentUpdates {
     /// applies the user's setting — which never happens in DEBUG, so a development build's
     /// manual check stays a metadata request and cannot download a DMG on the side.
     @ObservationIgnored private let github: TiptoeGitHub
+    @ObservationIgnored private let updater: AppUpdater
+    @ObservationIgnored private var checkingPanel: NSPanel?
     @ObservationIgnored private var mirrorTask: Task<Void, Never>?
     @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
 
@@ -104,7 +108,9 @@ final class SilentUpdates {
     @ObservationIgnored private var checkInFlight: Task<Void, Never>?
 
     private init() {
-        github = TiptoeGitHub(owner: Self.owner, repo: Self.repo, checkInterval: Self.checkInterval)
+        let updater = AppUpdater(owner: Self.owner, repo: Self.repo)
+        self.updater = updater
+        github = TiptoeGitHub(updater: updater, checkInterval: Self.checkInterval)
             .gate("a video optimization is running") { await Self.noOptimizationRunning() }
             .installsAutomatically(false)
         github.onChecksFailing = { error in
@@ -169,6 +175,92 @@ final class SilentUpdates {
         Task(name: "Clear the up-to-date notice") { [weak self] in
             try? await Task.sleep(for: Self.upToDateNotice)
             self?.checkedUpToDate = false
+        }
+    }
+
+    /// Presents the result of an explicit check from the application menu.
+    func checkForUpdates(autoInstall: Bool) {
+        if let checkingPanel {
+            checkingPanel.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let content = NSHostingView(rootView: UpdateCheckProgressView { [weak self] in
+            self?.dismissCheck()
+        })
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: content.fittingSize),
+            styleMask: [.titled], backing: .buffered, defer: false,
+        )
+        panel.title = String(localized: "Software Update")
+        panel.isReleasedWhenClosed = false
+        panel.contentView = content
+        checkingPanel = panel
+        panel.center()
+        panel.makeKeyAndOrderFront(nil)
+
+        Task { [weak panel] in
+            let result: Result<String?, any Error>
+            do {
+                result = try await .success(updater.check()?.version)
+            } catch {
+                result = .failure(error)
+            }
+            // AppUpdater shares its metadata request with the background updater.
+            guard let panel, checkingPanel === panel else { return }
+            dismissCheck()
+            switch result {
+            case let .success(version?):
+                showAvailableUpdate(version: version, autoInstall: autoInstall)
+            case .success(nil):
+                let notice = NSAlert()
+                let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+                notice.messageText = String(localized: "You’re up to date!")
+                notice.informativeText = String(localized: "Phosphene \(version) is currently the newest version available.")
+                notice.runModal()
+            case let .failure(error):
+                let notice = NSAlert()
+                notice.alertStyle = .warning
+                notice.messageText = String(localized: "Couldn’t check for updates")
+                notice.informativeText = error.localizedDescription
+                notice.addButton(withTitle: String(localized: "Try Again"))
+                notice.addButton(withTitle: String(localized: "Cancel")).keyEquivalent = "\u{1b}"
+                if notice.runModal() == .alertFirstButtonReturn {
+                    checkForUpdates(autoInstall: autoInstall)
+                }
+            }
+        }
+    }
+
+    private func dismissCheck() {
+        checkingPanel?.close()
+        checkingPanel = nil
+    }
+
+    private func showAvailableUpdate(version: String, autoInstall: Bool) {
+        dismissFailure()
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Phosphene \(version) is available")
+        alert.alertStyle = .informational
+        #if DEBUG
+            alert.addButton(withTitle: String(localized: "View on GitHub"))
+        #else
+            alert.addButton(withTitle: String(localized: "Update Now"))
+        #endif
+        alert.addButton(withTitle: String(localized: "Later")).keyEquivalent = "\u{1b}"
+        alert.addButton(withTitle: String(localized: "Release Notes"))
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            #if DEBUG
+                NSWorkspace.shared.open(Self.releasesPageURL)
+            #else
+                WhatsNewWindow.present(version: version, context: .updateAvailable(autoInstall: autoInstall))
+                Task { await updateNow() }
+            #endif
+        case .alertThirdButtonReturn:
+            WhatsNewWindow.present(version: version, context: .updateAvailable(autoInstall: autoInstall))
+        default:
+            break
         }
     }
 
@@ -266,5 +358,35 @@ final class SilentUpdates {
     private static func noOptimizationRunning() async -> Bool {
         guard let manager = PhospheneManager.shared else { return false }
         return !manager.isOptimizing
+    }
+}
+
+private struct UpdateCheckProgressView: View {
+    let cancel: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 60, height: 60)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Checking for updates…")
+                    .font(.headline)
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .accessibilityLabel("Checking for updates…")
+                Button(action: cancel) {
+                    Text("Cancel").frame(minWidth: 72)
+                }
+                .keyboardShortcut(.cancelAction)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .frame(width: 400)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

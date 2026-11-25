@@ -62,6 +62,11 @@ enum WhatsNewWindow {
         window = w
         w.makeKeyAndOrderFront(nil)
         NSApp.activate()
+
+        let updates = SilentUpdates.shared
+        if context == .justUpdated, updates.justUpdatedVersion == version {
+            updates.acknowledgeUpdate()
+        }
     }
 
     static func close() {
@@ -115,6 +120,7 @@ struct WhatsNewView: View {
                 .padding(12)
         }
         .frame(width: 480, height: 440)
+        .onExitCommand(perform: onClose)
         .task(id: version) {
             guard notes == nil else { return }
             if let preloadedNotes {
@@ -135,17 +141,19 @@ struct WhatsNewView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(context == .justUpdated ? "Updated to \(version)" : "What's new in \(version)")
                     .font(.title3.weight(.bold))
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
 
-    private var subtitle: String {
+    private var subtitle: String? {
         switch context {
         case .justUpdated:
-            String(localized: "Phosphene updated itself at a quiet moment — here's what changed.")
+            nil
         case .updateAvailable(autoInstall: true):
             String(localized: "It will install itself when your Mac is idle — the wallpaper keeps playing.")
         case .updateAvailable(autoInstall: false):
@@ -193,28 +201,38 @@ struct WhatsNewView: View {
                     .keyboardShortcut(.defaultAction)
             case .updateAvailable:
                 Button("Later") { onClose() }
-                Button {
-                    Task { await installer.updateNow() }
-                } label: {
-                    HStack(spacing: 4) {
-                        if installer.manualPhase == .working {
-                            ProgressView().controlSize(.small)
+                #if !DEBUG
+                    Button {
+                        Task { await installer.updateNow() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if installer.manualPhase == .working {
+                                ProgressView().controlSize(.small)
+                            }
+                            if case .failed = installer.manualPhase {
+                                Text("Try Again")
+                            } else {
+                                Text(installer.manualPhase == .working ? "Updating…" : "Update Now")
+                            }
                         }
-                        Text(installer.manualPhase == .working ? "Updating…" : "Update Now")
                     }
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .disabled(installer.manualPhase == .working)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(installer.manualPhase == .working)
+                #endif
             }
         }
     }
 
     private var showsInstallButton: Bool {
-        if case .updateAvailable = context {
-            return true
-        }
-        return false
+        #if DEBUG
+            return false
+        #else
+            if case .updateAvailable = context {
+                return true
+            }
+            return false
+        #endif
     }
 }
 
