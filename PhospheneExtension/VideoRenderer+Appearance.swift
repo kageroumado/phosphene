@@ -519,6 +519,7 @@ extension VideoRenderer {
     ) {
         guard let source = prepared.reader.asset as? AVURLAsset else { return }
         needsMatchedRecovery = false
+        needsDeepPauseFrameRefresh = false
         renderer.stopRequestingMediaData()
         currentReader?.cancelReading()
         discardNextReader()

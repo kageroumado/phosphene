@@ -74,6 +74,12 @@ final nonisolated class AppearanceTransition: Sendable {
         DispatchQueue.main.async { [presentation] in presentation.reveal() }
     }
 
+    func updateDynamicRange(_ dynamicRange: CALayer.DynamicRange) {
+        DispatchQueue.main.async { [presentation] in
+            presentation.updateDynamicRange(dynamicRange)
+        }
+    }
+
     func cancel() {
         DispatchQueue.main.async { [presentation] in presentation.remove() }
     }
@@ -100,6 +106,11 @@ final nonisolated class AppearanceTransition: Sendable {
             }
             cover = next
             revealing = false
+        }
+
+        func updateDynamicRange(_ dynamicRange: CALayer.DynamicRange) {
+            guard let image = cover?.sublayers?.first else { return }
+            AppearanceTransition.updateLayers { image.preferredDynamicRange = dynamicRange }
         }
 
         func reveal() {

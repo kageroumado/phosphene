@@ -51,6 +51,7 @@ final class VideoRenderer: @unchecked Sendable {
     var settlesAfterSelection = false
     var pairFeedSuspended = false
     var pairReadersReleased = false
+    var needsDeepPauseFrameRefresh = false
     var cutTask: Task<Void, Never>?
     var cutGeneration = 0
     var pendingCut: PreparedAppearanceCut?
