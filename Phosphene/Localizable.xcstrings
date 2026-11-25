@@ -3447,6 +3447,16 @@
         }
       }
     },
+    "Regenerate Variants": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新生成优化版本"
+          }
+        }
+      }
+    },
     "Remove": {
       "localizations": {
         "zh-Hans": {

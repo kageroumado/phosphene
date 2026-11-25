@@ -358,56 +358,73 @@ struct VideoInspector: View {
             }
             Button("Cancel") { manager.cancelOptimization() }
                 .frame(maxWidth: .infinity, alignment: .trailing)
-        } else if !target.tiers.isEmpty {
-            let variants = target.tiers
-            if entry.sourceIsHDR == true {
-                Text(target.convertedToSDR ? "Optimized · SDR" : "Optimized · HDR")
-                    .font(.callout)
-            }
-            InfoRows(rows: variants.map { variant in
-                InfoRow(
-                    label: String(localized: "\(variant.fps) fps"),
-                    value: "\(Int(variant.resolution.width)) × \(Int(variant.resolution.height))",
-                )
-            })
-            Button("Remove Variants") { confirmingRemoveVariants = true }
-                .alert("Remove Variants", isPresented: $confirmingRemoveVariants) {
-                    Button("Remove", role: .destructive) { manager.removeVariants(for: target) }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    if pair != nil {
-                        Text("This will remove the optimized versions of both videos and keep the original pair.")
-                    } else {
-                        let rates = variants.map { String(localized: "\($0.fps) fps") }
-                        Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
-                    }
-                }
         } else {
-            let unavailable = target.eligibilityError
-            Menu("Create Variants") {
+            let target = target
+            let variants = target.tiers
+            let storedTiers = target.storedTiers
+            if variants.isEmpty {
+                optimizationMenu(for: target, regenerating: !storedTiers.isEmpty)
+            } else {
                 if entry.sourceIsHDR == true {
-                    Toggle("Convert to SDR", isOn: Binding(
-                        get: { sdrTargetID == target.id },
-                        set: { sdrTargetID = $0 ? target.id : nil },
-                    ))
-                    Divider()
+                    Text(target.convertedToSDR ? "Optimized · SDR" : "Optimized · HDR")
+                        .font(.callout)
                 }
-                ForEach(OptimizationPreset.allCases) { preset in
-                    Button {
-                        manager.optimize(target, preset: preset, convertToSDR: sdrTargetID == target.id)
-                    } label: {
-                        Text(preset.title)
-                        Text(preset.description)
+                InfoRows(rows: variants.map { variant in
+                    InfoRow(
+                        label: String(localized: "\(variant.fps) fps"),
+                        value: "\(Int(variant.resolution.width)) × \(Int(variant.resolution.height))",
+                    )
+                })
+            }
+            if !storedTiers.isEmpty {
+                Button("Remove Variants") { confirmingRemoveVariants = true }
+                    .alert("Remove Variants", isPresented: $confirmingRemoveVariants) {
+                        Button("Remove", role: .destructive) { manager.removeVariants(for: target) }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        if pair != nil {
+                            Text("This will remove the optimized versions of both videos and keep the original pair.")
+                        } else {
+                            let rates = storedTiers.map { String(localized: "\($0.fps) fps") }
+                            Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
+                        }
                     }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func optimizationMenu(for target: VideoOptimizationTarget, regenerating: Bool) -> some View {
+        let unavailable = target.eligibilityError
+        Menu {
+            if entry.sourceIsHDR == true {
+                Toggle("Convert to SDR", isOn: Binding(
+                    get: { sdrTargetID == target.id },
+                    set: { sdrTargetID = $0 ? target.id : nil },
+                ))
+                Divider()
+            }
+            ForEach(OptimizationPreset.allCases) { preset in
+                Button {
+                    manager.optimize(target, preset: preset, convertToSDR: sdrTargetID == target.id)
+                } label: {
+                    Text(preset.title)
+                    Text(preset.description)
                 }
             }
-            .fixedSize()
-            .disabled(unavailable != nil || manager.isOptimizing)
-            if let unavailable {
-                Text(unavailable.localizedDescription)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+        } label: {
+            if regenerating {
+                Text("Regenerate Variants")
+            } else {
+                Text("Create Variants")
             }
+        }
+        .fixedSize()
+        .disabled(unavailable != nil || manager.isOptimizing)
+        if let unavailable {
+            Text(unavailable.localizedDescription)
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
     }
 }
