@@ -23,8 +23,10 @@ struct VideoOptimizationTarget {
     }
 
     private var playableVariants: [VideoVariant] {
-        (entry.variants ?? []).filter {
-            $0.fps > 0 && PathSafety.isSafeComponent($0.filename) && $0.supports(sourceIsHDR: entry.sourceIsHDR)
+        let library = VideoDeploymentService.videosFolderURL
+        let directory = library.appendingPathComponent(entry.id, isDirectory: true)
+        return (entry.variants ?? []).filter {
+            $0.supports(sourceIsHDR: entry.sourceIsHDR) && $0.isAvailable(in: directory, library: library)
         }
     }
 
@@ -67,15 +69,12 @@ struct VideoOptimizationTarget {
             } else {
                 let inspected = try await ConversionSource.inspect(url: source, name: entry.name)
                 guard inspected.identity == identity else { throw PairIssue.changed }
-                guard inspected.range == nil || inspected.range == .sdr else {
-                    throw VideoOptimizationService.OptimizationError.unsupportedDynamicRange
-                }
                 try Task.checkCancellation()
                 if inspected.range == nil, !confirmUntaggedSDR() {
                     return
                 }
                 guard FileIdentity(of: source) == identity else { throw PairIssue.changed }
-                sourceIsHDR = false
+                sourceIsHDR = inspected.range == .hlg || inspected.range == .pq
             }
             let variants = try await VideoOptimizationService.createVariants(
                 sourceURL: source, sourceIsHDR: sourceIsHDR, targetResolution: targetSize,
