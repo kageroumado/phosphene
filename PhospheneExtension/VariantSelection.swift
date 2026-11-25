@@ -1,14 +1,3 @@
-import CoreGraphics
-import Foundation
-
-struct VideoVariant: Codable, Equatable {
-    let filename: String
-    let fps: Int
-    let resolution: CGSize
-    var isHDR: Bool? = nil // Encoded output.
-    var toneMappedToSDR: Bool? = nil // Explicit HDR-to-SDR conversion.
-}
-
 /// Picks the variant to play for a playback policy — the pure half of
 /// `VideoLibrary.bestVariantURL`, separated so it can be tested.
 enum VariantSelection {
@@ -42,19 +31,6 @@ enum VariantSelection {
             return sorted.first { $0[keyPath: fps] < sourceFPS } ?? sorted.last
         case .minimal:
             return sorted.last
-        }
-    }
-}
-
-extension VideoVariant {
-    func supports(sourceIsHDR: Bool?) -> Bool {
-        switch sourceIsHDR {
-        case true?:
-            isHDR == true || (isHDR == false && toneMappedToSDR == true)
-        case false?:
-            isHDR != true && toneMappedToSDR != true
-        case nil:
-            isHDR == nil && toneMappedToSDR == nil
         }
     }
 }

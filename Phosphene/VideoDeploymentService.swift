@@ -328,10 +328,10 @@ enum VideoDeploymentService {
     /// Deploy optimized variants into an existing entry's directory in the extension container.
     /// Updates metadata.json with the variants array and notifies the extension.
     @MainActor
-    static func deployVariants(entryID: String, source: FileIdentity, variants: [(url: URL, variant: VideoVariant)]) throws {
+    static func deployVariants(entryID: String, source: FileIdentity, sourceIsHDR: Bool, variants: [(url: URL, variant: VideoVariant)]) throws {
         try Task.checkCancellation()
         guard !variants.isEmpty else { return }
-        try publishVariants(entryID: entryID, source: source, variants: variants)
+        try publishVariants(entryID: entryID, source: (source, sourceIsHDR), variants: variants)
         notifyExtensionLibraryChanged()
     }
 
@@ -343,14 +343,16 @@ enum VideoDeploymentService {
         notifyExtensionLibraryChanged()
     }
 
-    private static func publishVariants(entryID: String, source: FileIdentity?, variants: [(url: URL, variant: VideoVariant)]) throws {
+    private static func publishVariants(
+        entryID: String, source: (identity: FileIdentity, isHDR: Bool)?, variants: [(url: URL, variant: VideoVariant)],
+    ) throws {
         let fm = FileManager.default
         guard let dir = validatedEntryDir(entryID) else { throw CocoaError(.fileWriteInvalidFileName) }
         try AppearancePair.withLibraryLock(in: videosFolderURL) {
             try AppearancePair.requireSingle(entryID, in: videosFolderURL)
             let stagingPrefix = ".single-variants-"
             PathSafety.pruneDirectories(in: videosFolderURL, prefix: stagingPrefix)
-            var metadata = try readEntry(entryID, in: dir, matching: source)
+            var metadata = try readEntry(entryID, in: dir, matching: source?.identity)
             let incoming = variants.map(\.variant)
             let protected = [metadata.filename, "metadata.json", "thumbnail.jpg", workshopRecordName]
             func isVariantName(_ name: String) -> Bool {
@@ -358,13 +360,14 @@ enum VideoDeploymentService {
                     !protected.contains { name.caseInsensitiveCompare($0) == .orderedSame }
             }
             guard incoming.allSatisfy({ isVariantName($0.filename) }) else { throw CocoaError(.fileWriteInvalidFileName) }
-            guard incoming.allSatisfy({ variant in
-                switch metadata.sourceIsHDR {
-                case true?: variant.isHDR == true || (variant.isHDR == false && variant.toneMappedToSDR == true)
-                case false?: variant.isHDR != true && variant.toneMappedToSDR != true
-                case nil: false
+            if let source {
+                guard metadata.sourceIsHDR == source.isHDR || (metadata.sourceIsHDR == nil && !source.isHDR),
+                      incoming.allSatisfy({ $0.isHDR != nil && $0.supports(sourceIsHDR: source.isHDR) }) else {
+                    throw VideoOptimizationService.OptimizationError.unsupportedDynamicRange
                 }
-            }) else { throw VideoOptimizationService.OptimizationError.unsupportedDynamicRange }
+                // Save the confirmed interpretation with the tiers that depend on it.
+                metadata.sourceIsHDR = source.isHDR
+            }
 
             let staging = videosFolderURL.appendingPathComponent(stagingPrefix + UUID().uuidString, isDirectory: true)
             try fm.createDirectory(at: staging, withIntermediateDirectories: false)
@@ -389,8 +392,8 @@ enum VideoDeploymentService {
             metadata.variants = incoming.isEmpty ? nil : incoming
             try JSONEncoder().encode(metadata).write(to: staging.appendingPathComponent("metadata.json"))
             if let source {
-                guard FileIdentity(of: videoURL(for: metadata)) == source,
-                      FileIdentity(of: staging.appendingPathComponent(metadata.filename)) == source else { throw PairIssue.changed }
+                guard FileIdentity(of: videoURL(for: metadata)) == source.identity,
+                      FileIdentity(of: staging.appendingPathComponent(metadata.filename)) == source.identity else { throw PairIssue.changed }
             }
             try Task.checkCancellation()
             // Keep the source inode and publish the variant files and metadata together.

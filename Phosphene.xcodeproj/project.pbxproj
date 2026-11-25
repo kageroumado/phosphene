@@ -55,6 +55,7 @@
 				AppearancePair.swift,
 				FileIdentity.swift,
 				HDRMode.swift,
+				VideoVariant.swift,
 			);
 			target = AA9B91C82E900B9E008812A9 /* Phosphene */;
 		};
@@ -70,6 +71,7 @@
 				PlaybackPolicy.swift,
 				RampMath.swift,
 				VariantSelection.swift,
+				VideoVariant.swift,
 			);
 			target = 7E5700000000000000000A03 /* PhospheneTests */;
 		};

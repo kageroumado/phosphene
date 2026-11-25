@@ -4,15 +4,6 @@ import CoreVideo
 import os
 import VideoToolbox
 
-/// Video variant descriptor matching the extension's VideoVariant type.
-nonisolated struct VideoVariant: Codable, Sendable {
-    let filename: String
-    let fps: Int
-    let resolution: CGSize
-    var isHDR: Bool? = nil
-    var toneMappedToSDR: Bool? = nil
-}
-
 enum OptimizationPreset: String, CaseIterable, Identifiable {
     case batterySaver = "Battery Saver"
     case balanced = "Balanced"
@@ -73,8 +64,7 @@ enum VideoOptimizationService {
         }
     }
 
-    nonisolated static func eligibilityError(sourceIsHDR: Bool?, resolution: CGSize) -> OptimizationError? {
-        guard sourceIsHDR != nil else { return .unsupportedDynamicRange }
+    nonisolated static func resolutionError(_ resolution: CGSize) -> OptimizationError? {
         guard resolution.width.isFinite, resolution.width >= 1,
               resolution.height.isFinite, resolution.height >= 1,
               resolution.width <= CGFloat(Int32.max), resolution.height <= CGFloat(Int32.max) else { return .missingResolution }
@@ -214,6 +204,7 @@ enum VideoOptimizationService {
     @concurrent
     static func createVariants(
         sourceURL: URL,
+        sourceIsHDR: Bool,
         targetResolution: CGSize,
         outputDirectory: URL,
         forPair: Bool = false,
@@ -221,18 +212,20 @@ enum VideoOptimizationService {
         progress: @escaping @MainActor @Sendable (Double) -> Void,
     ) async throws -> [(url: URL, variant: VideoVariant)] {
         let asset = AVURLAsset(url: sourceURL, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
-        let source = try await loadSource(in: asset)
+        let source = try await loadSource(in: asset, assumeSDR: !forPair && !sourceIsHDR)
         let videoTrack = source.track
         let hdr = source.hdr
-        let sourceIsHDR = hdr != nil
-        if let error = eligibilityError(sourceIsHDR: sourceIsHDR, resolution: targetResolution) {
+        guard sourceIsHDR == (hdr != nil) else { throw OptimizationError.unsupportedDynamicRange }
+        if let error = resolutionError(targetResolution) {
             throw error
         }
         let toneMap = sourceIsHDR && convertToSDR
         let outputHDR = toneMap ? nil : hdr
-        let format = OutputFormat(codec: outputHDR == nil ? .h264 : .hevc, hdr: outputHDR, explicitSDR: toneMap || forPair)
-        let renderer = toneMap ? ConversionFrameRenderer.Configuration(range: .sdr, sourceIsHDR: true) : nil
-        let transform = sourceIsHDR || forPair ? try await videoTrack.load(.preferredTransform) : .identity
+        let renderSDR = toneMap || source.assumesSDR
+        let format = OutputFormat(codec: outputHDR == nil ? .h264 : .hevc, hdr: outputHDR, explicitSDR: renderSDR || forPair)
+        let renderer: ConversionFrameRenderer.Configuration? = renderSDR
+            ? .init(range: .sdr, sourceIsHDR: sourceIsHDR, assumeSDR: source.assumesSDR) : nil
+        let transform = sourceIsHDR || forPair || source.assumesSDR ? try await videoTrack.load(.preferredTransform) : .identity
         let sourceRate = try await videoTrack.load(.nominalFrameRate)
         let sourceSize = try await videoTrack.load(.naturalSize)
         let timeRange = try await videoTrack.load(.timeRange)

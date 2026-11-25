@@ -43,6 +43,14 @@ struct VariantSelectionTests {
     }
 
     @Test
+    func `a new SDR tier is playable after confirming an untagged source as SDR`() {
+        let sdr = VideoVariant(filename: "variant_30fps.mp4", fps: 30, resolution: hd, isHDR: false)
+        #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: nil, sourceFPS: 60, variants: [sdr]) == nil)
+        #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: false, sourceFPS: 60, variants: [sdr]) == sdr)
+        #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: true, sourceFPS: 60, variants: [sdr]) == nil)
+    }
+
+    @Test
     func `cached frame belongs to one source and display size`() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
