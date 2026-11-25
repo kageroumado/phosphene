@@ -8,6 +8,13 @@ enum PrefsSource {
             .appendingPathComponent("phosphene-prefs.json")
     }
 
+    static var showAddVideoPlaceholder: Bool {
+        struct PickerPrefs: Decodable { var showAddVideoPlaceholder: Bool? }
+        guard let data = try? Data(contentsOf: prefsURL),
+              let prefs = try? JSONDecoder().decode(PickerPrefs.self, from: data) else { return true }
+        return prefs.showAddVideoPlaceholder ?? true
+    }
+
     static func start() {
         postCurrent()
         CFNotificationCenterAddObserver(

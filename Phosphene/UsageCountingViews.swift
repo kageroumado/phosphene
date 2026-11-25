@@ -75,29 +75,38 @@ private struct ActiveMacsLine: View {
 
 // MARK: - The setting
 
-/// Usage and crash reporting controls in the popover's settings.
 struct UsageCountingSettings: View {
     @Bindable private var reporting = UsageCounting.shared
     @State private var activeMacs: Int?
-    @State private var showsDetails = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            HStack(alignment: .top, spacing: Theme.Space.sm) {
-                reportingToggle("Count this Mac", isOn: $reporting.consent.usageStatistics, status: reporting.statisticsStatus)
-                reportingToggle("Send crash reports", isOn: $reporting.consent.crashReports, status: reporting.crashStatus)
+        Section {
+            Toggle("Send crash reports", isOn: $reporting.consent.crashReports)
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("""
+                When Phosphene crashes, it sends the crash log, app and macOS versions, hardware details, and \
+                language. Your account name, Mac name, and home folder path are redacted.
+                """)
+                statusNote(reporting.crashStatus)
             }
+            .font(.footnote)
+        }
 
-            VStack(alignment: .leading, spacing: 2) {
+        Section {
+            Toggle("Count this Mac", isOn: $reporting.consent.usageStatistics)
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("""
+                Counts this Mac once per day of use. Each check-in includes the date, app and macOS versions, chip, \
+                memory, language, display count, days active in the past week, and whether you imported videos.
+                """)
                 if reporting.consent.usageStatistics, let activeMacs {
-                    ActiveMacsLine(count: activeMacs)
+                    Text("Yesterday, \(activeMacs) Macs counted themselves in.")
                 }
-                if showsDetails {
-                    details
-                }
-                detailsToggle
+                statusNote(reporting.statisticsStatus)
             }
-            .padding(.horizontal, Theme.Space.xs)
+            .font(.footnote)
         }
         .task(id: reporting.consent.usageStatistics) {
             activeMacs = nil
@@ -109,60 +118,13 @@ struct UsageCountingSettings: View {
         }
     }
 
-    private func reportingToggle(_ title: LocalizedStringKey, isOn: Binding<Bool>, status: DigoxinStatus) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Toggle(title, isOn: isOn)
-            if let statusLine = statusLine(status) {
-                Text(statusLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Theme.Space.xs)
-            }
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    private var detailsToggle: some View {
-        Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showsDetails.toggle() }
-        } label: {
-            HStack(spacing: 3) {
-                Text("What is sent")
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
-                    .rotationEffect(.degrees(showsDetails ? 90 : 0))
-            }
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 2)
-    }
-
-    private var details: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            Text("""
-            Counts this Mac once per day of use. Each check-in includes the date, app and macOS versions, chip, \
-            memory, language, display count, days active in the past week, and whether you imported videos.
-            """)
-            Text("""
-            When Phosphene crashes, it sends the crash log, app and macOS versions, hardware details, and \
-            language. Your account name, Mac name, and home folder path are redacted.
-            """)
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.top, 2)
-    }
-
-    private func statusLine(_ status: DigoxinStatus) -> String? {
+    @ViewBuilder
+    private func statusNote(_ status: DigoxinStatus) -> some View {
         switch status {
-        case .deletionPending: String(localized: "Deletion is pending until the service can be reached.")
-        case .secureEnclaveUnavailable: String(localized: "This Mac has no Secure Enclave, so nothing is sent.")
-        case let .failing(reason): String(localized: "Not sent yet: \(reason)")
-        case .off, .waiting, .registered: nil
+        case .deletionPending: Text("Deletion is pending until the service can be reached.")
+        case .secureEnclaveUnavailable: Text("This Mac has no Secure Enclave, so nothing is sent.")
+        case let .failing(reason): Text("Not sent yet: \(reason)")
+        case .off, .waiting, .registered: EmptyView()
         }
     }
 }

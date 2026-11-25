@@ -11,6 +11,10 @@ import os
 final class WallpaperPrefsService {
     static let shared = WallpaperPrefsService()
 
+    static let wallpaperSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!
+    private static let hostID = "com.apple.wallpaper.agent"
+    private(set) var isRestartingWallpaperServices = false
+
     struct WallpaperSelection: Identifiable, Equatable {
         let id: String // "{displayUUID}" or "{displayUUID}:{spaceUUID}"
         let videoID: String
@@ -24,6 +28,35 @@ final class WallpaperPrefsService {
     }
 
     // MARK: - Prefs (app → extension)
+
+    private(set) var debugLoggingEnabled = false
+
+    func refreshDebugLogging() {
+        debugLoggingEnabled = DebugLogging.isEnabled(in: Self.extensionDocsURL)
+    }
+
+    func setDebugLogging(_ enabled: Bool) {
+        do {
+            try DebugLogging.setEnabled(enabled, in: Self.extensionDocsURL)
+            debugLoggingEnabled = enabled
+        } catch {
+            refreshDebugLogging()
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn’t Change Debug Logging")
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+    }
+
+    private var addVideoPlaceholderEnabled = true
+    var showAddVideoPlaceholder: Bool {
+        get { addVideoPlaceholderEnabled }
+        set {
+            guard newValue != addVideoPlaceholderEnabled, savePrefs(placeholderOverride: newValue) else { return }
+            addVideoPlaceholderEnabled = newValue
+            VideoDeploymentService.refreshWallpaperPicker()
+        }
+    }
 
     var hdrMode: HDRMode = .automatic {
         didSet { guard hdrMode != oldValue else { return }; savePrefs() }
@@ -125,6 +158,7 @@ final class WallpaperPrefsService {
     }
 
     private struct PrefsFile: Codable {
+        var showAddVideoPlaceholder: Bool?
         var hdrMode: String?
         var frameMatchedTransitions: Bool?
         var userPaused: Bool
@@ -235,6 +269,54 @@ final class WallpaperPrefsService {
         try? task.run()
     }
 
+    func restartWallpaperHostAndSettings() async {
+        guard !isRestartingWallpaperServices else { return }
+        isRestartingWallpaperServices = true
+        lastAgentKill = Date()
+        defer { isRestartingWallpaperServices = false }
+        do {
+            let hosts = NSRunningApplication.runningApplications(withBundleIdentifier: Self.hostID)
+            killWallpaperAgent(reason: "manual restart from Tools")
+            try await Self.waitForRestartStep("The wallpaper host did not quit.") {
+                hosts.allSatisfy(\.isTerminated)
+            }
+
+            let settings = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences")
+            for app in settings where !app.isTerminated {
+                app.terminate()
+            }
+            try await Self.waitForRestartStep("System Settings is still open. Finish any open dialog and try again.") {
+                settings.allSatisfy(\.isTerminated)
+            }
+            guard NSWorkspace.shared.open(Self.wallpaperSettingsURL) else {
+                throw RestartError(errorDescription: String(localized: "Wallpaper Settings could not be opened."))
+            }
+            // Opening the pane also requests the launch-on-demand agent when it was not running.
+            try await Self.waitForRestartStep("The wallpaper host did not start.") {
+                NSRunningApplication.runningApplications(withBundleIdentifier: Self.hostID).contains { !$0.isTerminated }
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn’t Complete Restart")
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+    }
+
+    private struct RestartError: LocalizedError {
+        var errorDescription: String?
+    }
+
+    private static func waitForRestartStep(_ message: LocalizedStringResource, until ready: () -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(8)
+        while !ready() {
+            guard ContinuousClock.now < deadline else { throw RestartError(errorDescription: String(localized: message)) }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
     // MARK: - Public
 
     func togglePause() {
@@ -264,6 +346,7 @@ final class WallpaperPrefsService {
         }
         do {
             let prefs = try JSONDecoder().decode(PrefsFile.self, from: data)
+            addVideoPlaceholderEnabled = prefs.showAddVideoPlaceholder ?? true
             hdrMode = prefs.hdrMode.flatMap(HDRMode.init(rawValue:)) ?? .automatic
             frameMatchedTransitions = prefs.frameMatchedTransitions ?? false
             userPaused = prefs.userPaused
@@ -278,9 +361,11 @@ final class WallpaperPrefsService {
         }
     }
 
-    private func savePrefs() {
-        guard !loadingPrefs else { return }
+    @discardableResult
+    private func savePrefs(placeholderOverride: Bool? = nil) -> Bool {
+        guard !loadingPrefs else { return false }
         let prefs = PrefsFile(
+            showAddVideoPlaceholder: placeholderOverride ?? addVideoPlaceholderEnabled,
             hdrMode: hdrMode.rawValue,
             frameMatchedTransitions: frameMatchedTransitions,
             userPaused: userPaused,
@@ -292,9 +377,19 @@ final class WallpaperPrefsService {
             pausedDisplays: pausedDisplays.isEmpty ? nil : pausedDisplays,
             screenSaverIsOurs: screenSaverIsOurs,
         )
-        guard let data = try? JSONEncoder().encode(prefs) else { return }
-        try? data.write(to: Self.prefsURL, options: .atomic)
+        do {
+            if placeholderOverride != nil {
+                try FileManager.default.createDirectory(at: Self.extensionDocsURL, withIntermediateDirectories: true)
+            }
+            try JSONEncoder().encode(prefs).write(to: Self.prefsURL, options: .atomic)
+        } catch {
+            Log.general.error("Failed to save wallpaper preferences: \(error)")
+            return false
+        }
 
+        if placeholderOverride != nil {
+            return true
+        }
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterPostNotification(
             center,
@@ -303,6 +398,7 @@ final class WallpaperPrefsService {
             nil,
             true,
         )
+        return true
     }
 
     // MARK: - State Observation
@@ -447,13 +543,7 @@ final class WallpaperPrefsService {
             return [:]
         }
 
-        // Each monitor record is keyed by its display's UUID, except the primary
-        // display's, which is "Main". When Spaces span every display, "Main" is the
-        // only record holding Spaces and its Spaces belong to all displays.
-        let separateSpaces = monitors.contains { monitor in
-            (monitor["Display Identifier"] as? String) != "Main"
-                && !((monitor["Spaces"] as? [[String: Any]]) ?? []).isEmpty
-        }
+        let separateSpaces = NSScreen.screensHaveSeparateSpaces
         let mainDisplayID = CGMainDisplayID()
         let mainDisplayUUID = displayMap.first { $0.value.displayID == mainDisplayID }?.key
 
@@ -461,7 +551,11 @@ final class WallpaperPrefsService {
         for monitor in monitors {
             guard let spaces = monitor["Spaces"] as? [[String: Any]] else { continue }
             let identifier = monitor["Display Identifier"] as? String
-            let owner = identifier == "Main" ? (separateSpaces ? mainDisplayUUID : nil) : identifier?.uppercased()
+            let displayUUID = identifier == "Main" ? mainDisplayUUID : identifier?.uppercased()
+            if separateSpaces, displayUUID == nil {
+                continue
+            }
+            let owner = separateSpaces ? displayUUID : nil
             for (index, space) in spaces.enumerated() {
                 if let uuid = space["uuid"] as? String {
                     map[uuid] = WallpaperStoreParser.SpaceInfo(

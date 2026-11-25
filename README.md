@@ -35,6 +35,8 @@ Select two videos in the Library to create a light/dark pair. Compatible videos 
 
 HDR playback supports HLG and PQ. **Dynamic Range** controls highlight brightness at playback time. When creating optimized versions, **Convert to SDR** tone-maps the output to Rec. 709 and keeps the HDR original.
 
+Open **Tools → Custom Conversion…** to convert a single clip, or **Tools → Light/Dark Pair Converter…** to create a matched pair. Playback settings are in **Settings → Playback**.
+
 ## Wallpaper Engine
 
 ![Phosphene’s library at its Wallpaper Engine section, with Steam Workshop downloads ready to become videos](.github/phosphene-library.png)
@@ -47,7 +49,7 @@ Wallpaper Engine is a trademark of Wallpaper Engine Team; Steam is a trademark o
 
 ## Counting
 
-The menu bar asks once whether to count this Mac. In the popover’s settings, **Count this Mac** and **Send crash reports** are separate opt-in choices.
+The menu bar asks once whether to count this Mac. In **Settings → Privacy**, **Count this Mac** and **Send crash reports** are separate opt-in choices.
 
 - **Count this Mac** sends one anonymous check-in per day of use. It includes the Phosphene and macOS versions, chip family, memory size, language, date, days active in the last week, display count, and whether you imported videos. It does not include which videos you use.
 - **Send crash reports** sends a scrubbed report when Phosphene itself crashes, with the account name, Mac name, and home folder path redacted.

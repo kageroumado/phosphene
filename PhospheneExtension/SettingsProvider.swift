@@ -47,7 +47,7 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     }
 
     // Never serve an empty group: the host can cache it until an OS update or reinstall (issue #27).
-    if items.isEmpty, let placeholder = makeAddVideoItem(bundleID: bundleID, contextMenu: addVideoMenu) {
+    if items.isEmpty, PrefsSource.showAddVideoPlaceholder, let placeholder = makeAddVideoItem(bundleID: bundleID, contextMenu: addVideoMenu) {
         items.append(placeholder)
     }
 

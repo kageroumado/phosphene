@@ -98,6 +98,15 @@ struct PhospheneApp: App {
                     }
                 }
             }
+            CommandMenu("Tools") {
+                Button("Custom Conversion…") { openWindow(id: "custom-conversion") }
+                Button("Light/Dark Pair Converter…") { openWindow(value: PairConverterRequest.blank) }
+                Divider()
+                Button("Restart Wallpaper Host and System Settings") {
+                    Task { await WallpaperPrefsService.shared.restartWallpaperHostAndSettings() }
+                }
+                .disabled(WallpaperPrefsService.shared.isRestartingWallpaperServices)
+            }
         }
 
         Window("Custom Conversion", id: "custom-conversion") {
@@ -112,6 +121,10 @@ struct PhospheneApp: App {
         .commandsRemoved()
         .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: 660, height: 740)
+
+        Settings {
+            PhospheneSettingsView(manager: manager)
+        }
     }
 
     private static let aboutCredits: NSAttributedString = {

@@ -1,4 +1,3 @@
-import AVKit
 import Propofol
 import SwiftUI
 
@@ -6,17 +5,7 @@ struct MenuBarPopoverView: View {
     @Bindable var manager: PhospheneManager
     var openLibrary: () -> Void = {}
     @State private var selectedIndex = 0
-    @State private var isHoveringVersion = false
-
-    private enum Layout {
-        /// Tighter than `Theme.Space.sm`: the footer must still fit the popover's width while
-        /// the version chip is widened into its Auto-Update switch.
-        static let footerSpacing: CGFloat = 6
-        /// The rule between the version chip's two targets, shorter than the chip so it reads
-        /// as a divider rather than a seam.
-        static let chipDividerHeight: CGFloat = 12
-        static let chipIconSize: CGFloat = 11
-    }
+    @Environment(\.openSettings) private var openSettings
 
     private var prefsService: WallpaperPrefsService {
         manager.prefsService
@@ -35,10 +24,8 @@ struct MenuBarPopoverView: View {
                     emptyStateSection
                 } else {
                     heroSection
-                    playbackScopePicker
                 }
 
-                settingsSection
                 footerSection
             }
             .popoverContainer()
@@ -184,19 +171,6 @@ struct MenuBarPopoverView: View {
         .padding(.bottom, 4)
     }
 
-    // MARK: - Playback Scope
-
-    private var playbackScopePicker: some View {
-        @Bindable var prefsService = prefsService
-        return PillPicker(
-            title: String(localized: "Playback"),
-            options: PlaybackScope.allCases.map { ($0, $0.title) },
-            selection: $prefsService.playbackScope,
-            height: 32,
-            onTint: Theme.onAccent,
-        )
-    }
-
     // MARK: - Empty State
 
     private var emptyStateSection: some View {
@@ -239,78 +213,24 @@ struct MenuBarPopoverView: View {
         !VideoDeploymentService.listEntries().isEmpty
     }
 
-    // MARK: - Settings
-
-    private var settingsSection: some View {
-        @Bindable var prefsService = prefsService
-        return VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            SectionLabel(String(localized: "Settings"))
-
-            HStack(spacing: Theme.Space.sm) {
-                Toggle("Launch at Login", isOn: $manager.launchAtLogin)
-                Toggle("Pause When Hidden", isOn: $prefsService.pauseWhenOccluded)
-                    .help("Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.")
-            }
-            .toggleStyle(SettingPillToggleStyle())
-
-            Picker("Dynamic Range", selection: $prefsService.hdrMode) {
-                Text("Automatic").tag(HDRMode.automatic)
-                Text("Standard").tag(HDRMode.standard)
-                Text("Constrained High").tag(HDRMode.constrainedHigh)
-                Text("High").tag(HDRMode.high)
-            }
-            .controlSize(.small)
-            .help("Choose Constrained High for more subdued desktop highlights.")
-
-            Toggle("Blend Matching Frames", isOn: $prefsService.frameMatchedTransitions)
-                .toggleStyle(SettingPillToggleStyle())
-                .help("Switching between light and dark briefly decodes both videos and increases GPU and memory use.")
-
-            UsageCountingSettings()
-                .toggleStyle(SettingPillToggleStyle())
-        }
-    }
-
     // MARK: - Footer
 
     private var footerSection: some View {
-        HStack(spacing: Layout.footerSpacing) {
-            switch SilentUpdates.shared.manualPhase {
-            case .working:
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Updating…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            case let .failed(message):
-                Button {
-                    NSWorkspace.shared.open(SilentUpdates.releasesPageURL)
-                    SilentUpdates.shared.dismissFailure()
-                } label: {
-                    Label("Update failed", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Theme.onAccent)
-                }
-                .buttonStyle(.footerChipProminent)
-                .help(message)
-            case .idle:
-                // Hover lives on the chip's stable node, not on the resting branch: a branch that
-                // is replaced mid-hover (the check starts) never hears the mouse leave.
-                updateChip
-                    .onHover { isHoveringVersion = $0 }
-
-                FooterChip(text: String(localized: "Library"), systemImage: "film.stack") {
-                    openLibrary()
-                }
-
-                FooterChip(text: String(localized: "Choose"), systemImage: "photo.on.rectangle") {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!)
-                }
-                .help("Choose the wallpaper in macOS Wallpaper Settings")
+        HStack(spacing: 6) {
+            FooterChip(text: String(localized: "Library"), systemImage: "film.stack", action: openLibrary)
+            FooterChip(text: String(localized: "Choose"), systemImage: "photo.on.rectangle") {
+                NSWorkspace.shared.open(WallpaperPrefsService.wallpaperSettingsURL)
             }
+            .help("Choose the wallpaper in macOS Wallpaper Settings")
 
             Spacer(minLength: 0)
+
+            FooterIconButton(String(localized: "Settings"), systemImage: "gearshape") {
+                NSApp.setActivationPolicy(.regular)
+                openSettings()
+                NSApp.activate()
+            }
+            .help("Settings")
 
             FooterIconButton(String(localized: "Restart Wallpaper Agent"), systemImage: "arrow.clockwise") {
                 WallpaperPrefsService.shared.restartWallpaperAgent()
@@ -323,217 +243,6 @@ struct MenuBarPopoverView: View {
             .keyboardShortcut("q")
             .help("Quit Phosphene")
         }
-    }
-
-    /// The version chip is the whole update UI: it announces an update (click installs),
-    /// confirms one just landed (click acknowledges), reports a check the user asked for, and at
-    /// rest flips into the Auto-Update switch and a check-now button on hover, so neither costs
-    /// footer space.
-    @ViewBuilder
-    private var updateChip: some View {
-        let updates = SilentUpdates.shared
-        if let justUpdated = updates.justUpdatedVersion {
-            Button {
-                WhatsNewWindow.present(version: justUpdated, context: .justUpdated)
-            } label: {
-                Label("v\(justUpdated)", systemImage: "checkmark")
-                    .foregroundStyle(Theme.onAccent)
-            }
-            .buttonStyle(.footerChipProminent)
-            .help("Updated to version \(justUpdated) — see what changed")
-        } else if let available = updates.availableVersion ?? updates.pendingVersion {
-            Button {
-                WhatsNewWindow.present(
-                    version: available,
-                    context: .updateAvailable(autoInstall: manager.autoUpdate),
-                )
-            } label: {
-                Label(available, systemImage: "arrow.down.circle.fill")
-                    .foregroundStyle(Theme.onAccent)
-            }
-            .buttonStyle(.footerChipProminent)
-            .help("See what's new in version \(available)")
-        } else if updates.isChecking {
-            HStack(spacing: Theme.Space.xs) {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Checking…")
-            }
-            .modifier(RestingChip())
-        } else if updates.checkedUpToDate {
-            Label("Up to date", systemImage: "checkmark")
-                .modifier(RestingChip())
-        } else {
-            restingChip
-        }
-    }
-
-    /// One capsule, two targets: the version (the Auto-Update switch on hover) and, on hover,
-    /// the check-now button. VoiceOver reaches the check as a custom action on the version,
-    /// since it never hovers.
-    private var restingChip: some View {
-        let updates = SilentUpdates.shared
-        return HStack(spacing: 0) {
-            Button {
-                manager.autoUpdate.toggle()
-            } label: {
-                Group {
-                    if isHoveringVersion {
-                        HStack(spacing: 5) {
-                            MiniSwitchPip(isOn: manager.autoUpdate)
-                            Text("Auto")
-                        }
-                    } else {
-                        Text(versionString)
-                    }
-                }
-                .padding(.horizontal, Theme.Space.sm)
-                .frame(height: Theme.footerControlHeight)
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .help("Install updates automatically")
-            .accessibilityAction(named: Text("Check for updates")) {
-                Task { await updates.checkForUpdates() }
-            }
-
-            if isHoveringVersion {
-                Divider()
-                    .frame(height: Layout.chipDividerHeight)
-                Button {
-                    Task { await updates.checkForUpdates() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: Layout.chipIconSize, weight: .medium))
-                        .frame(width: Theme.footerControlHeight, height: Theme.footerControlHeight)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Check for updates now")
-                .accessibilityLabel("Check for updates")
-            }
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize()
-        .glassEffect(.regular.interactive(), in: Capsule())
-    }
-
-    private var versionString: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
-        return "v\(version)"
-    }
-}
-
-// MARK: - Playback scope
-
-/// The tri-state the popover's scope picker edits, projected over the two underlying flags.
-private enum PlaybackScope: CaseIterable {
-    case everywhere
-    case lockScreen
-    case paused
-
-    var title: String {
-        switch self {
-        case .everywhere: String(localized: "Everywhere")
-        case .lockScreen: String(localized: "Lock Screen")
-        case .paused: String(localized: "Paused")
-        }
-    }
-}
-
-private extension WallpaperPrefsService {
-    var playbackScope: PlaybackScope {
-        get {
-            if userPaused {
-                return .paused
-            }
-            if alwaysPauseDesktop {
-                return .lockScreen
-            }
-            return .everywhere
-        }
-        set {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                switch newValue {
-                case .everywhere:
-                    userPaused = false
-                    alwaysPauseDesktop = false
-                case .lockScreen:
-                    alwaysPauseDesktop = true
-                    userPaused = false
-                case .paused:
-                    userPaused = true
-                    alwaysPauseDesktop = false
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Styles
-
-/// The version chip's quiet states — a check in progress, its "nothing newer" answer — in the
-/// same capsule as the resting chip, so the footer does not shift while they show.
-private struct RestingChip: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.horizontal, Theme.Space.sm)
-            .frame(height: Theme.footerControlHeight)
-            .glassEffect(.regular, in: Capsule())
-    }
-}
-
-/// The miniature switch drawn inside chips and setting pills.
-private struct MiniSwitchPip: View {
-    var isOn: Bool
-
-    var body: some View {
-        Capsule()
-            .fill(isOn ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
-            .frame(width: 18, height: 11)
-            .overlay(alignment: isOn ? .trailing : .leading) {
-                Circle()
-                    .fill(.white)
-                    .frame(width: 7, height: 7)
-                    .padding(2)
-            }
-            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isOn)
-    }
-}
-
-/// A settings toggle as a tappable glass pill with a miniature switch — accent-tinted glass
-/// when on, plain glass when off.
-private struct SettingPillToggleStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                configuration.isOn.toggle()
-            }
-        } label: {
-            HStack(spacing: 6) {
-                MiniSwitchPip(isOn: configuration.isOn)
-                configuration.label
-                    .font(.caption)
-                    .foregroundStyle(configuration.isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                    .lineLimit(1)
-                    .fixedSize()
-                Spacer(minLength: 0)
-            }
-            .padding(Theme.Space.sm)
-            .contentShape(Theme.concentricInnerShape)
-        }
-        .buttonStyle(.plain)
-        .glassEffect(
-            configuration.isOn ? .regular.tint(Color.accentColor.opacity(0.35)) : .regular,
-            in: Theme.concentricInnerShape,
-        )
-        .accessibilityAddTraits(.isToggle)
-        .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
 }
 
