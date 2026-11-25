@@ -253,15 +253,21 @@ struct MenuBarPopoverView: View {
             }
             .toggleStyle(SettingPillToggleStyle())
 
-            DynamicRangePicker(selection: $prefsService.hdrMode)
-                .font(.caption)
-                .padding(.horizontal, Theme.Space.sm)
-                .padding(.vertical, Theme.Space.xs)
-                .glassEffect(.regular, in: Theme.concentricInnerShape)
+            HStack(spacing: Theme.Space.sm) {
+                Text("Dynamic Range")
+                    .font(.caption)
+                    .padding(.vertical, Theme.Space.sm)
+                    .accessibilityHidden(true)
+                Spacer(minLength: 0)
+                DynamicRangePicker(selection: $prefsService.hdrMode)
+                    .labelsHidden()
+                    .fixedSize()
+            }
+            .padding(.horizontal, Theme.Space.sm)
+            .glassEffect(.regular, in: Theme.concentricInnerShape)
 
             Toggle("Blend Matching Frames", isOn: $prefsService.frameMatchedTransitions)
-                .toggleStyle(SettingPillToggleStyle())
-                .help("Switching between light and dark briefly decodes both videos and increases GPU and memory use.")
+                .toggleStyle(SettingPillToggleStyle(showsBlendInfo: true))
 
             UsageCountingSettings()
         }
@@ -506,31 +512,40 @@ private struct MiniSwitchPip: View {
 /// A settings toggle as a tappable glass pill with a miniature switch — accent-tinted glass
 /// when on, plain glass when off.
 private struct SettingPillToggleStyle: ToggleStyle {
+    var showsBlendInfo = false
+
     func makeBody(configuration: Configuration) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                configuration.isOn.toggle()
+        HStack(spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    configuration.isOn.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    MiniSwitchPip(isOn: configuration.isOn)
+                    configuration.label
+                        .font(.caption)
+                        .foregroundStyle(configuration.isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .lineLimit(1)
+                        .fixedSize()
+                    Spacer(minLength: 0)
+                }
+                .padding(Theme.Space.sm)
+                .contentShape(Theme.concentricInnerShape)
             }
-        } label: {
-            HStack(spacing: 6) {
-                MiniSwitchPip(isOn: configuration.isOn)
-                configuration.label
-                    .font(.caption)
-                    .foregroundStyle(configuration.isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                    .lineLimit(1)
-                    .fixedSize()
-                Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isToggle)
+            .accessibilityValue(configuration.isOn ? "On" : "Off")
+
+            if showsBlendInfo {
+                BlendMatchingFramesInfoButton()
+                    .padding(.trailing, Theme.Space.sm)
             }
-            .padding(Theme.Space.sm)
-            .contentShape(Theme.concentricInnerShape)
         }
-        .buttonStyle(.plain)
         .glassEffect(
             configuration.isOn ? .regular.tint(Color.accentColor.opacity(0.35)) : .regular,
             in: Theme.concentricInnerShape,
         )
-        .accessibilityAddTraits(.isToggle)
-        .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
 }
 
