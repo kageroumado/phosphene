@@ -361,11 +361,10 @@ enum VideoDeploymentService {
             }
             guard incoming.allSatisfy({ isVariantName($0.filename) }) else { throw CocoaError(.fileWriteInvalidFileName) }
             if let source {
-                guard metadata.sourceIsHDR == source.isHDR || (metadata.sourceIsHDR == nil && !source.isHDR),
-                      incoming.allSatisfy({ $0.isHDR != nil && $0.supports(sourceIsHDR: source.isHDR) }) else {
+                guard incoming.allSatisfy({ $0.supportsPublication(verifiedSourceIsHDR: source.isHDR, recordedSourceIsHDR: metadata.sourceIsHDR) }) else {
                     throw VideoOptimizationService.OptimizationError.unsupportedDynamicRange
                 }
-                // Save the confirmed interpretation with the tiers that depend on it.
+                // Publish the source classification with the tiers that depend on it.
                 metadata.sourceIsHDR = source.isHDR
             }
 

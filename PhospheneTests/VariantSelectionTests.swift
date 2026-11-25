@@ -51,6 +51,42 @@ struct VariantSelectionTests {
     }
 
     @Test
+    func `verified HDR can fill missing source metadata on publication`() {
+        let hdr = VideoVariant(filename: "hdr.mp4", fps: 30, resolution: hd, isHDR: true)
+        #expect(hdr.supportsPublication(verifiedSourceIsHDR: true, recordedSourceIsHDR: nil))
+        #expect(hdr.supportsPublication(verifiedSourceIsHDR: true, recordedSourceIsHDR: true))
+        #expect(!hdr.supportsPublication(verifiedSourceIsHDR: true, recordedSourceIsHDR: false))
+        #expect(!variant(30, hd).supportsPublication(verifiedSourceIsHDR: true, recordedSourceIsHDR: nil))
+    }
+
+    @Test
+    func `a compatible tier needs a regular file inside the library`() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = root.appendingPathComponent("videos")
+        let directory = library.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let tier = VideoVariant(filename: "variant_30fps.mp4", fps: 30, resolution: hd, isHDR: false)
+        let url = directory.appendingPathComponent(tier.filename)
+        #expect(tier.supports(sourceIsHDR: false))
+        #expect(!tier.isAvailable(in: directory, library: library))
+        try Data([1]).write(to: url)
+        #expect(tier.isAvailable(in: directory, library: library))
+        try fm.removeItem(at: url)
+        try fm.createDirectory(at: url, withIntermediateDirectories: false)
+        #expect(!tier.isAvailable(in: directory, library: library))
+        try fm.removeItem(at: url)
+
+        let external = root.appendingPathComponent(tier.filename)
+        try Data([1]).write(to: external)
+        try fm.createSymbolicLink(at: url, withDestinationURL: external)
+        #expect(!tier.isAvailable(in: directory, library: library))
+        #expect(!tier.isAvailable(in: root, library: library))
+    }
+
+    @Test
     func `cached frame belongs to one source and display size`() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

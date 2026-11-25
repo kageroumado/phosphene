@@ -18,4 +18,15 @@ nonisolated struct VideoVariant: Codable, Equatable, Sendable {
             isHDR == nil && toneMappedToSDR == nil
         }
     }
+
+    func supportsPublication(verifiedSourceIsHDR: Bool, recordedSourceIsHDR: Bool?) -> Bool {
+        (recordedSourceIsHDR == nil || recordedSourceIsHDR == verifiedSourceIsHDR)
+            && isHDR != nil && supports(sourceIsHDR: verifiedSourceIsHDR)
+    }
+
+    func isAvailable(in directory: URL, library: URL) -> Bool {
+        guard PathSafety.isSafeComponent(filename), fps > 0 else { return false }
+        let url = directory.appendingPathComponent(filename)
+        return PathSafety.contained(url, in: library) && PathSafety.isItem(at: url, ofType: .typeRegular)
+    }
 }
