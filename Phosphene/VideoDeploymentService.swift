@@ -135,7 +135,9 @@ enum VideoDeploymentService {
             try Task.checkCancellation()
             try AppearancePair.requireSingle(entryID, in: videosFolderURL)
             var current = try readEntry(entryID, in: dir, matching: identity)
-            let retired = Set((current.variants ?? []).map(\.filename) + [current.filename, "thumbnail.jpg", "metadata.json", ".media-replaced"])
+            let retired = Set((current.variants ?? []).map(\.filename) + [
+                current.filename, "thumbnail.jpg", "metadata.json", LegacyStillProvenance.replacementMarker, LegacyStillProvenance.filename,
+            ])
             for file in try fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) where !retired.contains(file.lastPathComponent) {
                 try fm.linkItem(at: file, to: staged.appendingPathComponent(file.lastPathComponent))
             }
@@ -147,7 +149,7 @@ enum VideoDeploymentService {
             current.variants = nil
             try JSONEncoder().encode(current).write(to: staged.appendingPathComponent("metadata.json"))
             try Task.checkCancellation()
-            try Data().write(to: staged.appendingPathComponent(".media-replaced"))
+            try Data().write(to: staged.appendingPathComponent(LegacyStillProvenance.replacementMarker))
             // Publish media and metadata together. Open readers can finish on their old inodes.
             guard unsafe renamex_np(staged.path, dir.path, UInt32(RENAME_SWAP)) == 0 else {
                 throw POSIXError(.init(rawValue: errno) ?? .EIO)
@@ -157,7 +159,9 @@ enum VideoDeploymentService {
     }
 
     private nonisolated static func isMediaFilename(_ name: String) -> Bool {
-        PathSafety.isSafeComponent(name) && !["metadata.json", "thumbnail.jpg", ".media-replaced", workshopRecordName].contains(name.lowercased())
+        PathSafety.isSafeComponent(name) && ![
+            "metadata.json", "thumbnail.jpg", workshopRecordName, LegacyStillProvenance.replacementMarker, LegacyStillProvenance.filename,
+        ].contains(name.lowercased())
     }
 
     // MARK: - Wallpaper Engine provenance
@@ -380,6 +384,7 @@ enum VideoDeploymentService {
                       FileIdentity(of: url) == identity else { throw PairIssue.changed }
             }
 
+            LegacyStillProvenance.preserve(for: dir.appendingPathComponent(metadata.filename))
             let retired = Set((metadata.variants ?? []).map(\.filename).filter(isVariantName))
             for file in try fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
                 let name = file.lastPathComponent
@@ -544,6 +549,7 @@ enum VideoDeploymentService {
         let changed = try AppearancePair.withLibraryLock(in: videosFolderURL) {
             var metadata = try readEntry(entryID, in: entryDir, matching: nil)
             guard metadata.name != trimmed else { return false }
+            LegacyStillProvenance.preserve(for: entryDir.appendingPathComponent(metadata.filename))
             metadata.name = trimmed
             try JSONEncoder().encode(metadata).write(to: metadataURL, options: .atomic)
             return true
@@ -591,6 +597,7 @@ enum VideoDeploymentService {
                 let isHDR = probe.isHDR ?? current.sourceIsHDR
                 guard current.sourceIsHDR != isHDR || current.duration != duration ||
                     current.fps != fps || current.resolution != resolution else { return false }
+                LegacyStillProvenance.preserve(for: url)
                 current.sourceIsHDR = isHDR
                 current.duration = duration
                 current.fps = fps
