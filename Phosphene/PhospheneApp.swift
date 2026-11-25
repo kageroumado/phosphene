@@ -91,6 +91,19 @@ struct PhospheneApp: App {
                 }
             }
         }
+
+        Window("Custom Conversion", id: "custom-conversion") {
+            ConversionToolView(mode: .single)
+        }
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: 620, height: 660)
+
+        WindowGroup("Light/Dark Pair Converter", id: "pair-converter", for: PairConverterRequest.self) { $request in
+            ConversionToolView(mode: .pair, pairRequest: request ?? .blank)
+        }
+        .commandsRemoved()
+        .defaultLaunchBehavior(.suppressed)
+        .defaultSize(width: 660, height: 740)
     }
 
     private static let aboutCredits: NSAttributedString = {

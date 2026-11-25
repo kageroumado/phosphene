@@ -174,9 +174,18 @@ struct VideoInspector: View {
     @State private var codec: VideoCodec?
     @State private var fileSize: Int64?
     @State private var confirmingRemoveVariants = false
+    @State private var sdrTargetID: String?
+
+    private var pair: VideoPairSelection? {
+        store.pairs[entry.id]
+    }
+
+    private var target: VideoOptimizationTarget {
+        VideoOptimizationTarget(entry: entry, pair: pair)
+    }
 
     private var isWorkingOnThis: Bool {
-        manager.isOptimizing && manager.optimizingEntryID == entry.id
+        manager.isOptimizing && manager.optimizingEntryID == target.id
     }
 
     private var isConvertingThis: Bool {
@@ -193,7 +202,9 @@ struct VideoInspector: View {
     }
 
     private var usedOn: [String] {
-        manager.prefsService.selections.filter { $0.videoID == entry.id }.map { selection in
+        manager.prefsService.selections.filter {
+            $0.videoID == entry.id || pair?.saved?.contains($0.videoID) == true
+        }.map { selection in
             if let spaceName = selection.spaceName {
                 "\(selection.displayName) · \(spaceName)"
             } else {
@@ -205,11 +216,18 @@ struct VideoInspector: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: InspectorMetrics.sectionSpacing) {
-                VideoPreview(
-                    url: VideoDeploymentService.videoURL(for: entry),
-                    poster: VideoDeploymentService.thumbnailURL(for: entry.id),
-                    revision: store.revision,
-                )
+                if let pair, let record = pair.saved {
+                    PairComparisonView(selection: pair, swapped: record.swapped)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .clipShape(.rect(cornerRadius: InspectorMetrics.previewRadius))
+                        .id(store.revision)
+                } else {
+                    VideoPreview(
+                        url: VideoDeploymentService.videoURL(for: entry),
+                        poster: VideoDeploymentService.thumbnailURL(for: entry.id),
+                        revision: store.revision,
+                    )
+                }
                 header
                 if let codec, !codec.isHardwareDecoded {
                     softwareDecodeNotice(codec.label)
@@ -238,6 +256,18 @@ struct VideoInspector: View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 InspectorNameField(entryID: entry.id, name: entry.name)
+                if let pair, let record = pair.saved {
+                    let light = pair.entry(light: true, swapped: record.swapped)?.name ?? String(localized: "File unavailable")
+                    let dark = pair.entry(light: false, swapped: record.swapped)?.name ?? String(localized: "File unavailable")
+                    Label(light, systemImage: "sun.max")
+                        .accessibilityLabel(Text("Light — \(light)"))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Label(dark, systemImage: "moon")
+                        .accessibilityLabel(Text("Dark — \(dark)"))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 let usedOn = usedOn
                 if !usedOn.isEmpty {
                     Label {
@@ -269,9 +299,14 @@ struct VideoInspector: View {
             let duration = Duration.seconds(entry.duration).formatted(.time(pattern: .minuteSecond))
             rows.append(InfoRow(label: String(localized: "Duration"), value: duration))
         }
-        if let fileSize {
-            let size = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+        let totalSize = pair?.members.reduce(0) { $0 + (store.fileSize(ofVideo: $1.id) ?? 0) } ?? fileSize
+        if let totalSize {
+            let size = ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
             rows.append(InfoRow(label: String(localized: "Size"), value: size))
+        }
+        if let sourceIsHDR = entry.sourceIsHDR {
+            let range = sourceIsHDR ? String(localized: "HDR") : String(localized: "SDR")
+            rows.append(InfoRow(label: String(localized: "Dynamic Range"), value: range))
         }
         if let codec {
             rows.append(InfoRow(label: String(localized: "Codec"), value: codec.label))
@@ -300,7 +335,7 @@ struct VideoInspector: View {
                 }
                 Button("Cancel") { manager.cancelOptimization() }
                     .frame(maxWidth: .infinity, alignment: .trailing)
-            } else {
+            } else if pair == nil {
                 Button {
                     manager.convertToHEVC(entryID: entry.id)
                 } label: {
@@ -323,7 +358,12 @@ struct VideoInspector: View {
             }
             Button("Cancel") { manager.cancelOptimization() }
                 .frame(maxWidth: .infinity, alignment: .trailing)
-        } else if let variants = entry.variants, !variants.isEmpty {
+        } else if !target.tiers.isEmpty {
+            let variants = target.tiers
+            if entry.sourceIsHDR == true {
+                Text(target.convertedToSDR ? "Optimized · SDR" : "Optimized · HDR")
+                    .font(.callout)
+            }
             InfoRows(rows: variants.map { variant in
                 InfoRow(
                     label: String(localized: "\(variant.fps) fps"),
@@ -332,17 +372,29 @@ struct VideoInspector: View {
             })
             Button("Remove Variants") { confirmingRemoveVariants = true }
                 .alert("Remove Variants", isPresented: $confirmingRemoveVariants) {
-                    Button("Remove", role: .destructive) { manager.removeVariants(entryID: entry.id) }
+                    Button("Remove", role: .destructive) { manager.removeVariants(for: target) }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    let rates = variants.map { String(localized: "\($0.fps) fps") }
-                    Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
+                    if pair != nil {
+                        Text("This will remove the optimized versions of both videos and keep the original pair.")
+                    } else {
+                        let rates = variants.map { String(localized: "\($0.fps) fps") }
+                        Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
+                    }
                 }
         } else {
+            let unavailable = target.eligibilityError
             Menu("Create Variants") {
+                if entry.sourceIsHDR == true {
+                    Toggle("Convert to SDR", isOn: Binding(
+                        get: { sdrTargetID == target.id },
+                        set: { sdrTargetID = $0 ? target.id : nil },
+                    ))
+                    Divider()
+                }
                 ForEach(OptimizationPreset.allCases) { preset in
                     Button {
-                        manager.optimizeVideo(entryID: entry.id, preset: preset)
+                        manager.optimize(target, preset: preset, convertToSDR: sdrTargetID == target.id)
                     } label: {
                         Text(preset.title)
                         Text(preset.description)
@@ -350,7 +402,12 @@ struct VideoInspector: View {
                 }
             }
             .fixedSize()
-            .disabled(entry.resolution == .zero || manager.isOptimizing)
+            .disabled(unavailable != nil || manager.isOptimizing)
+            if let unavailable {
+                Text(unavailable.localizedDescription)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
@@ -415,6 +472,7 @@ private struct InspectorNameField: View {
     let entryID: String
     let name: String
 
+    @Environment(LibraryStore.self) private var store
     @State private var draft = ""
     @State private var isEditing = false
     @State private var isHovered = false
@@ -464,7 +522,7 @@ private struct InspectorNameField: View {
         guard commit else { return }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != name else { return }
-        VideoDeploymentService.renameEntry(entryID: entryID, to: trimmed)
+        store.renameVideo(entryID: entryID, to: trimmed)
     }
 }
 

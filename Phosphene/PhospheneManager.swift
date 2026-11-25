@@ -14,7 +14,6 @@ final class PhospheneManager {
 
     private(set) var isOptimizing = false
     private(set) var optimizationProgress: Double = 0
-    private(set) var optimizationTierLabel = ""
     private(set) var optimizingEntryID: String?
     /// Whether the running operation re-encodes the entry's original file as HEVC.
     private(set) var isConverting = false
@@ -124,62 +123,45 @@ final class PhospheneManager {
     /// Import a video into the extension library.
     /// Does NOT set it as the active wallpaper — the user selects in System Settings.
     func importVideo(_ url: URL) async {
-        guard url.startAccessingSecurityScopedResource() else {
-            Log.general.error("Failed to access security-scoped resource for \(url.lastPathComponent)")
-            return
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if scoped {
+                url.stopAccessingSecurityScopedResource()
+            }
         }
-        defer { url.stopAccessingSecurityScopedResource() }
 
         let name = url.deletingPathExtension().lastPathComponent
-        await VideoDeploymentService.deployVideo(url: url, name: name)
+        await VideoDeploymentService.deployVideo(url: url, name: name) { error in
+            self.reportLibraryError(error, title: String(localized: "Couldn’t Import Video"))
+        }
     }
 
-    func removeVideo(entryID: String) {
-        VideoDeploymentService.removeVideo(entryID: entryID)
+    private func reportLibraryError(_ error: any Error, title: String) {
+        optimizationAlertTitle = title
+        optimizationAlertMessage = error.localizedDescription
+        showOptimizationAlert = true
     }
 
-    func optimizeVideo(entryID: String, preset: OptimizationPreset) {
-        guard !isOptimizing else { return }
-        isOptimizing = true
-        optimizingEntryID = entryID
-        optimizationProgress = 0
-
-        let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID })
-        guard let entry else {
-            isOptimizing = false
-            optimizingEntryID = nil
+    func optimize(_ target: VideoOptimizationTarget, preset: OptimizationPreset, convertToSDR: Bool) {
+        guard !isOptimizing, target.tiers.isEmpty else { return }
+        let title = String(localized: "Couldn't optimize the video.")
+        if let error = target.eligibilityError {
+            reportLibraryError(error, title: title)
             return
         }
-
-        let sourceURL = VideoDeploymentService.videoURL(for: entry)
-        let target = preset.targetResolution(source: entry.resolution)
-
-        optimizationTask = Task.detached {
+        isOptimizing = true
+        optimizingEntryID = target.id
+        optimizationProgress = 0
+        optimizationTask = Task {
+            defer { finishOptimization() }
             do {
-                let variants = try await VideoOptimizationService.createVariants(
-                    sourceURL: sourceURL,
-                    targetResolution: target,
-                    progress: { @MainActor in self.optimizationProgress = $0 },
-                )
-                await MainActor.run {
-                    VideoDeploymentService.deployVariants(entryID: entryID, variants: variants)
+                try Task.checkCancellation()
+                try await target.optimize(preset: preset, convertToSDR: convertToSDR && target.entry.sourceIsHDR == true) { progress in
+                    self.optimizationProgress = progress
                 }
-                for (url, _) in variants {
-                    try? FileManager.default.removeItem(at: url)
-                }
-            } catch is CancellationError {
-                // user cancelled
             } catch {
-                await MainActor.run {
-                    self.optimizationAlertTitle = String(localized: "Couldn't optimize the video.")
-                    self.optimizationAlertMessage = error.localizedDescription
-                    self.showOptimizationAlert = true
-                }
-            }
-
-            await MainActor.run {
-                self.isOptimizing = false
-                self.optimizingEntryID = nil
+                guard !Task.isCancelled else { return }
+                reportLibraryError(error, title: title)
             }
         }
     }
@@ -197,28 +179,38 @@ final class PhospheneManager {
         optimizationProgress = 0
 
         optimizationTask = Task(name: "Convert to HEVC") {
+            defer { finishOptimization() }
             do {
+                try Task.checkCancellation()
                 try await VideoDeploymentService.convertToHEVC(entry: entry) { self.optimizationProgress = $0 }
             } catch {
-                // `cancelOptimization()` has already reset the state of a cancelled conversion.
                 guard !Task.isCancelled else { return }
                 Log.video.error("HEVC conversion of \(entryID) failed: \(error.localizedDescription)")
                 self.optimizationAlertTitle = String(localized: "Couldn't convert the video to HEVC.")
                 self.optimizationAlertMessage = error.localizedDescription
                 self.showOptimizationAlert = true
             }
-            self.isOptimizing = false
-            self.isConverting = false
-            self.optimizingEntryID = nil
         }
     }
 
-    func removeVariants(entryID: String) {
-        VideoDeploymentService.removeVariants(entryID: entryID)
+    func removeVariants(for target: VideoOptimizationTarget) {
+        guard optimizingEntryID != target.id else { return }
+        do {
+            if let pair = target.pair?.saved {
+                try VideoDeploymentService.removePairVariants(pair)
+            } else {
+                try VideoDeploymentService.removeVariants(entryID: target.id)
+            }
+        } catch {
+            reportLibraryError(error, title: String(localized: "Couldn’t Remove Optimized Versions"))
+        }
     }
 
     func cancelOptimization() {
         optimizationTask?.cancel()
+    }
+
+    private func finishOptimization() {
         optimizationTask = nil
         isOptimizing = false
         isConverting = false
@@ -230,13 +222,18 @@ final class PhospheneManager {
     private func migrateEntryMetadata() {
         _ = VideoDeploymentService.prettifyLegacyNames()
         let entries = VideoDeploymentService.listEntries()
-        let needsProbing = entries.filter { $0.resolution == .zero && $0.fps == 0 }
+        let needsProbing = entries.filter { $0.sourceIsHDR == nil || ($0.resolution == .zero && $0.fps == 0) }
         guard !needsProbing.isEmpty else { return }
         Task {
+            var changed = false
             for entry in needsProbing {
-                await VideoDeploymentService.probeAndUpdateMetadata(for: entry.id)
+                if await VideoDeploymentService.probeAndUpdateMetadata(for: entry) {
+                    changed = true
+                }
             }
-            NotificationCenter.default.post(name: VideoDeploymentService.libraryChangedNotification, object: nil)
+            if changed {
+                VideoDeploymentService.notifyExtensionLibraryChanged()
+            }
         }
     }
 
