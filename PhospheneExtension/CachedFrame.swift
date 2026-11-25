@@ -36,11 +36,14 @@ struct CachedFrame: Codable {
     private static func legacyImage(prefix: String, source: FileIdentity, original: URL, directory: URL) -> URL? {
         // Legacy filenames carry a choice, dimensions and write time, but no source identity.
         let original = URL(fileURLWithPath: original.path)
+        let entryDirectory = original.deletingLastPathComponent()
         guard FileIdentity(of: original) == source,
               let values = try? original.resourceValues(forKeys: [.attributeModificationDateKey, .creationDateKey]),
               let changed = values.attributeModificationDate, let created = values.creationDate,
+              let entryChanged = try? entryDirectory.resourceValues(forKeys: [.attributeModificationDateKey]).attributeModificationDate,
               let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return nil }
-        let earliest = max(changed, created, source.modified).timeIntervalSinceReferenceDate
+        // Replacing the whole entry directory can publish a video copied before the still was written.
+        let earliest = max(changed, created, entryChanged, source.modified).timeIntervalSinceReferenceDate
         let latest = Date.timeIntervalSinceReferenceDate
         return files.compactMap { file -> (url: URL, timestamp: Double)? in
             let name = file.lastPathComponent
