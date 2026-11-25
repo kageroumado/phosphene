@@ -56,13 +56,7 @@ struct PhospheneSettingsView: View {
                 }
                 Toggle("Pause When Hidden", isOn: $playback.pauseWhenOccluded)
                     .help("Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.")
-                Picker("Dynamic Range", selection: $playback.hdrMode) {
-                    Text("Automatic").tag(HDRMode.automatic)
-                    Text("Standard").tag(HDRMode.standard)
-                    Text("Constrained High").tag(HDRMode.constrainedHigh)
-                    Text("High").tag(HDRMode.high)
-                }
-                .help("Choose Constrained High for more subdued desktop highlights.")
+                DynamicRangePicker(selection: $playback.hdrMode)
             }
             Section {
                 Toggle("Blend Matching Frames", isOn: $playback.frameMatchedTransitions)

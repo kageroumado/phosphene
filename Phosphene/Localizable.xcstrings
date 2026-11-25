@@ -419,6 +419,16 @@
         }
       }
     },
+    "About Dynamic Range": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关于动态范围"
+          }
+        }
+      }
+    },
     "About Phosphene": {
       "localizations": {
         "zh-Hans": {
@@ -740,6 +750,16 @@
         }
       }
     },
+    "Automatic lets macOS choose the highlight brightness. Standard limits highlights to SDR white. Constrained High allows subdued HDR highlights.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“自动”由 macOS 调节高光亮度。“标准”将高光限制在 SDR 白色亮度以内。“受限高动态范围”可呈现较柔和的 HDR 高光。"
+          }
+        }
+      }
+    },
     "Average bitrate %@ → %@ Mb/s.": {
       "localizations": {
         "zh-Hans": {
@@ -916,16 +936,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "选取"
-          }
-        }
-      }
-    },
-    "Choose Constrained High for more subdued desktop highlights.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择受限高动态范围可降低桌面高光的亮度。"
           }
         }
       }
@@ -2218,6 +2228,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "高"
+          }
+        }
+      }
+    },
+    "High allows the brightest HDR highlights. GPU and power use can rise suddenly during HDR playback.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“高”可呈现最亮的 HDR 高光。播放 HDR 视频时，GPU 占用率和功耗可能突然升高。"
           }
         }
       }
