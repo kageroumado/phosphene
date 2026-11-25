@@ -249,16 +249,31 @@ nonisolated struct AppearancePair: Codable, Equatable, Sendable {
 
     /// Persist the confirmed IDs before removing either directory so a restart can finish the same deletion.
     func remove(in directory: URL) throws {
-        try Self.update(in: directory) { pairs in
-            guard let index = pairs.firstIndex(of: self) else { throw PairIssue.changed }
-            _ = try memberDirectories(in: directory)
-            pairs[index].deletionPending = true
+        try Self.withLibraryLock(in: directory) {
+            try removeWhileLocked(in: directory, pairs: Self.read(in: directory))
         }
-        try finishDeletion(in: directory)
+    }
+
+    func removeWhileLocked(in directory: URL, pairs: [Self]) throws {
+        var pairs = pairs
+        guard let index = pairs.firstIndex(of: self) else { throw PairIssue.changed }
+        let directories = try memberDirectories(in: directory)
+        pairs[index].deletionPending = true
+        try Self.write(pairs, in: directory)
+        try Self.removeDirectories(directories)
+        pairs.remove(at: index)
+        try Self.write(pairs, in: directory)
+    }
+
+    func splitWhileLocked(in directory: URL, pairs: [Self]) throws {
+        guard deletionPending != true, pairs.contains(self) else { throw PairIssue.changed }
+        try Self.write(pairs.filter { $0 != self }, in: directory)
+        pruneGenerations(in: directory)
     }
 
     private func memberDirectories(in directory: URL) throws -> [URL] {
-        try [owner, counterpart].map { id in
+        let directory = directory.standardizedFileURL.resolvingSymlinksInPath()
+        return try [owner, counterpart].map { id in
             let url = directory.appendingPathComponent(id)
             guard PathSafety.isValidEntryID(id), PathSafety.contained(url, in: directory) else {
                 throw CocoaError(.fileWriteInvalidFileName)
@@ -270,14 +285,18 @@ nonisolated struct AppearancePair: Codable, Equatable, Sendable {
     func finishDeletion(in directory: URL) throws {
         try Self.update(in: directory) { pairs in
             guard let index = pairs.firstIndex(where: { $0.owner == owner && $0.counterpart == counterpart && $0.deletionPending == true }) else { return }
-            for url in try memberDirectories(in: directory) {
-                do {
-                    try FileManager.default.removeItem(at: url)
-                } catch let error as CocoaError where error.code == .fileNoSuchFile {
-                    continue
-                }
-            }
+            try Self.removeDirectories(memberDirectories(in: directory))
             pairs.remove(at: index)
+        }
+    }
+
+    private static func removeDirectories(_ directories: [URL]) throws {
+        for url in directories {
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch let error as CocoaError where error.code == .fileNoSuchFile {
+                continue
+            }
         }
     }
 }
