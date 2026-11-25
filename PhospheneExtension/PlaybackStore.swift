@@ -64,15 +64,19 @@ final class PlaybackStore {
         let next = PlaybackReducer.reduce(state, event)
         traceLog("[Store] \(event)")
         guard next != state else { return }
+        let shuffleChanged = next.shufflePick != state.shufflePick
         state = next
         Self.mirror.withLock { $0 = next }
-        republishTargets()
+        republishTargets(shuffleChanged: shuffleChanged)
     }
 
-    private func republishTargets() {
+    private func republishTargets(shuffleChanged: Bool) {
         let targets = PlaybackReducer.targets(state)
         for (key, target) in targets {
             if let cell = cells[key] {
+                if cell.target.wantsDark != target.wantsDark || (shuffleChanged && state.surfaces[key]?.choice == shuffleChoiceID) {
+                    refreshBMPSnapshot(for: key)
+                }
                 if cell.target != target {
                     cell.target = target
                 }

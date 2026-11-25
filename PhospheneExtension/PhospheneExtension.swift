@@ -71,9 +71,9 @@ final class PhospheneExtension: NSObject, AppExtension {
             center,
             observer,
             { _, _, _, _, _ in
-                VideoLibrary.shared.scan()
+                guard VideoLibrary.shared.scan() else { return }
                 extensionLog("[Extension] Library changed notification received, re-scanned")
-                SurfaceRegistry.shared.reloadReplacedVideos()
+                Lifecycle.queue.async { SurfaceRegistry.shared.reconcileLibrary() }
                 SettingsPush.libraryDidChange()
             },
             "glass.kagerou.phosphene.libraryChanged" as CFString,
