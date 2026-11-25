@@ -161,10 +161,17 @@ struct VideoBrowser: View {
         return Table(rows, selection: $store.videoSelection, sortOrder: $store.videoSort) {
             TableColumn("Name", value: \.name) { row in
                 HStack(spacing: 8) {
-                    RowThumbnail(
-                        url: VideoDeploymentService.thumbnailURL(for: row.id), placeholder: "film",
-                        revision: store.revision,
-                    )
+                    if let pair = store.pairs[row.id] {
+                        LibraryPairThumbnail(pair: pair, revision: store.revision)
+                            .frame(width: 48, height: 27)
+                            .clipShape(.rect(cornerRadius: 4))
+                            .accessibilityHidden(true)
+                    } else {
+                        RowThumbnail(
+                            url: VideoDeploymentService.thumbnailURL(for: row.id), placeholder: "film",
+                            revision: store.revision,
+                        )
+                    }
                     Text(row.name)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -395,20 +402,21 @@ struct LibraryGrid: View {
             LibraryGridColumns(
                 tiles: tiles, selection: selection, tileWidth: size,
                 columns: LibraryGridMetrics.columns(in: proxy.size.width, tileWidth: size),
-                tileAspect: tileAspect, onReachEnd: onReachEnd,
+                tileAspect: tileAspect, minHeight: proxy.size.height, onReachEnd: onReachEnd,
             )
         }
     }
 }
 
-/// The grid at a column count. Its inputs change only when a column is gained or lost,
-/// so resizing the window re-renders it only then.
+/// The grid at a column count. Small width changes keep its inputs stable until a
+/// column is gained or lost.
 private struct LibraryGridColumns: View {
     let tiles: [LibraryTileModel]
     let selection: Set<String>
     let tileWidth: CGFloat
     let columns: Int
     let tileAspect: CGFloat
+    let minHeight: CGFloat
     let onReachEnd: (() -> Void)?
 
     @Environment(LibraryStore.self) private var store
@@ -440,12 +448,13 @@ private struct LibraryGridColumns: View {
                     }
                 }
                 .padding(LibraryGridMetrics.padding)
-            }
-            .background {
-                // A click on empty space clears the selection, as in Finder.
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { store.clearSelection() }
+                .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+                .background {
+                    // The grid's hit area includes the gaps and the space below its last row.
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { store.clearSelection() }
+                }
             }
             .focusable()
             .focusEffectDisabled()
@@ -563,7 +572,11 @@ struct LibraryTile: View {
         .accessibilityValue(model.isPair ? Text("Light/Dark Pair") : Text(""))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { store.click(model.id) }
-        .task(id: ThumbnailKey(url: model.image, revision: revision)) {
+        .task(id: ThumbnailKey(url: model.isPair ? nil : model.image, revision: revision)) {
+            guard !model.isPair else {
+                image = nil
+                return
+            }
             image = ThumbnailCache.cached(model.image)
             if image == nil {
                 image = await ThumbnailCache.image(at: model.image)
@@ -602,7 +615,9 @@ struct LibraryTile: View {
 
     private var thumbnail: some View {
         ZStack {
-            if let image {
+            if model.isPair, let pair = store.pairs[model.id] {
+                LibraryPairThumbnail(pair: pair, revision: revision)
+            } else if let image {
                 switch model.imageFit {
                 case .fill:
                     Image(nsImage: image)
@@ -713,6 +728,44 @@ struct LibraryTile: View {
     }
 }
 
+/// The same split poster and delayed, synchronized preview for grid tiles and table rows.
+private struct LibraryPairThumbnail: View {
+    let pair: VideoPairSelection
+    let revision: Int
+
+    @Environment(\.appearsActive) private var appearsActive
+    @State private var isHovered = false
+    @State private var isPlaying = false
+
+    var body: some View {
+        VideoPairPreview(selection: pair, swapped: pair.saved?.swapped == true, isPlaying: isPlaying)
+            .id(revision)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 && appearsActive }
+            .onScrollVisibilityChange(threshold: 0.01) { visible in
+                if !visible {
+                    isHovered = false
+                }
+            }
+            .onChange(of: appearsActive) {
+                if !appearsActive {
+                    isHovered = false
+                }
+            }
+            .task(id: isHovered) {
+                isPlaying = false
+                guard isHovered else { return }
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled else { return }
+                isPlaying = true
+            }
+            .onDisappear {
+                isHovered = false
+                isPlaying = false
+            }
+    }
+}
+
 // MARK: - Context menu
 
 /// What a click with the secondary button offers for videos or downloads. A click on an
@@ -770,27 +823,20 @@ struct LibraryItemMenu: View {
 
     @ViewBuilder
     private func videoItems(_ ids: Set<String>) -> some View {
-        Button("Quick Look") { store.toggleQuickLook(ids.first) }
-        Button("Open Wallpaper Settings…") { store.openWallpaperSettings() }
-        if let pair = store.pairAction(for: ids) {
-            Button { store.pairSheet = pair } label: {
-                Label(pair.actionTitle, image: .lightDarkPair)
-            }
-            if pair.saved != nil, pair.members.count == 2 {
-                Button("Swap Light and Dark", systemImage: "arrow.left.arrow.right") { store.swapAppearances(pair) }
-            }
+        let actions = LibraryVideoActions(store: store, ids: ids)
+        if actions.hasSingleSelection {
+            actions.useAsWallpaper
         }
+        actions.quickLook
+        if actions.pair != nil {
+            actions.editPair
+        }
+        actions.swapAppearances
+        actions.optimization
         Divider()
-        Button("Show in Finder") { store.showInFinder(ids) }
+        actions.showInFinder
         Divider()
-        let title: LocalizedStringKey = if ids.count == 1, let id = ids.first, store.pairs[id] != nil {
-            "Delete Pair…"
-        } else {
-            ids.count == 1 ? "Delete…" : "Delete \(ids.count) Videos…"
-        }
-        Button(title, role: .destructive) {
-            store.requestDelete(ids)
-        }
+        actions.delete
     }
 
     @ViewBuilder

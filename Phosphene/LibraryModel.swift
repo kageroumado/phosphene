@@ -10,6 +10,7 @@ enum LibrarySection: Hashable, RawRepresentable {
     case allVideos
     case lightDarkPairs
     case inUse
+    case fromWorkshop
     /// Every Wallpaper Engine wallpaper found on this Mac.
     case workshopAll
     /// The wallpapers that can become a video and have no current one.
@@ -24,6 +25,7 @@ enum LibrarySection: Hashable, RawRepresentable {
         case "all": self = .allVideos
         case "lightDarkPairs": self = .lightDarkPairs
         case "inUse": self = .inUse
+        case "fromWorkshop": self = .fromWorkshop
         case "workshop": self = .workshopAll
         case "workshop.ready": self = .workshopReady
         case "workshop.catalog": self = .catalog
@@ -38,6 +40,7 @@ enum LibrarySection: Hashable, RawRepresentable {
         case .allVideos: "all"
         case .lightDarkPairs: "lightDarkPairs"
         case .inUse: "inUse"
+        case .fromWorkshop: "fromWorkshop"
         case .workshopAll: "workshop"
         case .workshopReady: "workshop.ready"
         case let .workshopSource(id): "source:\(id)"
@@ -57,7 +60,7 @@ enum LibrarySection: Hashable, RawRepresentable {
 
     var content: Content {
         switch self {
-        case .allVideos, .lightDarkPairs, .inUse: .videos
+        case .allVideos, .lightDarkPairs, .inUse, .fromWorkshop: .videos
         case .workshopAll, .workshopReady, .workshopSource: .downloads
         case .catalog: .catalog
         }

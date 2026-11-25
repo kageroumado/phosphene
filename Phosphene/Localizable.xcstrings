@@ -91,6 +91,16 @@
     "%lld fps": {
       "shouldTranslate": false
     },
+    "%lld fps · %lld × %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld 帧/秒 · %2$lld × %3$lld"
+          }
+        }
+      }
+    },
     "%lld pairs · %@": {
       "localizations": {
         "zh-Hans": {
@@ -235,6 +245,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 明暗配对"
+          }
+        }
+      }
+    },
+    "%@ fps": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ fps"
           }
         }
       }
@@ -405,6 +425,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "关于 Phosphene"
+          }
+        }
+      }
+    },
+    "Actions for the selected wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选墙纸的操作"
           }
         }
       }
@@ -636,6 +666,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "所有壁纸"
+          }
+        }
+      }
+    },
+    "Appearance": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外观"
           }
         }
       }
@@ -1020,6 +1060,16 @@
         }
       }
     },
+    "Click to rename": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点按以重新命名"
+          }
+        }
+      }
+    },
     "Click to rename — the name also shows in the System Settings wallpaper picker": {
       "localizations": {
         "zh-Hans": {
@@ -1160,6 +1210,16 @@
         }
       }
     },
+    "Converting… %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在转换… %@"
+          }
+        }
+      }
+    },
     "Couldn't convert the video to HEVC.": {
       "localizations": {
         "zh-Hans": {
@@ -1208,6 +1268,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法优化视频。"
+          }
+        }
+      }
+    },
+    "Couldn’t Change Debug Logging": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法更改调试日志设置"
+          }
+        }
+      }
+    },
+    "Couldn’t Complete Restart": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未能完成重启"
           }
         }
       }
@@ -1422,6 +1502,16 @@
         }
       }
     },
+    "Debug Logging": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调试日志"
+          }
+        }
+      }
+    },
     "Delete": {
       "localizations": {
         "zh-Hans": {
@@ -1558,6 +1648,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "保存位置"
+          }
+        }
+      }
+    },
+    "Diagnostics": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "诊断"
           }
         }
       }
@@ -1922,6 +2022,16 @@
         }
       }
     },
+    "General": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "常规"
+          }
+        }
+      }
+    },
     "Get": {
       "localizations": {
         "zh-Hans": {
@@ -1968,6 +2078,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "HDR"
+          }
+        }
+      }
+    },
+    "HDR (HLG)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HDR（HLG）"
+          }
+        }
+      }
+    },
+    "HDR (PQ)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HDR（PQ）"
           }
         }
       }
@@ -2624,6 +2754,16 @@
         }
       }
     },
+    "More actions for the selected videos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选视频的更多操作"
+          }
+        }
+      }
+    },
     "Most Subscribed": {
       "localizations": {
         "zh-Hans": {
@@ -3014,6 +3154,16 @@
         }
       }
     },
+    "Optimize": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "优化"
+          }
+        }
+      }
+    },
     "Optimized": {
       "localizations": {
         "zh-Hans": {
@@ -3060,6 +3210,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在优化…"
+          }
+        }
+      }
+    },
+    "Optimizing… %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在优化… %@"
           }
         }
       }
@@ -3203,6 +3363,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Phosphene %@ 是目前可用的最新版本。"
+          }
+        }
+      }
+    },
+    "Phosphene Settings…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 设置…"
           }
         }
       }
@@ -3377,6 +3547,16 @@
         }
       }
     },
+    "Privacy": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐私"
+          }
+        }
+      }
+    },
     "Quality": {
       "localizations": {
         "zh-Hans": {
@@ -3447,6 +3627,16 @@
         }
       }
     },
+    "Records playback, appearance transitions, and snapshot details on this Mac. The log can include video filenames.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这台 Mac 上记录播放、明暗切换和墙纸快照的详细信息。日志可能包含视频文件名。"
+          }
+        }
+      }
+    },
     "Release Notes": {
       "localizations": {
         "zh-Hans": {
@@ -3487,6 +3677,16 @@
         }
       }
     },
+    "Remove Variants…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除优化版本…"
+          }
+        }
+      }
+    },
     "Rendering": {
       "localizations": {
         "zh-Hans": {
@@ -3513,6 +3713,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新启动墙纸代理"
+          }
+        }
+      }
+    },
+    "Restart Wallpaper Host and System Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重启墙纸服务和系统设置"
           }
         }
       }
@@ -3583,6 +3793,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已保存 %@。"
+          }
+        }
+      }
+    },
+    "Scanning Workshop…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在扫描创意工坊…"
           }
         }
       }
@@ -3747,6 +3967,16 @@
         }
       }
     },
+    "Selection Actions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选项目操作"
+          }
+        }
+      }
+    },
     "Send crash reports": {
       "localizations": {
         "zh-Hans": {
@@ -3773,6 +4003,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sevoflurane 能在你的 Mac 上运行 Windows 版 Steam。它是免费的，出自 Phosphene 的开发者。"
+          }
+        }
+      }
+    },
+    "Shared video details are unavailable because a source file is missing or has changed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "源文件缺失或已更改，无法显示两个视频的共同参数。"
           }
         }
       }
@@ -3833,6 +4073,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在资料库中显示"
+          }
+        }
+      }
+    },
+    "Show “Add Video…” when the library is empty": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "资料库为空时显示“添加视频…”"
           }
         }
       }
@@ -4097,6 +4347,26 @@
         }
       }
     },
+    "Switching between light and dark briefly decodes both videos and increases GPU and memory use. HDR, high frame rates, and multiple displays can make the transition stutter.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在浅色与深色外观之间切换时，会短暂同时解码两个视频，从而增加 GPU 和内存用量。使用 HDR、高帧率或多个显示器时，过渡动画可能会卡顿。"
+          }
+        }
+      }
+    },
+    "System Settings is still open. Finish any open dialog and try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统设置仍在运行，请先处理其中的弹窗后再试。"
+          }
+        }
+      }
+    },
     "The %lld videos leave your library and System Settings.": {
       "localizations": {
         "en": {
@@ -4246,6 +4516,26 @@
         }
       }
     },
+    "The wallpaper host did not quit.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "墙纸服务未能退出。"
+          }
+        }
+      }
+    },
+    "The wallpaper host did not start.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "墙纸服务未能启动。"
+          }
+        }
+      }
+    },
     "This Mac decodes %@ in software, so playback can stutter.": {
       "localizations": {
         "zh-Hans": {
@@ -4329,6 +4619,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "切换检查器"
+          }
+        }
+      }
+    },
+    "Tools": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具"
           }
         }
       }
@@ -4583,6 +4883,16 @@
         }
       }
     },
+    "Video Details": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频详细信息"
+          }
+        }
+      }
+    },
     "Video resolution is unavailable.": {
       "localizations": {
         "zh-Hans": {
@@ -4619,6 +4929,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 GitHub 上查看"
+          }
+        }
+      }
+    },
+    "Wait for the current video to finish optimizing, then try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请等当前视频优化完成后再试。"
           }
         }
       }
@@ -4709,6 +5029,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wallpaper Engine…"
+          }
+        }
+      }
+    },
+    "Wallpaper Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "墙纸设置"
+          }
+        }
+      }
+    },
+    "Wallpaper Settings could not be opened.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开墙纸设置。"
           }
         }
       }

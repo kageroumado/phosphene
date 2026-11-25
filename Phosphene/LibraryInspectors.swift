@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreVideo
 import SwiftUI
 import VideoToolbox
 
@@ -13,6 +14,7 @@ struct LibraryInspector: View {
             let selected = store.selectedVideos
             if selected.count == 1, let entry = selected.first {
                 VideoInspector(entry: entry)
+                    .id(entry.id)
             } else if selected.count > 1 {
                 SelectionSummary(count: selected.count, detail: nil)
             } else {
@@ -142,6 +144,8 @@ private struct InfoRows: View {
 nonisolated struct VideoCodec: Equatable {
     let label: String
     let isHardwareDecoded: Bool
+    let resolution: CGSize
+    let hdrTransfer: String?
 
     static func load(from url: URL) async -> VideoCodec? {
         let asset = AVURLAsset(url: url)
@@ -156,7 +160,21 @@ nonisolated struct VideoCodec: Equatable {
         case kCMVideoCodecType_AV1: "AV1"
         default: fourCharacterCode(code)
         }
-        return VideoCodec(label: label, isHardwareDecoded: VTIsHardwareDecodeSupported(code))
+        let dimensions = CMVideoFormatDescriptionGetDimensions(description)
+        let transfer = CMFormatDescriptionGetExtension(
+            description, extensionKey: kCMFormatDescriptionExtension_TransferFunction,
+        ) as? String
+        let hdrTransfer: String? = if transfer == kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ as String {
+            String(localized: "HDR (PQ)")
+        } else if transfer == kCVImageBufferTransferFunction_ITU_R_2100_HLG as String {
+            String(localized: "HDR (HLG)")
+        } else {
+            nil
+        }
+        return VideoCodec(
+            label: label, isHardwareDecoded: VTIsHardwareDecodeSupported(code),
+            resolution: CGSize(width: Int(dimensions.width), height: Int(dimensions.height)), hdrTransfer: hdrTransfer,
+        )
     }
 
     private static func fourCharacterCode(_ code: FourCharCode) -> String {
@@ -165,16 +183,14 @@ nonisolated struct VideoCodec: Equatable {
     }
 }
 
-/// One library video: it plays, then its name, where it is in use, and its facts.
+/// A selected video with its preview, names, technical details and optimization controls.
 struct VideoInspector: View {
     let entry: VideoDeploymentService.EntryInfo
 
     @Environment(PhospheneManager.self) private var manager
     @Environment(LibraryStore.self) private var store
-    @State private var codec: VideoCodec?
-    @State private var fileSize: Int64?
-    @State private var confirmingRemoveVariants = false
-    @State private var sdrTargetID: String?
+    @State private var inspection: Inspection?
+    @State private var detailsExpanded = true
 
     private var pair: VideoPairSelection? {
         store.pairs[entry.id]
@@ -192,220 +208,196 @@ struct VideoInspector: View {
         isWorkingOnThis && manager.isConverting
     }
 
-    /// What the file facts depend on: the entry, its file, and whether a conversion of it
-    /// is running, so they reload once a conversion swaps the file.
+    /// The library revision also catches a file replacement under the same filename.
     private struct FileKey: Equatable {
-        let entryID: String
         let filename: String
-        let isConverting: Bool
         let revision: Int
     }
 
-    private var usedOn: [String] {
+    private struct Inspection {
+        let key: FileKey
+        let codec: VideoCodec?
+        let validation: AppearancePair.Validation?
+    }
+
+    private var displaySelections: [WallpaperPrefsService.WallpaperSelection] {
         manager.prefsService.selections.filter {
             $0.videoID == entry.id || pair?.saved?.contains($0.videoID) == true
-        }.map { selection in
-            if let spaceName = selection.spaceName {
-                "\(selection.displayName) · \(spaceName)"
-            } else {
-                selection.displayName
-            }
         }
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: InspectorMetrics.sectionSpacing) {
-                if let pair, let record = pair.saved {
-                    PairComparisonView(selection: pair, swapped: record.swapped)
-                        .aspectRatio(16 / 9, contentMode: .fit)
-                        .clipShape(.rect(cornerRadius: InspectorMetrics.previewRadius))
-                        .id(store.revision)
-                } else {
-                    VideoPreview(
-                        url: VideoDeploymentService.videoURL(for: entry),
-                        poster: VideoDeploymentService.thumbnailURL(for: entry.id),
-                        revision: store.revision,
-                    )
-                }
-                header
-                if let codec, !codec.isHardwareDecoded {
-                    softwareDecodeNotice(codec.label)
-                }
-                InfoRows(rows: facts)
-                InspectorSection(title: "Optimization") {
-                    optimization
-                }
-            }
-            .inspectorPadding()
-        }
-        .task(id: FileKey(
-            entryID: entry.id, filename: entry.filename, isConverting: isConvertingThis, revision: store.revision,
-        )) {
-            let url = VideoDeploymentService.videoURL(for: entry)
-            fileSize = VideoDeploymentService.fileSize(for: entry)
-            let loaded = await VideoCodec.load(from: url)
-            guard !Task.isCancelled else { return }
-            codec = loaded
-        }
-    }
-
-    // MARK: Header
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                InspectorNameField(entryID: entry.id, name: entry.name)
-                if let pair, let record = pair.saved {
-                    let light = pair.entry(light: true, swapped: record.swapped)?.name ?? String(localized: "File unavailable")
-                    let dark = pair.entry(light: false, swapped: record.swapped)?.name ?? String(localized: "File unavailable")
-                    Label(light, systemImage: "sun.max")
-                        .accessibilityLabel(Text("Light — \(light)"))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Label(dark, systemImage: "moon")
-                        .accessibilityLabel(Text("Dark — \(dark)"))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                let usedOn = usedOn
-                if !usedOn.isEmpty {
-                    Label {
-                        Text("In use on \(usedOn.joined(separator: ", "))")
-                    } icon: {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.tint)
+        let key = FileKey(filename: entry.filename, revision: store.revision)
+        let inspected = inspection?.key == key ? inspection : nil
+        Form {
+            Section {
+                VStack(spacing: 8) {
+                    if !displaySelections.isEmpty {
+                        InspectorDisplayStrip(selections: displaySelections)
                     }
-                    .font(.callout)
+                    if let pair, let record = pair.saved {
+                        PairComparisonView(selection: pair, swapped: record.swapped)
+                            .aspectRatio(16 / 9, contentMode: .fit)
+                            .clipShape(.rect(cornerRadius: InspectorMetrics.previewRadius))
+                            .id(store.revision)
+                    } else {
+                        VideoPreview(
+                            url: VideoDeploymentService.videoURL(for: entry),
+                            poster: VideoDeploymentService.thumbnailURL(for: entry.id),
+                            revision: store.revision,
+                        )
+                    }
                 }
             }
-            Button("Open Wallpaper Settings…") { store.openWallpaperSettings() }
-                .help("Phosphene wallpapers are selected in System Settings → Wallpaper")
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+
+            Section("General") {
+                LabeledContent("Name") {
+                    InspectorNameField(label: "Name", name: entry.name) { store.renameVideo(entryID: entry.id, to: $0) }
+                }
+                LibraryVideoActions(store: store, ids: [entry.id]).useAsWallpaper
+            }
+            if let pair, let record = pair.saved {
+                Section("Appearance") {
+                    memberField("Light", member: pair.entry(light: true, swapped: record.swapped))
+                    memberField("Dark", member: pair.entry(light: false, swapped: record.swapped))
+                }
+            }
+            if isConvertingThis || inspected?.codec?.isHardwareDecoded == false {
+                Section {
+                    softwareDecodeNotice(inspected?.codec?.label)
+                }
+            }
+            Section("Video Details", isExpanded: $detailsExpanded) {
+                if pair != nil, inspected != nil, inspected?.validation == nil {
+                    Text("Shared video details are unavailable because a source file is missing or has changed.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(facts(inspection: inspected)) { row in
+                    LabeledContent {
+                        Text(verbatim: row.value)
+                            .multilineTextAlignment(.trailing)
+                            .textSelection(.enabled)
+                    } label: {
+                        Text(verbatim: row.label)
+                    }
+                }
+            }
+            Section("Optimization") {
+                optimization
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .task(id: key) {
+            let url = VideoDeploymentService.videoURL(for: entry)
+            let validation = pair.flatMap { pair -> AppearancePair.Validation? in
+                guard let record = pair.saved, record.validation.version == 1, record.validation.frameCount > 0,
+                      record.validation.frameTicks > 0, record.validation.timescale > 0,
+                      let first = pair.previewSources.first, let second = pair.previewSources.second,
+                      FileIdentity(of: first) == record.validation.original,
+                      FileIdentity(of: second) == record.validation.alternate else { return nil }
+                return record.validation
+            }
+            let codec = await VideoCodec.load(from: url)
+            guard !Task.isCancelled else { return }
+            inspection = Inspection(key: key, codec: codec, validation: validation)
         }
     }
 
-    // MARK: Facts
+    private func memberField(_ label: LocalizedStringKey, member: VideoDeploymentService.EntryInfo?) -> some View {
+        LabeledContent(label) {
+            if let member {
+                InspectorNameField(label: label, name: member.name) {
+                    store.renameVideo(entryID: entry.id, to: $0, memberID: member.id)
+                }
+                .id(member.id)
+            } else {
+                Text("File unavailable")
+            }
+        }
+    }
 
-    private var facts: [InfoRow] {
+    private func facts(inspection: Inspection?) -> [InfoRow] {
         var rows: [InfoRow] = []
-        if entry.resolution != .zero {
-            let size = "\(Int(entry.resolution.width)) × \(Int(entry.resolution.height))"
-            rows.append(InfoRow(label: String(localized: "Resolution"), value: size))
+        let validation = inspection?.validation
+        if pair == nil || validation != nil {
+            let size = pair == nil ? entry.resolution : inspection?.codec?.resolution ?? entry.resolution
+            if size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite {
+                let format = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(0)).grouping(.never)
+                let resolution = "\(Double(size.width).formatted(format)) × \(Double(size.height).formatted(format))"
+                rows.append(InfoRow(label: String(localized: "Resolution"), value: resolution))
+            }
+            let fps = validation.map { Double($0.timescale) / Double($0.frameTicks) } ?? entry.fps
+            if fps.isFinite, fps > 0 {
+                let rate = fps.formatted(.number.precision(.fractionLength(0 ... 3)))
+                rows.append(InfoRow(label: String(localized: "Frame Rate"), value: String(localized: "\(rate) fps")))
+            }
+            let duration = validation.map { Double($0.frameCount) / fps } ?? entry.duration
+            if duration.isFinite, duration > 0 {
+                rows.append(InfoRow(label: String(localized: "Duration"), value: Duration.seconds(duration).formatted(.time(pattern: .minuteSecond))))
+            }
+            if let codec = inspection?.codec {
+                rows.append(InfoRow(label: String(localized: "Codec"), value: codec.label))
+            }
+            let range = inspection?.codec?.hdrTransfer ?? entry.sourceIsHDR.map { $0 ? String(localized: "HDR") : String(localized: "SDR") }
+            if let range {
+                rows.append(InfoRow(label: String(localized: "Dynamic Range"), value: range))
+            }
         }
-        if entry.fps > 0 {
-            rows.append(InfoRow(label: String(localized: "Frame Rate"), value: String(localized: "\(Int(entry.fps.rounded())) fps")))
-        }
-        if entry.duration > 0 {
-            let duration = Duration.seconds(entry.duration).formatted(.time(pattern: .minuteSecond))
-            rows.append(InfoRow(label: String(localized: "Duration"), value: duration))
-        }
-        let totalSize = pair?.members.reduce(0) { $0 + (store.fileSize(ofVideo: $1.id) ?? 0) } ?? fileSize
-        if let totalSize {
-            let size = ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
-            rows.append(InfoRow(label: String(localized: "Size"), value: size))
-        }
-        if let sourceIsHDR = entry.sourceIsHDR {
-            let range = sourceIsHDR ? String(localized: "HDR") : String(localized: "SDR")
-            rows.append(InfoRow(label: String(localized: "Dynamic Range"), value: range))
-        }
-        if let codec {
-            rows.append(InfoRow(label: String(localized: "Codec"), value: codec.label))
+        let size = pair?.members.reduce(0) { $0 + (store.fileSize(ofVideo: $1.id) ?? 0) } ?? store.fileSize(ofVideo: entry.id)
+        if let size {
+            rows.append(InfoRow(label: String(localized: "Size"), value: ByteCountFormatter.string(fromByteCount: size, countStyle: .file)))
         }
         let added = entry.dateAdded.formatted(date: .abbreviated, time: .omitted)
         rows.append(InfoRow(label: String(localized: "Added"), value: added))
         return rows
     }
 
-    // MARK: Software decoding
-
-    private func softwareDecodeNotice(_ codecLabel: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    @ViewBuilder
+    private func softwareDecodeNotice(_ codecLabel: String?) -> some View {
+        if let codecLabel {
             Label {
                 Text("This Mac decodes \(codecLabel) in software, so playback can stutter.")
             } icon: {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.yellow)
             }
-            .font(.callout)
-
-            if isConvertingThis {
-                ProgressView(value: manager.optimizationProgress) {
-                    Text("Converting…")
-                        .font(.callout)
-                }
-                Button("Cancel") { manager.cancelOptimization() }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            } else if pair == nil {
-                Button {
-                    manager.convertToHEVC(entryID: entry.id)
-                } label: {
-                    Text("Convert to HEVC")
-                        .frame(maxWidth: .infinity)
-                }
+        }
+        if isConvertingThis {
+            ProgressView(value: manager.optimizationProgress) { Text("Converting…") }
+            Button("Cancel", action: manager.cancelOptimization)
+        } else if pair == nil {
+            Button("Convert to HEVC") { manager.convertToHEVC(entryID: entry.id) }
                 .disabled(manager.isOptimizing)
-            }
         }
     }
-
-    // MARK: Optimization
 
     @ViewBuilder
     private var optimization: some View {
         if isWorkingOnThis, !manager.isConverting {
-            ProgressView(value: manager.optimizationProgress) {
-                Text("Optimizing…")
-                    .font(.callout)
-            }
-            Button("Cancel") { manager.cancelOptimization() }
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            ProgressView(value: manager.optimizationProgress) { Text("Optimizing…") }
+            Button("Cancel", action: manager.cancelOptimization)
         } else if !target.tiers.isEmpty {
-            let variants = target.tiers
             if entry.sourceIsHDR == true {
                 Text(target.convertedToSDR ? "Optimized · SDR" : "Optimized · HDR")
-                    .font(.callout)
             }
-            InfoRows(rows: variants.map { variant in
-                InfoRow(
-                    label: String(localized: "\(variant.fps) fps"),
-                    value: "\(Int(variant.resolution.width)) × \(Int(variant.resolution.height))",
-                )
-            })
-            Button("Remove Variants") { confirmingRemoveVariants = true }
-                .alert("Remove Variants", isPresented: $confirmingRemoveVariants) {
-                    Button("Remove", role: .destructive) { manager.removeVariants(for: target) }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    if pair != nil {
-                        Text("This will remove the optimized versions of both videos and keep the original pair.")
-                    } else {
-                        let rates = variants.map { String(localized: "\($0.fps) fps") }
-                        Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
-                    }
+            ForEach(target.tiers, id: \.fps) { variant in
+                LabeledContent("\(variant.fps) fps") {
+                    Text("\(Int(variant.resolution.width)) × \(Int(variant.resolution.height))")
                 }
+            }
+            Button("Remove Variants…") { store.pendingVariantRemoval = target }
+                .disabled(isWorkingOnThis)
         } else {
             let unavailable = target.eligibilityError
             Menu("Create Variants") {
-                if entry.sourceIsHDR == true {
-                    Toggle("Convert to SDR", isOn: Binding(
-                        get: { sdrTargetID == target.id },
-                        set: { sdrTargetID = $0 ? target.id : nil },
-                    ))
-                    Divider()
-                }
-                ForEach(OptimizationPreset.allCases) { preset in
-                    Button {
-                        manager.optimize(target, preset: preset, convertToSDR: sdrTargetID == target.id)
-                    } label: {
-                        Text(preset.title)
-                        Text(preset.description)
-                    }
-                }
+                CreateVideoVariantActions(store: store, target: target)
             }
-            .fixedSize()
             .disabled(unavailable != nil || manager.isOptimizing)
             if let unavailable {
                 Text(unavailable.localizedDescription)
-                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }
@@ -469,10 +461,10 @@ private struct VideoPreview: View {
 /// The video's name: a label that becomes a text field when clicked. A resident text
 /// field would take the window's first responder and sit in editing mode.
 private struct InspectorNameField: View {
-    let entryID: String
+    let label: LocalizedStringKey
     let name: String
+    let save: (String) -> Void
 
-    @Environment(LibraryStore.self) private var store
     @State private var draft = ""
     @State private var isEditing = false
     @State private var isHovered = false
@@ -481,7 +473,7 @@ private struct InspectorNameField: View {
     var body: some View {
         Group {
             if isEditing {
-                TextField("Name", text: $draft)
+                TextField(label, text: $draft)
                     .textFieldStyle(.plain)
                     .focused($isFocused)
                     .onSubmit { finish(commit: true) }
@@ -493,18 +485,18 @@ private struct InspectorNameField: View {
                     }
                     .task { isFocused = true }
             } else {
-                Text(verbatim: name)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        draft = name
-                        isEditing = true
-                    }
-                    .help("Click to rename — the name also shows in the System Settings wallpaper picker")
+                Button {
+                    draft = name
+                    isEditing = true
+                } label: {
+                    Text(verbatim: name)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
+                }
+                .buttonStyle(.plain)
+                .help("Click to rename")
             }
         }
-        .font(.headline)
         .padding(.vertical, 2)
         .padding(.horizontal, 5)
         .background(
@@ -513,7 +505,7 @@ private struct InspectorNameField: View {
         )
         .padding(.horizontal, -5)
         .onHover { isHovered = $0 }
-        .onChange(of: entryID) { isEditing = false }
+        .onDisappear { finish(commit: true) }
     }
 
     private func finish(commit: Bool) {
@@ -522,7 +514,7 @@ private struct InspectorNameField: View {
         guard commit else { return }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != name else { return }
-        store.renameVideo(entryID: entryID, to: trimmed)
+        save(trimmed)
     }
 }
 

@@ -113,6 +113,24 @@ private struct LibraryRoot: View {
         } message: {
             Text(verbatim: store.pendingDelete?.message ?? "")
         }
+        .alert("Remove Variants", isPresented: Binding(
+            get: { store.pendingVariantRemoval != nil },
+            set: {
+                if !$0 {
+                    store.pendingVariantRemoval = nil
+                }
+            },
+        ), presenting: store.pendingVariantRemoval) { target in
+            Button("Remove", role: .destructive) { manager.removeVariants(for: target) }
+            Button("Cancel", role: .cancel) {}
+        } message: { target in
+            if target.pair != nil {
+                Text("This will remove the optimized versions of both videos and keep the original pair.")
+            } else {
+                let rates = target.tiers.map { String(localized: "\($0.fps) fps") }
+                Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
+            }
+        }
         .alert("Library Error", isPresented: Binding(
             get: { store.libraryError != nil },
             set: {
@@ -215,6 +233,8 @@ private struct LibraryDetail: View {
             String(localized: "Light/Dark Pairs")
         case .inUse:
             String(localized: "In Use")
+        case .fromWorkshop:
+            String(localized: "From Workshop")
         case .workshopAll:
             String(localized: "Wallpaper Engine")
         case .workshopReady:
@@ -329,20 +349,41 @@ private struct LibraryToolbar: ToolbarContent {
                         .buttonStyle(.glassProminent)
                 }
             }
-        } else if content == .videos {
-            if let pair = store.pairAction(for: store.videoSelection) {
+            if !store.selection.isEmpty {
                 ToolbarItem {
-                    Button { store.pairSheet = pair } label: {
-                        Label(pair.actionTitle, image: .lightDarkPair)
+                    Menu("Selection Actions", systemImage: "ellipsis.circle") {
+                        LibraryItemMenu(ids: store.selection)
                     }
-                    .help(Text(pair.actionTitle))
+                    .help("Actions for the selected wallpapers")
                 }
             }
+        } else if content == .videos {
             ToolbarItem {
                 Button("Add Video", systemImage: "plus") {
                     store.addVideo()
                 }
                 .help("Add a video to the library")
+            }
+            let actions = LibraryVideoActions(store: store, ids: store.videoSelection)
+            if actions.hasSelection {
+                if actions.hasSingleSelection {
+                    ToolbarItem { actions.useAsWallpaper }
+                }
+                if actions.pair != nil {
+                    ToolbarItem { actions.editPair }
+                }
+                if actions.optimizationTarget != nil {
+                    ToolbarItem { actions.optimization }
+                }
+                ToolbarItem { actions.showInFinder }
+                ToolbarItem {
+                    Menu("Selection Actions", systemImage: "ellipsis.circle") {
+                        actions.quickLook
+                        actions.swapAppearances
+                        actions.delete
+                    }
+                    .help("More actions for the selected videos")
+                }
             }
         }
         ToolbarSpacer(.fixed)
@@ -551,24 +592,37 @@ struct LibraryCommands: Commands {
             Button("Custom Conversion…") { openWindow(id: "custom-conversion") }
             Button("Light/Dark Pair Converter…") { openWindow(value: PairConverterRequest.blank) }
             Divider()
-            let pair = store.flatMap { $0.pairAction(for: $0.videoSelection) }
-            Button(pair?.actionTitle ?? "Pair…") {
-                store?.pairSheet = pair
+            if let store, store.section.content == .videos {
+                let actions = LibraryVideoActions(store: store, ids: store.videoSelection)
+                actions.useAsWallpaper
+                    .disabled(!actions.hasSingleSelection)
+                actions.editPair
+                actions.swapAppearances
+                actions.optimization
+                Divider()
+                actions.quickLook
+                    .keyboardShortcut("y")
+                    .disabled(!actions.hasSelection)
+                actions.showInFinder
+                    .keyboardShortcut("r")
+                    .disabled(!actions.hasSelection)
+                actions.delete
+                    .keyboardShortcut(.delete)
+                    .disabled(!actions.hasSelection)
+            } else {
+                Button("Pair…") {}
+                    .disabled(true)
+                Button("Make Videos…") { store?.requestMakeVideos() }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
+                    .disabled(store?.renderableSelection.isEmpty ?? true)
+                Divider()
+                Button("Quick Look") { store?.toggleQuickLook() }
+                    .keyboardShortcut("y")
+                    .disabled(!(store?.hasLocalSelection ?? false))
+                Button("Show in Finder") { store?.showSelectionInFinder() }
+                    .keyboardShortcut("r")
+                    .disabled(!(store?.hasLocalSelection ?? false))
             }
-            .disabled(pair == nil)
-            Button("Make Videos…") { store?.requestMakeVideos() }
-                .keyboardShortcut("m", modifiers: [.command, .shift])
-                .disabled(store?.renderableSelection.isEmpty ?? true)
-            Divider()
-            Button("Quick Look") { store?.toggleQuickLook() }
-                .keyboardShortcut("y")
-                .disabled(!(store?.hasLocalSelection ?? false))
-            Button("Show in Finder") { store?.showSelectionInFinder() }
-                .keyboardShortcut("r")
-                .disabled(!(store?.hasLocalSelection ?? false))
-            Button("Delete…") { store?.requestDelete() }
-                .keyboardShortcut(.delete)
-                .disabled(store?.videoSelection.isEmpty ?? true)
         }
         CommandGroup(before: .sidebar) {
             if let store {

@@ -5,6 +5,7 @@ import SwiftUI
 /// wallpapers come from get rows of their own when there are several, or when one is an
 /// added folder.
 struct LibrarySidebar: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(LibraryStore.self) private var store
     @Environment(WorkshopLibrary.self) private var workshop
 
@@ -18,6 +19,7 @@ struct LibrarySidebar: View {
                     .badge(counts.pairs)
                     .tag(LibrarySection.lightDarkPairs)
                 row(Text("In Use"), symbol: "play.rectangle", count: counts.inUse, tag: .inUse)
+                row(Text("From Workshop"), symbol: "wand.and.sparkles", count: counts.fromWorkshop, tag: .fromWorkshop)
             }
 
             Section("Wallpaper Engine") {
@@ -49,7 +51,25 @@ struct LibrarySidebar: View {
                 store.section = .workshopAll
             }
         }
-        .safeAreaInset(edge: .bottom) { bottomBar }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                if workshop.isScanning {
+                    Divider()
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityHidden(true)
+                        Text("Scanning Workshop…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                    .transition(.opacity)
+                }
+                bottomBar
+            }
+            .animation(reduceMotion ? nil : .default, value: workshop.isScanning)
+        }
     }
 
     /// A sidebar row. A count of zero shows no badge.
@@ -83,11 +103,12 @@ struct LibrarySidebar: View {
             .accessibilityLabel("Add")
             .help("Add a video or a folder of Wallpaper Engine wallpapers")
             Spacer()
-            if workshop.isScanning {
-                ProgressView()
-                    .controlSize(.small)
-                    .help("Looking for Wallpaper Engine downloads")
+            SettingsLink {
+                Label("Phosphene Settings…", systemImage: "gearshape")
             }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .help("Phosphene Settings…")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

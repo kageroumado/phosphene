@@ -6,7 +6,7 @@ import SwiftUI
 /// and what the user asked to do with it.
 @Observable
 final class LibraryStore {
-    @ObservationIgnored private unowned let manager: PhospheneManager
+    @ObservationIgnored unowned let manager: PhospheneManager
     /// The Steam Workshop listing the Workshop section browses.
     @ObservationIgnored let catalog: CatalogStore
 
@@ -68,6 +68,8 @@ final class LibraryStore {
     var libraryError: String?
     /// The videos a delete confirmation is asking about.
     var pendingDelete: LibraryDeletion?
+    var pendingVariantRemoval: VideoOptimizationTarget?
+    var sdrOptimizationTargetID: String?
 
     var isConfirmingDelete: Bool {
         get { pendingDelete != nil }
@@ -109,13 +111,21 @@ final class LibraryStore {
         Set(manager.prefsService.selections.map { visibleVideoID(for: $0.videoID) })
     }
 
+    private var fromWorkshopIDs: Set<String> {
+        Set(workshop.records.values.map { visibleVideoID(for: $0.entryID) })
+    }
+
     /// The videos of the current section that match the search, in sort order.
     var videoRows: [VideoRow] {
         let inUse = inUseIDs
+        let fromWorkshop = section == .fromWorkshop ? fromWorkshopIDs : []
         return entries.compactMap { entry -> VideoRow? in
             let pair = pairs[entry.id]
             let isInUse = inUse.contains(entry.id)
             if section == .inUse, !isInUse {
+                return nil
+            }
+            if section == .fromWorkshop, !fromWorkshop.contains(entry.id) {
                 return nil
             }
             if section == .lightDarkPairs, pair == nil {
@@ -166,6 +176,7 @@ final class LibraryStore {
     struct Counts: Equatable {
         var all = 0
         var inUse = 0
+        var fromWorkshop = 0
         var pairs = 0
         var wallpapers = 0
         var readyToMake = 0
@@ -173,9 +184,11 @@ final class LibraryStore {
 
     var counts: Counts {
         let inUse = inUseIDs
+        let fromWorkshop = fromWorkshopIDs
         return Counts(
             all: entries.count,
             inUse: entries.count { inUse.contains($0.id) },
+            fromWorkshop: entries.count { fromWorkshop.contains($0.id) },
             pairs: pairs.count,
             wallpapers: workshop.items.count,
             readyToMake: workshop.items.count { Self.isReadyToMake(workshop.status(of: $0)) },
@@ -334,8 +347,10 @@ final class LibraryStore {
     }
 
     func clearSelection() {
-        guard hasSelection else { return }
-        selection = []
+        anchor = nil
+        if hasSelection {
+            selection = []
+        }
     }
 
     /// Move a grid's selection one tile in `direction`, `columns` tiles per row. Returns the
@@ -424,6 +439,12 @@ final class LibraryStore {
         showInFinder(selection)
     }
 
+    func optimizationTarget(for ids: Set<String>) -> VideoOptimizationTarget? {
+        guard section.content == .videos, ids.count == 1, let id = ids.first,
+              let entry = entries.first(where: { $0.id == id }) else { return nil }
+        return VideoOptimizationTarget(entry: entry, pair: pairs[id])
+    }
+
     func pairAction(for ids: Set<String>) -> VideoPairSelection? {
         guard section.content == .videos else { return nil }
         if ids.count == 1, let id = ids.first, let pair = pairs[id],
@@ -460,12 +481,21 @@ final class LibraryStore {
         }
     }
 
-    func renameVideo(entryID: String, to name: String) {
+    func renameVideo(entryID: String, to name: String, memberID: String? = nil) {
         do {
-            if let pair = pairs[entryID]?.saved {
-                try pair.rename(to: name, in: VideoDeploymentService.videosFolderURL)
-                VideoDeploymentService.notifyExtensionLibraryChanged()
+            if let pair = pairs[entryID], let record = pair.saved {
+                if let memberID {
+                    guard let member = pair.members.first(where: { $0.id == memberID }) else { throw PairIssue.changed }
+                    if record.name == nil, memberID == entryID {
+                        try record.rename(to: member.name, in: VideoDeploymentService.videosFolderURL)
+                    }
+                    try VideoDeploymentService.renameEntry(entryID: memberID, to: name)
+                } else {
+                    try record.rename(to: name, in: VideoDeploymentService.videosFolderURL)
+                    VideoDeploymentService.notifyExtensionLibraryChanged()
+                }
             } else {
+                guard memberID == nil else { throw PairIssue.changed }
                 try VideoDeploymentService.renameEntry(entryID: entryID, to: name)
             }
         } catch {
