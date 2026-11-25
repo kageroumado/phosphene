@@ -55,6 +55,7 @@
 				AppearancePair.swift,
 				FileIdentity.swift,
 				HDRMode.swift,
+				LegacyStillProvenance.swift,
 				VideoVariant.swift,
 			);
 			target = AA9B91C82E900B9E008812A9 /* Phosphene */;
@@ -66,6 +67,7 @@
 				CachedFrame.swift,
 				FileIdentity.swift,
 				HDRMode.swift,
+				LegacyStillProvenance.swift,
 				GeometryVerdict.swift,
 				PlaybackModel.swift,
 				PlaybackPolicy.swift,
