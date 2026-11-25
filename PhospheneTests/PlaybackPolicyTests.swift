@@ -27,8 +27,7 @@ struct PlaybackPolicyTests {
             activityState: activityState,
             userPaused: userPaused,
             alwaysPauseDesktop: alwaysPauseDesktop,
-            pauseWhenOccluded: pauseWhenOccluded,
-            desktopOccluded: desktopOccluded,
+            pauseForOcclusion: pauseWhenOccluded && desktopOccluded,
             displayHasFullscreenApp: displayHasFullscreenApp,
             screenSaverIsOurs: screenSaverIsOurs,
             power: PowerState(

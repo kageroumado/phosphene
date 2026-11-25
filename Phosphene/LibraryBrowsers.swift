@@ -135,7 +135,8 @@ struct VideoBrowser: View {
     private var tiles: [LibraryTileModel] {
         let working = manager.isOptimizing ? manager.optimizingEntryID : nil
         return rows.map { row in
-            let badge: LibraryTileModel.Badge? = if row.id == working {
+            let pair = store.pairs[row.id]
+            let badge: LibraryTileModel.Badge? = if (pair?.id ?? row.id) == working {
                 .working(
                     label: manager.isConverting ? String(localized: "Converting") : String(localized: "Optimizing"),
                     progress: manager.optimizationProgress,
@@ -148,9 +149,9 @@ struct VideoBrowser: View {
             return LibraryTileModel(
                 id: row.id, title: row.name,
                 image: VideoDeploymentService.thumbnailURL(for: row.id), imageFit: .fill,
-                video: VideoDeploymentService.videoURL(for: row.entry),
+                video: row.isPair ? nil : VideoDeploymentService.videoURL(for: row.entry),
                 placeholderSymbol: "film", isDimmed: false, badge: badge,
-                help: row.isInUse ? String(localized: "In use as wallpaper") : "",
+                help: row.isInUse ? String(localized: "In use as wallpaper") : "", isPair: row.isPair,
             )
         }
     }
@@ -167,6 +168,11 @@ struct VideoBrowser: View {
                     Text(row.name)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if row.isPair {
+                        Image(.lightDarkPair)
+                            .help("Light/Dark Pair")
+                            .accessibilityLabel("Light/Dark Pair")
+                    }
                     if row.isInUse {
                         Spacer(minLength: 4)
                         Image(systemName: "checkmark.circle.fill")
@@ -554,6 +560,7 @@ struct LibraryTile: View {
         .help(model.help)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(model.title)
+        .accessibilityValue(model.isPair ? Text("Light/Dark Pair") : Text(""))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { store.click(model.id) }
         .task(id: ThumbnailKey(url: model.image, revision: revision)) {
@@ -635,6 +642,11 @@ struct LibraryTile: View {
                 .strokeBorder(.separator, lineWidth: 0.5)
         }
         .overlay(alignment: .bottomTrailing) { badge }
+        .overlay(alignment: .topTrailing) {
+            if model.isPair {
+                pill { Image(.lightDarkPair) }
+            }
+        }
         .overlay {
             if isSelected {
                 RoundedRectangle(cornerRadius: Metrics.cornerRadius + Metrics.ringOutset, style: .continuous)
@@ -760,10 +772,23 @@ struct LibraryItemMenu: View {
     private func videoItems(_ ids: Set<String>) -> some View {
         Button("Quick Look") { store.toggleQuickLook(ids.first) }
         Button("Open Wallpaper Settings…") { store.openWallpaperSettings() }
+        if let pair = store.pairAction(for: ids) {
+            Button { store.pairSheet = pair } label: {
+                Label(pair.actionTitle, image: .lightDarkPair)
+            }
+            if pair.saved != nil, pair.members.count == 2 {
+                Button("Swap Light and Dark", systemImage: "arrow.left.arrow.right") { store.swapAppearances(pair) }
+            }
+        }
         Divider()
         Button("Show in Finder") { store.showInFinder(ids) }
         Divider()
-        Button(ids.count == 1 ? "Delete…" : "Delete \(ids.count) Videos…", role: .destructive) {
+        let title: LocalizedStringKey = if ids.count == 1, let id = ids.first, store.pairs[id] != nil {
+            "Delete Pair…"
+        } else {
+            ids.count == 1 ? "Delete…" : "Delete \(ids.count) Videos…"
+        }
+        Button(title, role: .destructive) {
             store.requestDelete(ids)
         }
     }
