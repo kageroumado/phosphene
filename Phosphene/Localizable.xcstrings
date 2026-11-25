@@ -842,6 +842,16 @@
         }
       }
     },
+    "Counts this Mac once per day of use. Each check-in includes the date, app and macOS versions, chip, memory, language, display count, days active in the past week, and whether you imported videos.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天使用仅统计一次。统计内容包含日期、App 与 macOS 版本、芯片、内存、语言、显示器数量、过去一周的活跃天数，以及是否导入过视频。"
+          }
+        }
+      }
+    },
     "Crash reports adds a report when Phosphene itself crashes, with your name, your Mac’s name and folder paths removed.": {
       "localizations": {
         "zh-Hans": {
@@ -938,6 +948,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在删除这台 Mac 发送的内容…"
+          }
+        }
+      }
+    },
+    "Deletion is pending until the service can be reached.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时无法连接服务，恢复连接后将完成删除。"
           }
         }
       }
@@ -2447,6 +2467,16 @@
         }
       }
     },
+    "Send crash reports": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送崩溃报告"
+          }
+        }
+      }
+    },
     "Settings": {
       "localizations": {
         "zh-Hans": {
@@ -3249,6 +3279,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 的新功能"
+          }
+        }
+      }
+    },
+    "When Phosphene crashes, it sends the crash log, app and macOS versions, hardware details, and language. Your account name, Mac name, and home folder path are redacted.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 崩溃时会发送崩溃日志、App 与 macOS 版本、硬件信息和语言。发送前会隐去账户名称、Mac 名称和个人文件夹路径。"
           }
         }
       }

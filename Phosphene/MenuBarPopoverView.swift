@@ -48,7 +48,7 @@ struct MenuBarPopoverView: View {
         .onAppear {
             SilentUpdates.shared.refresh()
             SilentUpdates.shared.checkIfStale()
-            UsageCounting.noteUse()
+            UsageCounting.shared.noteUse()
         }
         .onChange(of: prefsService.selections.count) {
             selectedIndex = min(selectedIndex, max(0, prefsService.selections.count - 1))
@@ -254,6 +254,7 @@ struct MenuBarPopoverView: View {
             .toggleStyle(SettingPillToggleStyle())
 
             UsageCountingSettings()
+                .toggleStyle(SettingPillToggleStyle())
         }
     }
 

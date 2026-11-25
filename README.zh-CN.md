@@ -41,7 +41,12 @@ Wallpaper Engine 是 Wallpaper Engine Team 的商标；Steam 是 Valve Corporati
 
 ## 统计
 
-除非你同意，否则不会发送任何内容。菜单栏会询问一次是否统计这台 Mac；如果你选择加入，Phosphene 会在你使用它的每一天发送一次匿名签到：Phosphene 和 macOS 的版本、芯片系列和内存大小、语言和日期、最近 7 天中使用了几天、是否有自己的视频，以及显示器数量。它从不包含你使用的是哪些视频，其中也没有任何能指认你的信息。更高一档会在 Phosphene 本身崩溃时附上一份已清理的报告。关闭后会删除这台 Mac 发送过的所有内容。所有字段见 [Digoxin 参考文档](https://github.com/kageroumado/digoxin/blob/main/REFERENCE.md)（英文）。
+菜单栏会询问一次是否统计这台 Mac。在菜单栏弹出面板的设置中，可以分别选择是否开启**统计这台 Mac**和**发送崩溃报告**。
+
+- **统计这台 Mac**会在你使用 Phosphene 的每一天发送一次匿名签到，内容包括 Phosphene 和 macOS 的版本、芯片系列、内存大小、语言、日期、过去一周的活跃天数、显示器数量，以及是否导入过视频。签到不会包含你使用的是哪些视频。
+- **发送崩溃报告**会在 Phosphene 本身崩溃时发送经过清理的报告，其中会隐去账户名称、Mac 名称和个人文件夹路径。
+
+关闭任一选项会清空其发送队列，并请求删除通过该选项独立登记后发送的数据。旧版合并设置下已发送的崩溃报告和使用统计共用同一登记记录。关闭**统计这台 Mac**时会请求删除这些旧数据。发送的字段见 [Digoxin 参考文档](https://github.com/kageroumado/digoxin/blob/main/REFERENCE.md)（英文）。
 
 ## 其他信息
 

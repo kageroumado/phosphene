@@ -41,7 +41,12 @@ Wallpaper Engine is a trademark of Wallpaper Engine Team; Steam is a trademark o
 
 ## Counting
 
-Nothing is sent unless you say so. The menu bar asks once whether to count this Mac; if you count yourself in, Phosphene sends one anonymous check-in on each day you use it: the Phosphene and macOS versions, chip family and memory size, language and date, how many of the last 7 days you used it, whether you have your own videos, and how many displays. It never includes which videos you use, and nothing in it names you. A second tier adds a scrubbed report when Phosphene itself crashes. Turning it off deletes everything this Mac sent. Every field is listed in the [Digoxin reference](https://github.com/kageroumado/digoxin/blob/main/REFERENCE.md).
+The menu bar asks once whether to count this Mac. In the popover’s settings, **Count this Mac** and **Send crash reports** are separate opt-in choices.
+
+- **Count this Mac** sends one anonymous check-in per day of use. It includes the Phosphene and macOS versions, chip family, memory size, language, date, days active in the last week, display count, and whether you imported videos. It does not include which videos you use.
+- **Send crash reports** sends a scrubbed report when Phosphene itself crashes, with the account name, Mac name, and home folder path redacted.
+
+Turning off either choice clears its queue and requests deletion of data sent under its separate registration. Crash reports already sent under the former combined setting share the usage registration. Turning off **Count this Mac** requests deletion of that older data. See the [Digoxin reference](https://github.com/kageroumado/digoxin/blob/main/REFERENCE.md) for the fields sent.
 
 ## Notes
 

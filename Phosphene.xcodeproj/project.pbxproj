@@ -66,6 +66,7 @@
 				LibraryGridMetrics.swift,
 				OcclusionMath.swift,
 				PathSafety.swift,
+				ReportingConsent.swift,
 				WallpaperEngine/GL.swift,
 				WallpaperEngine/WEBaker.swift,
 				WallpaperEngine/WEFileSystem.swift,
