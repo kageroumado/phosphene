@@ -84,11 +84,16 @@ struct UsageCountingSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
             HStack(alignment: .top, spacing: Theme.Space.sm) {
-                reportingToggle("Count this Mac", isOn: $reporting.consent.usageStatistics, status: reporting.statisticsStatus)
-                reportingToggle("Send crash reports", isOn: $reporting.consent.crashReports, status: reporting.crashStatus)
+                reportingToggle("Count this Mac", isOn: $reporting.consent.usageStatistics, stream: .statistics)
+                reportingToggle("Send crash reports", isOn: $reporting.consent.crashReports, stream: .crashes)
             }
 
             VStack(alignment: .leading, spacing: 2) {
+                if reporting.storageError {
+                    Text("Reporting is paused because its settings could not be saved.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if reporting.consent.usageStatistics, let activeMacs {
                     ActiveMacsLine(count: activeMacs)
                 }
@@ -109,16 +114,24 @@ struct UsageCountingSettings: View {
         }
     }
 
-    private func reportingToggle(_ title: LocalizedStringKey, isOn: Binding<Bool>, status: DigoxinStatus) -> some View {
+    private func reportingToggle(_ title: LocalizedStringKey, isOn: Binding<Bool>, stream: ReportingStream) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Toggle(title, isOn: isOn)
-            if let statusLine = statusLine(status) {
-                Text(statusLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Theme.Space.xs)
+            Group {
+                if let statusLine = statusLine(reporting.status(for: stream)) {
+                    Text(statusLine)
+                }
+                if let deletion = reporting.deletionStatus(for: stream) {
+                    Text(deletionLine(deletion))
+                }
+                if stream == .crashes, let deletion = reporting.deletionStatus(for: .previousCrashes) {
+                    Text("Earlier crash reports: \(Text(deletionLine(deletion)))")
+                }
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, Theme.Space.xs)
         }
         .accessibilityElement(children: .contain)
     }
@@ -150,6 +163,10 @@ struct UsageCountingSettings: View {
             When Phosphene crashes, it sends the crash log, app and macOS versions, hardware details, and \
             language. Your account name, Mac name, and home folder path are redacted.
             """)
+            Text("Crash reports sent by older versions may share the usage registration. Turn off Count this Mac to request deletion of that data.")
+            #if DEBUG
+                Text("Debug builds skip macOS crash log discovery.")
+            #endif
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -159,10 +176,17 @@ struct UsageCountingSettings: View {
 
     private func statusLine(_ status: DigoxinStatus) -> String? {
         switch status {
-        case .deletionPending: String(localized: "Deletion is pending until the service can be reached.")
         case .secureEnclaveUnavailable: String(localized: "This Mac has no Secure Enclave, so nothing is sent.")
         case let .failing(reason): String(localized: "Not sent yet: \(reason)")
-        case .off, .waiting, .registered: nil
+        case .off, .waiting, .registered, .deletionPending: nil
+        }
+    }
+
+    private func deletionLine(_ deletion: ReportingDeletion) -> LocalizedStringKey {
+        switch deletion {
+        case .requested: "Preparing a deletion request…"
+        case .pending: "Deletion was queued. Signed requests expire after 30 days."
+        case .unconfirmed: "Server deletion could not be confirmed."
         }
     }
 }

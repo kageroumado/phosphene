@@ -39,6 +39,20 @@
 
 **`VideoRenderer`** owns the decode pipeline. Instead of `AVPlayerLayer` — which silently fails inside a remote `CAContext` — it drives `AVSampleBufferDisplayLayer` manually: one `AVAssetReader` for the current loop, a preloaded one for the next, and a PTS offset that grows across loops to keep the timeline monotonically increasing. Result is glitch-free looping without flushing the renderer.
 
+## Reporting
+
+Release imports the existing `usageCounting` preference once. The explicit values `off`, `counting`, `crashesOnly`, and `crashReports` keep their meaning. Release keeps its statistics registration under `Application Support/Phosphene/Digoxin`. Digoxin's change from the combined tier to counting discards unsent crash reports on that registration. Already-sent reports on the combined registration can only be removed with that registration by turning off **Count this Mac**. An earlier separate crash registration under `CrashReports/Digoxin` is retired through the original `phosphene` route, which clears its queue and requests server deletion. New crash reporting starts at the migration or opt-in time, with its own registration under `phosphene-crashes/Digoxin`. Release requires a matching bundle ID and an executable slice UUID seen by a Release build during the current crash-reporting grant. This also accepts reports from previously seen Release slices after an update. Reports from unknown slices, including older Release builds that never recorded their UUID, are skipped.
+
+Debug keeps its reporting choices, deletion state, and queues under `Application Support/Phosphene/Debug`. It asks for fresh consent and retires any earlier Debug queues tied to the shared preference. Both settings use `PHOSPHENE_DIGOXIN_URL` (default `http://127.0.0.1:9130/api/digoxin`). Debug skips macOS crash log discovery because both builds use the same bundle identifier.
+
+### Digoxin service setup
+
+Add `phosphene-crashes` to the service's `apps` map with the same `app_attest_id` as `phosphene` and a `crash_reports.min_trust` that accepts the intended release signatures. If the crash app uses DeviceCheck, use the team's key and leave its `device_check.registered_bit` unset. This permits device verification without marking the statistics registration bit. Leave the existing `phosphene` registration and its bit in place for statistics and deletion of historic data. For an isolated local service, configure both app slugs and omit DeviceCheck. The client uses Digoxin's normal attestation and transport in both builds.
+
+An unknown app returns 404. Digoxin 0.3.0 reports the failure and retries queued data on the next launch, within its seven-day queue lifetime. Reports are claimed on disk before handoff to Digoxin. An interruption before enqueue can lose a report. An ambiguous HTTP response still needs a stable report ID accepted by Digoxin and deduplicated by the service to prevent duplicate uploads.
+
+Digoxin 0.3.0 signs deletion once, destroys the identity, then drops the request when the server confirms or permanently rejects it. The server accepts these signatures for up to 30 days. A durable deletion outcome requires Digoxin to expose confirmation, rejection, and expiry to the app. Deletion after prolonged offline use also needs an authenticated retry mechanism whose authorization outlives the current signature window.
+
 ## Quirks worth knowing
 
 - **`WallpaperSnapshotXPC` swizzle.** The system's snapshot encoder checks `type(of: coder) == NSXPCCoder.self`, but the real coder is a subclass. Without the runtime swizzle in `PhospheneExtension.swift`, snapshots silently encode to nothing and you get a grey lock screen during transitions.
