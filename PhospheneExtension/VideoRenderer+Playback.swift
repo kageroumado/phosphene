@@ -94,7 +94,19 @@ extension VideoRenderer {
             prepareAppearanceCut()
             return
         }
-        recreatePlayback(seamlessResume: true)
+        // The feed can already be in a later loop, possibly on a different variant.
+        let now = CMTimebaseGetTime(timebase)
+        let time = now.isNumeric && lastEnqueuedEnd > .zero && now >= lastEnqueuedEnd
+            ? lastEnqueuedEnd - CMTime(value: 1, timescale: 1_000_000_000) : now
+        if time.isNumeric, let visible = visibleSources.last(where: { $0.start <= time }),
+           let identity = visible.file.identity, loadSource(visible.file.url, pair: nil, matching: identity) {
+            ptsOffset = visible.fileLoopStart
+            recreatePlayback(resumingAt: time)
+        }
+        guard currentReader != nil else {
+            _ = open(variantSelector?.fallback ?? asset.url, pair: nil, reason: .reload)
+            return
+        }
         CMTimebaseSetRate(timebase, rate: 1.0)
     }
 
@@ -245,7 +257,7 @@ extension VideoRenderer {
     func scheduleDeepPause() {
         cancelDeepPauseTimer()
         // Startup arms this timer after installing the readers.
-        guard hasStarted, !pairReadersReleased else { return }
+        guard hasStarted, currentReader != nil, !pairReadersReleased else { return }
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + Self.deepPauseDelay)
         timer.setEventHandler { [weak self] in
@@ -288,53 +300,45 @@ extension VideoRenderer {
         discardNextReader()
     }
 
-    /// Rebuild the playback pipeline on the renderer queue. Two modes:
-    /// - `seamlessResume: true` (deep-pause wake): CONTINUE from the paused timebase
-    ///   position, keeping the last frame on screen — no black flash, no restart-from-0.
-    ///   This is what a screen-lock/display-sleep wake uses so the video resumes where it
-    ///   left off (Kiri: "show the same video continuously", not blink-and-restart).
-    /// - `seamlessResume: false` (error recovery): hard reset to time 0 and clear the
-    ///   (possibly corrupt) displayed frame.
-    /// Caller restores the timebase rate.
-    private func recreatePlayback(seamlessResume: Bool = false) {
-        traceLog("  [recreatePlayback #\(debugID)] seamless=\(seamlessResume) asset=\(asset.url.lastPathComponent)")
+    /// Rebuild from the visible loop and phase on wake, holding the displayed image.
+    /// Error recovery clears the displayed image and starts at time zero.
+    private func recreatePlayback(resumingAt resumeTime: CMTime? = nil) {
+        traceLog("  [recreatePlayback #\(debugID)] seamless=\(resumeTime != nil) asset=\(asset.url.lastPathComponent)")
         renderer.stopRequestingMediaData()
         currentReader?.cancelReading()
+        currentReader = nil
+        currentOutput = nil
         discardNextReader()
 
-        let resumeTime = CMTimebaseGetTime(timebase)
-        let continuing = seamlessResume && resumeTime.isNumeric && resumeTime > .zero
-        // Keep the last displayed frame when continuing (no black); clear it on error reset.
-        renderer.flush(removingDisplayedImage: !continuing)
-
-        guard let reader = try? AVAssetReader(asset: asset) else {
+        guard openedFile != nil, openedFile == FileIdentity(of: asset.url), let reader = try? AVAssetReader(asset: asset) else {
             extensionLog("  [recreatePlayback] FAILED to create AVAssetReader for \(asset.url.lastPathComponent)")
-            currentReader = nil
-            currentOutput = nil
             return
         }
-        if continuing {
+        if let resumeTime {
             // Readers seek within the file; the clock also includes completed loops.
-            ptsOffset = CMTimeMinimum(ptsOffset, resumeTime)
-            reader.timeRange = CMTimeRange(start: resumeTime - ptsOffset, duration: .positiveInfinity)
+            reader.timeRange = CMTimeRange(start: CMTimeMaximum(.zero, resumeTime - ptsOffset), duration: .positiveInfinity)
         }
         let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
         output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else { return }
         reader.add(output)
-        reader.startReading()
+        guard reader.startReading(), FileIdentity(of: asset.url) == openedFile else {
+            reader.cancelReading()
+            return
+        }
+        renderer.flush(removingDisplayedImage: resumeTime == nil)
         currentReader = reader
         currentOutput = output
 
-        lastEnqueuedEnd = continuing ? resumeTime : .zero
-        if !continuing {
+        lastEnqueuedEnd = resumeTime ?? .zero
+        if resumeTime == nil {
             ptsOffset = .zero
-            CMTimebaseSetTime(timebase, time: .zero)
         }
-        recordSnapshotSource(at: continuing ? resumeTime : .zero)
-
-        // Enqueue the first frame tagged DisplayImmediately so it replaces the held frame the
-        // instant it decodes — seamless when continuing, and no wait-on-timebase on reset.
-        enqueueRestartFrame(firstFrame(from: output).map(offsetTimingForLoop))
+        CMTimebaseSetTime(timebase, time: lastEnqueuedEnd)
+        recordSnapshotSource(at: lastEnqueuedEnd)
+        if resumeTime == nil {
+            enqueueRestartFrame(firstFrame(from: output).map(offsetTimingForLoop))
+        }
 
         prepareNextReader()
         feedFromCurrentReader()
@@ -460,7 +464,7 @@ extension VideoRenderer {
         // doesn't stall whatever called us — but still strictly ordered on `queue`,
         // no Task.
         queue.async { [weak self] in
-            guard let self, isRunning, !flushInFlight, !renderingSuspended, !pairReadersReleased else { return }
+            guard let self, isRunning, currentReader != nil, !flushInFlight, !renderingSuspended, !pairReadersReleased else { return }
             if let pair = variantSelector?.pair {
                 _ = preloadLoopReader(for: pair.url(dark: nextLoopIsDark(for: pair), in: nextPlayback(for: pair)))
             } else {
