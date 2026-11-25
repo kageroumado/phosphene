@@ -12,9 +12,14 @@ extension VideoRenderer {
 
     private func reconcile(to target: SurfaceTarget) {
         guard isRunning else { return }
-        if displayLayer.preferredDynamicRange != target.hdrMode.dynamicRange {
-            displayLayer.preferredDynamicRange = target.hdrMode.dynamicRange
-            spareLayer?.preferredDynamicRange = target.hdrMode.dynamicRange
+        let dynamicRange = target.hdrMode.dynamicRange
+        if displayLayer.preferredDynamicRange != dynamicRange {
+            displayLayer.preferredDynamicRange = dynamicRange
+            spareLayer?.preferredDynamicRange = dynamicRange
+            appearanceTransition.updateDynamicRange(dynamicRange)
+            if target.policy == .paused {
+                refreshDeepPausedFrame()
+            }
         }
         let blendModeChanged = frameMatchedTransitions != target.frameMatchedTransitions
         frameMatchedTransitions = target.frameMatchedTransitions
@@ -286,8 +291,27 @@ extension VideoRenderer {
         if pairReadersReleased {
             // Discard queued samples while keeping the current image on the display layer.
             renderer.flush()
+            needsDeepPauseFrameRefresh = true
             prepareAppearanceCut()
         }
+    }
+
+    private func refreshDeepPausedFrame() {
+        guard needsDeepPauseFrameRefresh, pairReadersReleased, currentReader == nil, !flushInFlight,
+              CMTimebaseGetRate(timebase) == 0,
+              let pixels = renderer.displayedPixelBuffer() else { return }
+        let time = CMTimebaseGetTime(timebase)
+        let timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: time, decodeTimeStamp: .invalid)
+        guard let format = try? CMVideoFormatDescription(imageBuffer: pixels),
+              let sample = try? CMSampleBuffer(imageBuffer: pixels, formatDescription: format, sampleTiming: timing) else { return }
+
+        // Deep pause discarded the queue and left the held image outside display readiness.
+        // Submit the same decoded pixels once to restore live range changes.
+        needsDeepPauseFrameRefresh = false
+        Self.setAttachment(kCMSampleAttachmentKey_DisplayImmediately, on: sample)
+        CATransaction.flush()
+        renderer.enqueue(sample)
+        traceLog("  [Renderer #\(debugID)] Refreshed deep-paused frame at \(time.seconds)")
     }
 
     func releaseReaders() {
