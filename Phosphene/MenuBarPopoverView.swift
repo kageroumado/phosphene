@@ -347,8 +347,8 @@ struct MenuBarPopoverView: View {
                 Text("Checking…")
             }
             .modifier(RestingChip())
-        } else if updates.checkedUpToDate {
-            Label("Up to date", systemImage: "checkmark")
+        } else if updates.checkedNoInstallableUpdate {
+            Label("No installable update found", systemImage: "info.circle")
                 .modifier(RestingChip())
         } else {
             restingChip

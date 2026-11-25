@@ -1322,6 +1322,16 @@
         }
       }
     },
+    "In-app updates are disabled in development builds.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开发版本不支持在应用内安装更新。"
+          }
+        }
+      }
+    },
     "Information": {
       "localizations": {
         "zh-Hans": {
@@ -1760,6 +1770,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "尚无壁纸"
+          }
+        }
+      }
+    },
+    "No installable update found": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有找到可安装的更新"
           }
         }
       }
@@ -3189,6 +3209,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 GitHub 上查看"
+          }
+        }
+      }
+    },
+    "Wait for the current video conversion or optimization to finish, then try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请等当前视频转换或优化完成后再试。"
           }
         }
       }

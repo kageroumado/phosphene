@@ -11,6 +11,7 @@
 		0B123B6C308406F7003E2449 /* Digoxin in Frameworks */ = {isa = PBXBuildFile; productRef = 7C0000000000000000000002 /* Digoxin */; };
 		0B33648A2F4FCB4B00060732 /* PhospheneExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 0B3364832F4FCB4B00060732 /* PhospheneExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0B486A22303E6604001CB276 /* TiptoeGitHub in Frameworks */ = {isa = PBXBuildFile; productRef = 7A0000000000000000000002 /* TiptoeGitHub */; };
+		7E5700000000000000000A0A /* TiptoeGitHub in Frameworks */ = {isa = PBXBuildFile; productRef = 7A0000000000000000000002 /* TiptoeGitHub */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,6 +68,7 @@
 				OcclusionMath.swift,
 				PathSafety.swift,
 				ReportingConsent.swift,
+				UpdateActivity.swift,
 				WallpaperEngine/GL.swift,
 				WallpaperEngine/WEBaker.swift,
 				WallpaperEngine/WEFileSystem.swift,
@@ -118,6 +120,7 @@
 		7E5700000000000000000A06 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				7E5700000000000000000A0A /* TiptoeGitHub in Frameworks */,
 			);
 		};
 		AA9B91C62E900B9E008812A9 /* Frameworks */ = {
@@ -186,6 +189,9 @@
 				7E5700000000000000000A02 /* PhospheneTests */,
 			);
 			name = PhospheneTests;
+			packageProductDependencies = (
+				7A0000000000000000000002 /* TiptoeGitHub */,
+			);
 			productName = PhospheneTests;
 			productReference = 7E5700000000000000000A01 /* PhospheneTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";

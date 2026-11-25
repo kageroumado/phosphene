@@ -151,14 +151,15 @@ struct WhatsNewView: View {
     }
 
     private var subtitle: String? {
-        switch context {
-        case .justUpdated:
-            nil
-        case .updateAvailable(autoInstall: true):
-            String(localized: "It will install itself when your Mac is idle — the wallpaper keeps playing.")
-        case .updateAvailable(autoInstall: false):
-            String(localized: "A newer version of Phosphene is ready when you are.")
-        }
+        guard case let .updateAvailable(autoInstall) = context else { return nil }
+        #if DEBUG
+            return String(localized: "In-app updates are disabled in development builds.")
+        #else
+            if autoInstall {
+                return String(localized: "It will install itself when your Mac is idle — the wallpaper keeps playing.")
+            }
+            return String(localized: "A newer version of Phosphene is ready when you are.")
+        #endif
     }
 
     @ViewBuilder

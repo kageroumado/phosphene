@@ -46,8 +46,8 @@ final class SilentUpdates {
     /// fails and leaves the next try to the loop.
     private static let wakeGrace: Duration = .seconds(20)
 
-    /// How long ``checkedUpToDate`` stays true after a manual check that found nothing newer.
-    private static let upToDateNotice: Duration = .seconds(3)
+    /// How long the chip shows the result of a check that found no installable update.
+    private static let checkNoticeDuration: Duration = .seconds(3)
 
     /// How often ``refresh()`` copies Tiptoe's in-memory state into the observable properties,
     /// so the menu bar badge appears without the popover being opened. No network involved.
@@ -82,10 +82,10 @@ final class SilentUpdates {
     /// True while a check the user asked for is in flight, for the version chip.
     private(set) var isChecking = false
 
-    /// True for ``upToDateNotice`` after a check the user asked for found nothing newer. "Nothing
-    /// newer" and "couldn't reach GitHub" look the same from here, so this can be a beat
-    /// optimistic offline; the loop and the next popover open self-correct.
-    private(set) var checkedUpToDate = false
+    /// True briefly after a successful explicit check found no installable update.
+    private(set) var checkedNoInstallableUpdate = false
+
+    var isReplacingApp: Bool { activity.isReplacingApp }
 
     /// The updater: check loop, plus the quiet-moment install when auto-update is on.
     /// Created up front so its `Tiptoe` reconciles the recorded wait and the post-update notice
@@ -95,24 +95,21 @@ final class SilentUpdates {
     /// manual check stays a metadata request and cannot download a DMG on the side.
     @ObservationIgnored private let github: TiptoeGitHub
     @ObservationIgnored private let updater: AppUpdater
+    @ObservationIgnored private let activity: UpdateActivity
     @ObservationIgnored private var checkingPanel: NSPanel?
+    @ObservationIgnored private var checkLoop: Task<Void, Never>?
     @ObservationIgnored private var mirrorTask: Task<Void, Never>?
     @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
 
-    /// When this object last asked GitHub itself. The loop's own ticks are not visible here, so
-    /// this is a floor on freshness: a stale check may repeat a tick made minutes ago, at the
-    /// cost of one cached metadata request.
+    /// When the shared check last finished.
     @ObservationIgnored private var lastCheckedAt: Date?
-
-    /// The one metadata request in flight, shared by whoever asks while it runs.
-    @ObservationIgnored private var checkInFlight: Task<Void, Never>?
 
     private init() {
         let updater = AppUpdater(owner: Self.owner, repo: Self.repo)
         self.updater = updater
         github = TiptoeGitHub(updater: updater, checkInterval: Self.checkInterval)
-            .gate("a video optimization is running") { await Self.noOptimizationRunning() }
             .installsAutomatically(false)
+        activity = UpdateActivity(tiptoe: github.tiptoe) { Self.noOptimizationRunning() }
         github.onChecksFailing = { error in
             Log.update.error("update checks have been failing: \(error.localizedDescription, privacy: .public)")
         }
@@ -126,7 +123,15 @@ final class SilentUpdates {
         // Never in DEBUG: a development build must not poll GitHub, and must never be swapped
         // out from under Xcode.
         #if !DEBUG
-            github.installsAutomatically(autoInstall).start()
+            guard checkLoop == nil else { return }
+            github.installsAutomatically(autoInstall)
+            activity.autoInstall = autoInstall
+            checkLoop = Task(name: "Check for updates periodically") { [weak self] in
+                while !Task.isCancelled {
+                    await self?.check()
+                    try? await Task.sleep(for: .seconds(Self.checkInterval))
+                }
+            }
             mirrorTask = Task(name: "Mirror update state") { [weak self] in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: Self.mirrorInterval)
@@ -149,7 +154,17 @@ final class SilentUpdates {
     func setAutoInstall(_ enabled: Bool) {
         #if !DEBUG
             github.installsAutomatically(enabled)
+            activity.autoInstall = enabled
             refresh()
+            if enabled {
+                Task { await check() }
+            }
+        #endif
+    }
+
+    func videoWorkChanged() {
+        #if !DEBUG
+            activity.videoWorkChanged()
         #endif
     }
 
@@ -167,14 +182,20 @@ final class SilentUpdates {
     func checkForUpdates() async {
         guard !isChecking else { return }
         isChecking = true
-        checkedUpToDate = false
-        await check()
-        isChecking = false
-        guard availableVersion == nil, pendingVersion == nil else { return }
-        checkedUpToDate = true
-        Task(name: "Clear the up-to-date notice") { [weak self] in
-            try? await Task.sleep(for: Self.upToDateNotice)
-            self?.checkedUpToDate = false
+        checkedNoInstallableUpdate = false
+        defer { isChecking = false }
+        // The adapter shares AppUpdater's metadata request and can prepare the download in the background.
+        Task { await check() }
+        do {
+            availableVersion = try await updater.check()?.version
+        } catch {
+            return
+        }
+        guard availableVersion == nil, github.tiptoe.pending == nil else { return }
+        checkedNoInstallableUpdate = true
+        Task(name: "Clear the update check notice") { [weak self] in
+            try? await Task.sleep(for: Self.checkNoticeDuration)
+            self?.checkedNoInstallableUpdate = false
         }
     }
 
@@ -214,10 +235,12 @@ final class SilentUpdates {
                 showAvailableUpdate(version: version, autoInstall: autoInstall)
             case .success(nil):
                 let notice = NSAlert()
-                let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
-                notice.messageText = String(localized: "You’re up to date!")
-                notice.informativeText = String(localized: "Phosphene \(version) is currently the newest version available.")
-                notice.runModal()
+                notice.messageText = String(localized: "No installable update found")
+                notice.addButton(withTitle: String(localized: "Done"))
+                notice.addButton(withTitle: String(localized: "View on GitHub"))
+                if notice.runModal() == .alertSecondButtonReturn {
+                    NSWorkspace.shared.open(Self.releasesPageURL)
+                }
             case let .failure(error):
                 let notice = NSAlert()
                 notice.alertStyle = .warning
@@ -284,20 +307,13 @@ final class SilentUpdates {
         }
     }
 
-    /// One metadata request; a second caller while it runs waits for the same answer.
+    /// Every adapter check joins the same task, including its background preparation.
     private func check() async {
-        if let checkInFlight {
-            await checkInFlight.value
-            return
-        }
-        let task = Task(name: "Check for updates") { [github] in
+        await activity.check { [github] in
             await github.checkNow()
+            self.lastCheckedAt = .now
+            self.refresh()
         }
-        checkInFlight = task
-        await task.value
-        checkInFlight = nil
-        lastCheckedAt = .now
-        refresh()
     }
 
     // MARK: - Update Now
@@ -308,32 +324,32 @@ final class SilentUpdates {
     func updateNow() async {
         guard manualPhase != .working else { return }
         #if DEBUG
-            manualPhase = .failed("In-place updating is disabled in development builds.")
+            manualPhase = .failed(String(localized: "In-app updates are disabled in development builds."))
         #else
             manualPhase = .working
-
-            // `github.updateNow()` asks GitHub itself and replaces a download that fell behind,
-            // but answers a press during a running check with whatever is already held — with
-            // auto-install off, nothing. So a check this object started finishes first.
-            await checkInFlight?.value
-
-            guard await github.updateNow() else {
-                // `availableVersion` is set only by a check that reached GitHub and found an
-                // installable DMG; without it there is nothing to download, whatever the network.
-                manualPhase = .failed(
-                    github.availableVersion == nil
-                        ? String(localized: "Couldn't find a download for this update. Get it from the releases page.")
-                        : String(localized: "Couldn't download the update. Check your connection, or get it from the releases page."),
-                )
-                refresh()
-                return
+            let result = await activity.install {
+                guard await github.updateNow() else {
+                    // A failed check may leave the last known installable version visible.
+                    manualPhase = .failed(
+                        github.availableVersion == nil
+                            ? String(localized: "Couldn't find a download for this update. Get it from the releases page.")
+                            : String(localized: "Couldn't download the update. Check your connection, or get it from the releases page."),
+                    )
+                    return
+                }
+                // AppUpdater schedules termination; keep the reservation until it has time to exit.
+                try? await Task.sleep(for: .seconds(4))
+                manualPhase = .failed(String(localized: "The update couldn't be installed. Try again, or get it from the releases page."))
             }
-
-            // A successful swap terminates this process on its own schedule, possibly a beat
-            // after the install call returns — wait it out before declaring failure.
-            try? await Task.sleep(for: .seconds(4))
+            switch result {
+            case .alreadyInstalling:
+                manualPhase = .idle
+            case .videoWorkInProgress:
+                manualPhase = .failed(String(localized: "Wait for the current video conversion or optimization to finish, then try again."))
+            case .attempted:
+                break
+            }
             refresh()
-            manualPhase = .failed(String(localized: "The update couldn't be installed. Try again, or get it from the releases page."))
         #endif
     }
 
@@ -346,8 +362,10 @@ final class SilentUpdates {
 
     /// The user has seen the post-update notice.
     func acknowledgeUpdate() {
+        if github.tiptoe.justUpdatedTo == justUpdatedVersion {
+            github.tiptoe.acknowledge()
+        }
         justUpdatedVersion = nil
-        github.tiptoe.acknowledge()
     }
 
     // MARK: - The gate
@@ -355,7 +373,7 @@ final class SilentUpdates {
     /// Restarting the app mid-optimization would kill the transcode; everything else the app
     /// does survives a restart (the wallpaper extension is its own process). A missing manager
     /// answers "not safe" — an update is never so urgent that it is worth guessing.
-    private static func noOptimizationRunning() async -> Bool {
+    private static func noOptimizationRunning() -> Bool {
         guard let manager = PhospheneManager.shared else { return false }
         return !manager.isOptimizing
     }
