@@ -419,12 +419,12 @@
         }
       }
     },
-    "About Dynamic Range": {
+    "About Blend Matching Frames": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "关于动态范围"
+            "value": "关于混合匹配帧"
           }
         }
       }
@@ -750,16 +750,6 @@
         }
       }
     },
-    "Automatic lets macOS choose the highlight brightness. Standard limits highlights to SDR white. Constrained High allows subdued HDR highlights.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "“自动”由 macOS 调节高光亮度。“标准”将高光限制在 SDR 白色亮度以内。“受限高动态范围”可呈现较柔和的 HDR 高光。"
-          }
-        }
-      }
-    },
     "Average bitrate %@ → %@ Mb/s.": {
       "localizations": {
         "zh-Hans": {
@@ -816,6 +806,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "混合匹配帧"
+          }
+        }
+      }
+    },
+    "Both videos decode briefly at once. GPU and memory use can spike, especially with HDR, high frame rates, or multiple displays.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "过渡期间会短暂同时解码两个视频，GPU 和内存占用可能突然升高，尤其是在播放 HDR 或高帧率视频，或使用多台显示器时。"
           }
         }
       }
@@ -2232,16 +2232,6 @@
         }
       }
     },
-    "High allows the brightest HDR highlights. GPU and power use can rise suddenly during HDR playback.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "“高”可呈现最亮的 HDR 高光。播放 HDR 视频时，GPU 占用率和功耗可能突然升高。"
-          }
-        }
-      }
-    },
     "Icon size": {
       "localizations": {
         "zh-Hans": {
@@ -3467,6 +3457,16 @@
         }
       }
     },
+    "Phosphene blends matching frames from the light and dark videos when appearance changes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换浅色与深色外观时，Phosphene 会混合两个视频中相匹配的帧。"
+          }
+        }
+      }
+    },
     "Phosphene can’t add a file named “%@”.": {
       "localizations": {
         "zh-Hans": {
@@ -4463,26 +4463,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "交换浅色与深色"
-          }
-        }
-      }
-    },
-    "Switching between light and dark briefly decodes both videos and increases GPU and memory use.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在浅色与深色外观之间切换时，会短暂同时解码两个视频，从而增加 GPU 和内存用量。"
-          }
-        }
-      }
-    },
-    "Switching between light and dark briefly decodes both videos and increases GPU and memory use. HDR, high frame rates, and multiple displays can make the transition stutter.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在浅色与深色外观之间切换时，会短暂同时解码两个视频，从而增加 GPU 和内存用量。使用 HDR、高帧率或多个显示器时，过渡动画可能会卡顿。"
           }
         }
       }

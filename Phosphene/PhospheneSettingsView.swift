@@ -59,12 +59,10 @@ struct PhospheneSettingsView: View {
                 DynamicRangePicker(selection: $playback.hdrMode)
             }
             Section {
-                Toggle("Blend Matching Frames", isOn: $playback.frameMatchedTransitions)
-            } footer: {
-                Text("""
-                Switching between light and dark briefly decodes both videos and increases GPU and memory use. HDR, \
-                high frame rates, and multiple displays can make the transition stutter.
-                """)
+                HStack {
+                    Toggle("Blend Matching Frames", isOn: $playback.frameMatchedTransitions)
+                    BlendMatchingFramesInfoButton()
+                }
             }
         }
     }
