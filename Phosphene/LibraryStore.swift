@@ -1,4 +1,5 @@
 import AppKit
+import os
 import SwiftUI
 
 /// The library window's state and intents: the place shown and how, what is selected,
@@ -63,8 +64,10 @@ final class LibraryStore {
 
     var videoSelection: Set<String> = []
     var isMakeVideosPresented = false
+    var pairSheet: VideoPairSelection?
+    var libraryError: String?
     /// The videos a delete confirmation is asking about.
-    var pendingDelete: Set<String>?
+    var pendingDelete: LibraryDeletion?
 
     var isConfirmingDelete: Bool {
         get { pendingDelete != nil }
@@ -80,7 +83,9 @@ final class LibraryStore {
 
     /// Bumped on every library reload; thumbnails reload when it changes.
     private(set) var revision = 0
-    private(set) var entries: [VideoDeploymentService.EntryInfo] = []
+    private var entries: [VideoDeploymentService.EntryInfo] = []
+    private var sourceEntries: [VideoDeploymentService.EntryInfo] = []
+    private(set) var pairs: [String: VideoPairSelection] = [:]
     @ObservationIgnored private var fileSizes: [String: Int64] = [:]
     @ObservationIgnored private var anchor: String?
 
@@ -101,19 +106,26 @@ final class LibraryStore {
     // MARK: - Rows
 
     private var inUseIDs: Set<String> {
-        Set(manager.prefsService.selections.map(\.videoID))
+        Set(manager.prefsService.selections.map { visibleVideoID(for: $0.videoID) })
     }
 
     /// The videos of the current section that match the search, in sort order.
     var videoRows: [VideoRow] {
         let inUse = inUseIDs
         return entries.compactMap { entry -> VideoRow? in
-            let row = VideoRow(entry: entry, isInUse: inUse.contains(entry.id), fileSize: fileSizes[entry.id] ?? 0)
-            if section == .inUse, !row.isInUse {
+            let pair = pairs[entry.id]
+            let isInUse = inUse.contains(entry.id)
+            if section == .inUse, !isInUse {
                 return nil
             }
-            guard search.isEmpty || entry.name.localizedStandardContains(search) else { return nil }
-            return row
+            if section == .lightDarkPairs, pair == nil {
+                return nil
+            }
+            let members = pair?.members ?? [entry]
+            guard search.isEmpty || entry.name.localizedStandardContains(search)
+                || members.contains(where: { $0.name.localizedStandardContains(search) }) else { return nil }
+            let size = members.reduce(0) { $0 + (fileSizes[$1.id] ?? 0) }
+            return VideoRow(entry: entry, isInUse: isInUse, isPair: pair != nil, fileSize: size)
         }
         .sorted(using: videoSort)
     }
@@ -121,7 +133,7 @@ final class LibraryStore {
     /// The downloads of the current section that match the search, in sort order.
     var workshopRows: [WorkshopRow] {
         let labels = Dictionary(workshop.sources.map { ($0.id, $0.label) }) { first, _ in first }
-        let entriesByID = Dictionary(entries.map { ($0.id, $0) }) { first, _ in first }
+        let entriesByID = Dictionary(sourceEntries.map { ($0.id, $0) }) { first, _ in first }
         return workshop.items.compactMap { item -> WorkshopRow? in
             let status = workshop.status(of: item)
             switch section {
@@ -154,6 +166,7 @@ final class LibraryStore {
     struct Counts: Equatable {
         var all = 0
         var inUse = 0
+        var pairs = 0
         var wallpapers = 0
         var readyToMake = 0
     }
@@ -163,6 +176,7 @@ final class LibraryStore {
         return Counts(
             all: entries.count,
             inUse: entries.count { inUse.contains($0.id) },
+            pairs: pairs.count,
             wallpapers: workshop.items.count,
             readyToMake: workshop.items.count { Self.isReadyToMake(workshop.status(of: $0)) },
         )
@@ -190,7 +204,7 @@ final class LibraryStore {
     /// The library video made from `item`, once there is one.
     func video(for item: WorkshopItem) -> VideoDeploymentService.EntryInfo? {
         guard let entryID = workshop.records[item.id]?.entryID else { return nil }
-        return entries.first { $0.id == entryID }
+        return sourceEntries.first { $0.id == entryID }
     }
 
     /// The size of a library video's file, as read at the last reload.
@@ -217,23 +231,58 @@ final class LibraryStore {
     /// Read the library from disk. Thumbnails are decoded again: a replaced video keeps
     /// its thumbnail's file name.
     func reload() {
-        entries = VideoDeploymentService.listEntries()
-        fileSizes = Dictionary(uniqueKeysWithValues: entries.map { entry in
+        let directory = VideoDeploymentService.videosFolderURL
+        var records = (try? AppearancePair.read(in: directory)) ?? []
+        for record in records where record.deletionPending == true {
+            do {
+                try record.finishDeletion(in: directory)
+                records.removeAll { $0.owner == record.owner }
+            } catch {
+                Log.video.error("Could not finish deleting pair \(record.owner): \(error.localizedDescription)")
+            }
+        }
+        let physical = VideoDeploymentService.listEntries()
+        sourceEntries = physical
+        fileSizes = Dictionary(uniqueKeysWithValues: physical.map { entry in
             (entry.id, VideoDeploymentService.fileSize(for: entry) ?? 0)
         })
-        let known = Set(entries.map(\.id))
-        if !videoSelection.isSubset(of: known) {
-            videoSelection.formIntersection(known)
+        let byID = Dictionary(uniqueKeysWithValues: physical.map { ($0.id, $0) })
+        var groups: [String: VideoPairSelection] = [:]
+        var hidden: Set<String> = []
+        for record in records {
+            let first = byID[record.owner]
+            let second = byID[record.counterpart]
+            guard let visible = first ?? second else { continue }
+            groups[visible.id] = VideoPairSelection(first: first, second: second, saved: record)
+            if first != nil {
+                hidden.insert(record.counterpart)
+            }
         }
+        pairs = groups
+        entries = physical.compactMap { source in
+            guard !hidden.contains(source.id) else { return nil }
+            var entry = source
+            entry.name = groups[entry.id]?.saved?.name ?? entry.name
+            return entry
+        }
+        let known = Set(entries.map(\.id))
+        videoSelection = Set(videoSelection.map(visibleVideoID(for:))).intersection(known)
+        anchor = anchor.map(visibleVideoID(for:))
+
         ThumbnailCache.removeAll()
         revision += 1
     }
 
+    private func visibleVideoID(for id: String) -> String {
+        pairs.first { $0.value.saved?.contains(id) == true }?.key ?? id
+    }
+
     /// Show one video selected in All Videos.
     func reveal(videoID: String) {
-        guard entries.contains(where: { $0.id == videoID }) else { return }
+        let visible = visibleVideoID(for: videoID)
+        guard entries.contains(where: { $0.id == visible }) else { return }
         section = .allVideos
-        videoSelection = [videoID]
+        videoSelection = [visible]
     }
 
     /// Show one Wallpaper Engine wallpaper selected in All Wallpapers.
@@ -361,7 +410,9 @@ final class LibraryStore {
 
     func showInFinder(_ ids: Set<String>) {
         let urls: [URL] = switch section.content {
-        case .videos: entries.filter { ids.contains($0.id) }.map(VideoDeploymentService.videoURL(for:))
+        case .videos: entries.filter { ids.contains($0.id) }.flatMap { entry in
+                (pairs[entry.id]?.members ?? [entry]).map(VideoDeploymentService.videoURL(for:))
+            }
         case .downloads: workshop.items.filter { ids.contains($0.id) }.map(\.folder)
         case .catalog: []
         }
@@ -373,35 +424,85 @@ final class LibraryStore {
         showInFinder(selection)
     }
 
+    func pairAction(for ids: Set<String>) -> VideoPairSelection? {
+        guard section.content == .videos else { return nil }
+        if ids.count == 1, let id = ids.first, let pair = pairs[id],
+           pair.saved?.deletionPending != true, !isEditingBlocked(pair) {
+            return pair
+        }
+        guard ids.count == 2 else { return nil }
+        let selected = entries.filter { ids.contains($0.id) }
+        guard selected.count == 2, selected.allSatisfy({ pairs[$0.id] == nil }) else { return nil }
+        let pair = VideoPairSelection(first: selected[0], second: selected[1], saved: nil)
+        return isEditingBlocked(pair) ? nil : pair
+    }
+
+    private func isEditingBlocked(_ pair: VideoPairSelection) -> Bool {
+        guard let working = manager.optimizingEntryID else { return false }
+        return pair.id == working || pair.members.contains { $0.id == working }
+    }
+
+    func completePairEdit(_ ids: Set<String>) {
+        reload()
+        if section == .lightDarkPairs {
+            section = .allVideos
+        }
+        videoSelection = ids.intersection(videoRows.map(\.id))
+    }
+
+    func swapAppearances(_ pair: VideoPairSelection) {
+        guard let record = pair.saved, pair.members.count == 2, !isEditingBlocked(pair) else { return }
+        do {
+            try record.edit(in: VideoDeploymentService.videosFolderURL, split: false)
+            VideoDeploymentService.notifyExtensionLibraryChanged()
+        } catch {
+            libraryError = error.localizedDescription
+        }
+    }
+
+    func renameVideo(entryID: String, to name: String) {
+        do {
+            if let pair = pairs[entryID]?.saved {
+                try pair.rename(to: name, in: VideoDeploymentService.videosFolderURL)
+                VideoDeploymentService.notifyExtensionLibraryChanged()
+            } else {
+                try VideoDeploymentService.renameEntry(entryID: entryID, to: name)
+            }
+        } catch {
+            libraryError = error.localizedDescription
+        }
+    }
+
     /// Ask to delete `ids`, or the selected videos.
     func requestDelete(_ ids: Set<String>? = nil) {
         guard section.content == .videos else { return }
         let ids = ids ?? videoSelection
-        pendingDelete = ids.isEmpty ? nil : ids
+        let selected = entries.filter { ids.contains($0.id) }
+        guard !selected.isEmpty else { return }
+        pendingDelete = LibraryDeletion(entries: selected, pairs: pairs.filter { ids.contains($0.key) })
     }
 
     func confirmDelete() {
-        let ids = pendingDelete ?? []
+        guard let deletion = pendingDelete else { return }
         pendingDelete = nil
-        for id in ids {
-            manager.removeVideo(entryID: id)
+        var failures: [String] = []
+        for entry in deletion.entries {
+            do {
+                if let record = deletion.pairs[entry.id]?.saved {
+                    try VideoDeploymentService.removePair(record)
+                } else {
+                    try VideoDeploymentService.removeVideo(entryID: entry.id)
+                }
+                videoSelection.remove(entry.id)
+            } catch {
+                failures.append("\(entry.name) — \(error.localizedDescription)")
+            }
         }
-        videoSelection.subtract(ids)
         reload()
         workshop.refresh()
-    }
-
-    var deleteTitle: String {
-        let count = pendingDelete?.count ?? 0
-        if count == 1, let id = pendingDelete?.first, let entry = entries.first(where: { $0.id == id }) {
-            return String(localized: "Delete “\(entry.name)”?")
+        if !failures.isEmpty {
+            libraryError = failures.joined(separator: "\n")
         }
-        return String(localized: "Delete \(count) Videos?")
-    }
-
-    var deleteMessage: String {
-        let count = pendingDelete?.count ?? 0
-        return String(localized: "The \(count) videos leave your library and System Settings.")
     }
 
     /// Ask for the Make Videos sheet for `ids`, or for the selected downloads. Every way

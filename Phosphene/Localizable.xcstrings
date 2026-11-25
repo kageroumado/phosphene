@@ -4,6 +4,66 @@
     "%@": {
       "shouldTranslate": false
     },
+    "%@ (Dark)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（深色）"
+          }
+        }
+      }
+    },
+    "%@ (Light)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（浅色）"
+          }
+        }
+      }
+    },
+    "%@ Converted": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 转换版"
+          }
+        }
+      }
+    },
+    "%@ Pair": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 明暗配对"
+          }
+        }
+      }
+    },
+    "%@ light": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色占 %@"
+          }
+        }
+      }
+    },
+    "%@ wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 张壁纸"
+          }
+        }
+      }
+    },
     "%@ · %lld waiting": {
       "localizations": {
         "en": {
@@ -16,6 +76,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ · %2$lld 个等待中"
+          }
+        }
+      }
+    },
+    "%@ → %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ → %@"
           }
         }
       }
@@ -80,6 +150,16 @@
     },
     "%lld fps": {
       "shouldTranslate": false
+    },
+    "%lld pairs · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 对 · %@"
+          }
+        }
+      }
     },
     "%lld videos": {
       "extractionState": "stale",
@@ -179,12 +259,52 @@
     "%lld × %lld": {
       "shouldTranslate": false
     },
-    "%@ wallpapers": {
+    "%lld × %lld px · %@ fps · %@ s": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 张壁纸"
+            "value": "%lld × %lld 像素 · %@ fps · %@ 秒"
+          }
+        }
+      }
+    },
+    "**Keyframes.** Start on a shared keyframe and align keyframes at least every half second. Use closed GOPs with B-frames turned off.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "**关键帧**：两段视频的首帧都必须是独立关键帧，且之后至少每隔半秒对齐一次独立关键帧。导出时请使用封闭式 GOP 并关闭 B 帧。"
+          }
+        }
+      }
+    },
+    "**Picture.** Match the resolution, orientation, codec settings, and color profile (SDR, HLG, or PQ).": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "**画面**：两段视频的分辨率、方向、编码设置和色彩配置（SDR、HLG 或 PQ）需要一致。"
+          }
+        }
+      }
+    },
+    "**Timing.** Use one full-length, untrimmed video track in each file. Match the constant frame rate, frame count, and duration.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "**时间线**：每个文件只能包含一条完整、未裁剪的视频轨道；两段视频的恒定帧率、总帧数和时长也必须相同。"
+          }
+        }
+      }
+    },
+    "1 pair · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 对 · %@"
           }
         }
       }
@@ -420,12 +540,32 @@
         }
       }
     },
+    "Add to Library": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加到资料库"
+          }
+        }
+      }
+    },
     "Added": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "添加日期"
+          }
+        }
+      }
+    },
+    "Added %@ to the Library.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已将 %@ 添加到资料库。"
           }
         }
       }
@@ -470,6 +610,16 @@
         }
       }
     },
+    "Align independent keyframes at the start and at least every half second. Use closed GOPs in both exports.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "首帧必须是独立关键帧，且两段视频的对齐关键帧间隔不能超过半秒。导出时请使用封闭式 GOP。"
+          }
+        }
+      }
+    },
     "All Videos": {
       "localizations": {
         "zh-Hans": {
@@ -510,6 +660,16 @@
         }
       }
     },
+    "Apply Preset": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用预设"
+          }
+        }
+      }
+    },
     "Are you sure you want to remove \"%@\" from your library?": {
       "localizations": {
         "zh-Hans": {
@@ -540,6 +700,16 @@
         }
       }
     },
+    "Average bitrate %@ → %@ Mb/s.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "平均码率从 %@ 提升至 %@ Mb/s。"
+          }
+        }
+      }
+    },
     "Balanced": {
       "localizations": {
         "zh-Hans": {
@@ -560,12 +730,62 @@
         }
       }
     },
+    "Bit depth %lld → %lld bits.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "色深从 %lld 位提升至 %lld 位。"
+          }
+        }
+      }
+    },
+    "Bitrate": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "码率"
+          }
+        }
+      }
+    },
+    "Blend Matching Frames": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "混合匹配帧"
+          }
+        }
+      }
+    },
+    "Both videos will appear separately in your library.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两个视频将分别显示在资料库中。"
+          }
+        }
+      }
+    },
     "Cancel": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "取消"
+          }
+        }
+      }
+    },
+    "Can’t Reach the Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法连接创意工坊"
           }
         }
       }
@@ -580,12 +800,12 @@
         }
       }
     },
-    "Can’t Reach the Workshop": {
+    "Check for Updates…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法连接创意工坊"
+            "value": "检查更新…"
           }
         }
       }
@@ -610,16 +830,6 @@
         }
       }
     },
-    "Check for Updates…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "检查更新…"
-          }
-        }
-      }
-    },
     "Check your internet connection, or open the Workshop in Steam.": {
       "localizations": {
         "zh-Hans": {
@@ -636,6 +846,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在检查更新…"
+          }
+        }
+      }
+    },
+    "Checking video compatibility…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查视频兼容性…"
           }
         }
       }
@@ -660,6 +880,36 @@
         }
       }
     },
+    "Choose Constrained High for more subdued desktop highlights.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择受限高动态范围可降低桌面高光的亮度。"
+          }
+        }
+      }
+    },
+    "Choose File…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择文件…"
+          }
+        }
+      }
+    },
+    "Choose a Library Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择资料库视频"
+          }
+        }
+      }
+    },
     "Choose a Phosphene video in System Settings › Wallpaper.": {
       "localizations": {
         "zh-Hans": {
@@ -676,6 +926,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择一个 Steam 文件夹，或一个存放 Wallpaper Engine 壁纸的文件夹。"
+          }
+        }
+      }
+    },
+    "Choose a destination outside the managed Library and distinct from the source video.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择资料库目录以外的位置，并与源视频分开保存。"
+          }
+        }
+      }
+    },
+    "Choose a frame rate that fits the source duration.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择适合源视频时长的帧率。"
+          }
+        }
+      }
+    },
+    "Choose a source video.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择源视频。"
+          }
+        }
+      }
+    },
+    "Choose file for %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为%@选择文件"
+          }
+        }
+      }
+    },
+    "Choose from the library for %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为%@从资料库选择"
+          }
+        }
+      }
+    },
+    "Choose the light and dark source videos.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择浅色和深色源视频。"
+          }
+        }
+      }
+    },
+    "Choose the light and dark versions of the same animation.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为同一段动画分别选择浅色和深色版本。"
           }
         }
       }
@@ -720,6 +1040,56 @@
         }
       }
     },
+    "Comparison divider": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对比分隔线"
+          }
+        }
+      }
+    },
+    "Confirm how to interpret the untagged source before converting.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "转换前，请先确认如何处理未标注动态范围的源视频。"
+          }
+        }
+      }
+    },
+    "Constrained High": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "受限高动态范围"
+          }
+        }
+      }
+    },
+    "Continue": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续"
+          }
+        }
+      }
+    },
+    "Convert": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "转换"
+          }
+        }
+      }
+    },
     "Convert to HEVC": {
       "localizations": {
         "zh-Hans": {
@@ -730,12 +1100,52 @@
         }
       }
     },
+    "Convert to SDR": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "转换为 SDR"
+          }
+        }
+      }
+    },
+    "Convert with these increases?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确定按以下更高的规格转换吗？"
+          }
+        }
+      }
+    },
+    "Converted Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已转换的视频"
+          }
+        }
+      }
+    },
     "Converting": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "正在转换"
+          }
+        }
+      }
+    },
+    "Converting SDR to HDR cannot recover highlight detail.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SDR 转为 HDR 无法恢复原片中缺失的高光细节。"
           }
         }
       }
@@ -798,6 +1208,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法优化视频。"
+          }
+        }
+      }
+    },
+    "Couldn’t Import Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导入视频"
+          }
+        }
+      }
+    },
+    "Couldn’t Remove Optimized Versions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法移除优化版本"
           }
         }
       }
@@ -902,12 +1332,102 @@
         }
       }
     },
+    "Create Light/Dark Pair": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建明暗配对"
+          }
+        }
+      }
+    },
+    "Create Pair": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建配对"
+          }
+        }
+      }
+    },
     "Create Variants": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "创建优化版本"
+          }
+        }
+      }
+    },
+    "Custom Conversion": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自定义转换"
+          }
+        }
+      }
+    },
+    "Custom Conversion…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自定义转换…"
+          }
+        }
+      }
+    },
+    "Dark": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深色"
+          }
+        }
+      }
+    },
+    "Dark Member": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深色版本"
+          }
+        }
+      }
+    },
+    "Dark Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深色视频"
+          }
+        }
+      }
+    },
+    "Dark · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深色 · %@"
+          }
+        }
+      }
+    },
+    "Dark — %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深色 — %@"
           }
         }
       }
@@ -932,6 +1452,16 @@
         }
       }
     },
+    "Delete %lld Library Items?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除 %lld 个资料库项目？"
+          }
+        }
+      }
+    },
     "Delete %lld Videos?": {
       "localizations": {
         "zh-Hans": {
@@ -952,12 +1482,42 @@
         }
       }
     },
+    "Delete Pair": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除配对"
+          }
+        }
+      }
+    },
+    "Delete Pair…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除配对…"
+          }
+        }
+      }
+    },
     "Delete Video": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "删除视频"
+          }
+        }
+      }
+    },
+    "Delete the pair “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除配对“%@”？"
           }
         }
       }
@@ -1022,6 +1582,16 @@
         }
       }
     },
+    "Destination": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存位置"
+          }
+        }
+      }
+    },
     "Display": {
       "localizations": {
         "zh-Hans": {
@@ -1072,6 +1642,16 @@
         }
       }
     },
+    "Drag to compare light and dark": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖动以对比浅色和深色外观"
+          }
+        }
+      }
+    },
     "Drawn without %@, whose shader Phosphene couldn’t translate.": {
       "localizations": {
         "zh-Hans": {
@@ -1092,6 +1672,26 @@
         }
       }
     },
+    "Dynamic Range": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "动态范围"
+          }
+        }
+      }
+    },
+    "Dynamic range from %@ to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "动态范围从 %@ 转为 %@"
+          }
+        }
+      }
+    },
     "Each wallpaper becomes a looping video in your library. A scene takes about a minute.": {
       "localizations": {
         "zh-Hans": {
@@ -1108,6 +1708,66 @@
           "stringUnit": {
             "state": "translated",
             "value": "早期的崩溃报告：%@"
+          }
+        }
+      }
+    },
+    "Enter a frame rate from 1 to 1,000 fps.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入 1 到 1,000 fps 之间的帧率。"
+          }
+        }
+      }
+    },
+    "Enter a frame rate from 2 to 1,000 fps for a pair.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对视频的帧率须在 2 到 1,000 fps 之间。"
+          }
+        }
+      }
+    },
+    "Enter a positive bitrate below 2,148 Mb/s.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入大于 0 且低于 2,148 Mb/s 的码率。"
+          }
+        }
+      }
+    },
+    "Enter an output name.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入输出名称。"
+          }
+        }
+      }
+    },
+    "Enter even dimensions between 2 and 16,384 pixels.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宽高须为 2 到 16,384 之间的偶数像素。"
+          }
+        }
+      }
+    },
+    "Enter positive output values. Width and height must be whole numbers.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入正数。宽度和高度须为整数。"
           }
         }
       }
@@ -1142,6 +1802,36 @@
         }
       }
     },
+    "Export both videos with an explicit SDR, HLG, or PQ color profile.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出两个视频时，请明确指定 SDR、HLG 或 PQ 色彩配置。"
+          }
+        }
+      }
+    },
+    "Export both videos with the same constant frame rate, frame count, and loop duration.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出两个视频时，请保持恒定帧率、总帧数和循环时长一致。"
+          }
+        }
+      }
+    },
+    "Export both videos without frame reordering (B-frames).": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在导出两个视频时关闭帧重排（B 帧）。"
+          }
+        }
+      }
+    },
     "Failed": {
       "localizations": {
         "zh-Hans": {
@@ -1152,12 +1842,42 @@
         }
       }
     },
+    "File unavailable": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件不可用"
+          }
+        }
+      }
+    },
+    "Fill and Crop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "铺满并裁切"
+          }
+        }
+      }
+    },
     "Finding a loop": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "正在寻找循环点"
+          }
+        }
+      }
+    },
+    "Fit with Black Bars": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整显示（保留黑边）"
           }
         }
       }
@@ -1198,6 +1918,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "帧率"
+          }
+        }
+      }
+    },
+    "Frame rate %@ → %@ fps. Extra frames repeat source images.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帧率从 %@ 提升至 %@ fps，多出的帧将重复原有画面。"
+          }
+        }
+      }
+    },
+    "Framing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画面适配"
+          }
+        }
+      }
+    },
+    "From Library…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从资料库选择…"
           }
         }
       }
@@ -1252,6 +2002,36 @@
         }
       }
     },
+    "HDR": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HDR"
+          }
+        }
+      }
+    },
+    "HDR highlights will be tone-mapped to SDR.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HDR 高光将通过色调映射压缩至 SDR 范围。"
+          }
+        }
+      }
+    },
+    "HDR output requires 10-bit HEVC.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HDR 输出需要 10 位 HEVC 编码。"
+          }
+        }
+      }
+    },
     "HEVC": {
       "localizations": {
         "zh-Hans": {
@@ -1282,12 +2062,32 @@
         }
       }
     },
+    "Height": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高度"
+          }
+        }
+      }
+    },
     "Hide Inspector": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "隐藏检查器"
+          }
+        }
+      }
+    },
+    "High": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高"
           }
         }
       }
@@ -1392,6 +2192,16 @@
         }
       }
     },
+    "Install Wallpaper Engine in Sevoflurane’s Steam to get wallpapers from here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Sevoflurane 的 Steam 中安装 Wallpaper Engine 后即可在此获取壁纸。"
+          }
+        }
+      }
+    },
     "Install updates automatically": {
       "localizations": {
         "zh-Hans": {
@@ -1402,12 +2212,12 @@
         }
       }
     },
-    "Install Wallpaper Engine in Sevoflurane’s Steam to get wallpapers from here.": {
+    "Interpret as SDR (Rec. 709)": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在 Sevoflurane 的 Steam 中安装 Wallpaper Engine 后即可在此获取壁纸。"
+            "value": "按 SDR（Rec. 709）处理"
           }
         }
       }
@@ -1452,6 +2262,16 @@
         }
       }
     },
+    "Larger output canvas: %lld × %lld → %lld × %lld pixels.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输出画布扩大：%lld × %lld → %lld × %lld 像素。"
+          }
+        }
+      }
+    },
     "Later": {
       "localizations": {
         "zh-Hans": {
@@ -1488,6 +2308,126 @@
           "stringUnit": {
             "state": "translated",
             "value": "资料库"
+          }
+        }
+      }
+    },
+    "Library Error": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "资料库错误"
+          }
+        }
+      }
+    },
+    "Light": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色"
+          }
+        }
+      }
+    },
+    "Light Member": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色版本"
+          }
+        }
+      }
+    },
+    "Light Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色视频"
+          }
+        }
+      }
+    },
+    "Light appearance on the left, dark appearance on the right": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "左侧为浅色外观，右侧为深色外观"
+          }
+        }
+      }
+    },
+    "Light · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色 · %@"
+          }
+        }
+      }
+    },
+    "Light — %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色 — %@"
+          }
+        }
+      }
+    },
+    "Light — %@\nDark — %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色 — %@\n深色 — %@"
+          }
+        }
+      }
+    },
+    "Light/Dark Pair": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "明暗配对"
+          }
+        }
+      }
+    },
+    "Light/Dark Pair Converter": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "明暗配对转换工具"
+          }
+        }
+      }
+    },
+    "Light/Dark Pair Converter…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "明暗配对转换工具…"
+          }
+        }
+      }
+    },
+    "Light/Dark Pairs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "明暗配对"
           }
         }
       }
@@ -1714,6 +2654,26 @@
         }
       }
     },
+    "Match the dimensions, orientation, codec settings, and color profile of both exports.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请确保两个视频的尺寸、方向、编码设置和色彩配置一致。"
+          }
+        }
+      }
+    },
+    "Mbps": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mb/s"
+          }
+        }
+      }
+    },
     "Most Subscribed": {
       "localizations": {
         "zh-Hans": {
@@ -1754,6 +2714,16 @@
         }
       }
     },
+    "No Light/Dark Pairs": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有明暗配对"
+          }
+        }
+      }
+    },
     "No Selection": {
       "localizations": {
         "zh-Hans": {
@@ -1790,6 +2760,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "没有来自 Wallpaper Engine 的视频"
+          }
+        }
+      }
+    },
+    "No Videos in Library": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "资料库中没有视频"
           }
         }
       }
@@ -1984,12 +2964,32 @@
         }
       }
     },
+    "One of the selected videos is no longer in the Library. Choose the sources again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分所选视频已不在资料库中，请重新选择。"
+          }
+        }
+      }
+    },
     "Open Library": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "打开资料库"
+          }
+        }
+      }
+    },
+    "Open Pair Converter…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开配对转换工具…"
           }
         }
       }
@@ -2004,22 +3004,22 @@
         }
       }
     },
-    "Open Wallpaper Settings…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开墙纸设置…"
-          }
-        }
-      }
-    },
     "Open Wallpaper Settings": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "打开墙纸设置"
+          }
+        }
+      }
+    },
+    "Open Wallpaper Settings…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开墙纸设置…"
           }
         }
       }
@@ -2064,12 +3064,42 @@
         }
       }
     },
+    "Optimization requires a supported SDR, HLG, or PQ video.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视频需采用受支持的 SDR、HLG 或 PQ 色彩格式才能优化。"
+          }
+        }
+      }
+    },
     "Optimized": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "已优化"
+          }
+        }
+      }
+    },
+    "Optimized · HDR": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已优化 · HDR"
+          }
+        }
+      }
+    },
+    "Optimized · SDR": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已优化 · SDR"
           }
         }
       }
@@ -2104,12 +3134,62 @@
         }
       }
     },
+    "Output": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输出"
+          }
+        }
+      }
+    },
+    "Output is 10-bit. The source bit depth could not be confirmed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输出为 10 位，但无法确认源视频的色深。"
+          }
+        }
+      }
+    },
+    "Pairing Requirements": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对要求"
+          }
+        }
+      }
+    },
+    "Pair…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对…"
+          }
+        }
+      }
+    },
     "Pause": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "暂停"
+          }
+        }
+      }
+    },
+    "Pause Desktop Wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂停桌面墙纸"
           }
         }
       }
@@ -2267,12 +3347,32 @@
         }
       }
     },
+    "Picture enlarged by %@×.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画面放大至 %@ 倍。"
+          }
+        }
+      }
+    },
     "Play": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "播放"
+          }
+        }
+      }
+    },
+    "Play Pair Preview": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放配对预览"
           }
         }
       }
@@ -2313,6 +3413,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在准备删除请求…"
+          }
+        }
+      }
+    },
+    "Preparing…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备…"
+          }
+        }
+      }
+    },
+    "Preset": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预设"
           }
         }
       }
@@ -2377,12 +3497,32 @@
         }
       }
     },
+    "Reading video information…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取视频信息…"
+          }
+        }
+      }
+    },
     "Ready to Make": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "可制作"
+          }
+        }
+      }
+    },
+    "Regenerate Variants": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新生成优化版本"
           }
         }
       }
@@ -2467,6 +3607,76 @@
         }
       }
     },
+    "Resume Desktop Wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续播放桌面墙纸"
+          }
+        }
+      }
+    },
+    "SDR": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SDR"
+          }
+        }
+      }
+    },
+    "SDR (interpreted as Rec. 709)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SDR（按 Rec. 709 处理）"
+          }
+        }
+      }
+    },
+    "SDR → %@. Original highlights stay at SDR reference levels.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SDR → %@。原片高光按 SDR 参考亮度映射。"
+          }
+        }
+      }
+    },
+    "Save File": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存为文件"
+          }
+        }
+      }
+    },
+    "Save To": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存储到"
+          }
+        }
+      }
+    },
+    "Saved %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存 %@。"
+          }
+        }
+      }
+    },
     "Scene": {
       "localizations": {
         "zh-Hans": {
@@ -2507,12 +3717,12 @@
         }
       }
     },
-    "Search the Workshop": {
+    "Search Library": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "搜索创意工坊"
+            "value": "搜索资料库"
           }
         }
       }
@@ -2537,22 +3747,22 @@
         }
       }
     },
+    "Search the Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索创意工坊"
+          }
+        }
+      }
+    },
     "See what's new in version %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "查看 %@ 版本的新功能"
-          }
-        }
-      }
-    },
-    "Select a wallpaper to view its details.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择一张壁纸以查看其详细信息。"
           }
         }
       }
@@ -2583,6 +3793,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "请在“墙纸”设置中\n选择墙纸"
+          }
+        }
+      }
+    },
+    "Select a wallpaper to view its details.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一张壁纸以查看其详细信息。"
+          }
+        }
+      }
+    },
+    "Select two videos in All Videos to create a light/dark pair.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“所有视频”中选择两个视频即可创建明暗配对。"
           }
         }
       }
@@ -2657,16 +3887,6 @@
         }
       }
     },
-    "Show in All Wallpapers": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在“所有壁纸”中显示"
-          }
-        }
-      }
-    },
     "Show Inspector": {
       "localizations": {
         "zh-Hans": {
@@ -2683,6 +3903,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "以图标或列表显示"
+          }
+        }
+      }
+    },
+    "Show in All Wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“所有壁纸”中显示"
           }
         }
       }
@@ -2717,6 +3947,16 @@
         }
       }
     },
+    "Software Update": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "软件更新"
+          }
+        }
+      }
+    },
     "Sort": {
       "localizations": {
         "zh-Hans": {
@@ -2747,12 +3987,82 @@
         }
       }
     },
+    "Source Video": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "源视频"
+          }
+        }
+      }
+    },
+    "Sources": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "源视频"
+          }
+        }
+      }
+    },
     "Space %lld": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "空间 %lld"
+          }
+        }
+      }
+    },
+    "Split Light/Dark Pair": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拆分明暗配对"
+          }
+        }
+      }
+    },
+    "Split Pair": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拆分配对"
+          }
+        }
+      }
+    },
+    "Split Pair…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拆分配对…"
+          }
+        }
+      }
+    },
+    "Split the existing pair before changing either video.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先拆分配对，再更换其中的视频。"
+          }
+        }
+      }
+    },
+    "Standard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标准"
           }
         }
       }
@@ -2777,22 +4087,22 @@
         }
       }
     },
-    "Steam is downloading it": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Steam 正在下载"
-          }
-        }
-      }
-    },
     "Steam Workshop": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "Steam 创意工坊"
+          }
+        }
+      }
+    },
+    "Steam is downloading it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 正在下载"
           }
         }
       }
@@ -2813,6 +4123,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "停止制作视频"
+          }
+        }
+      }
+    },
+    "Stop Pair Preview": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止配对预览"
           }
         }
       }
@@ -2867,6 +4187,26 @@
         }
       }
     },
+    "Swap Light and Dark": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "交换浅色与深色"
+          }
+        }
+      }
+    },
+    "Switching between light and dark briefly decodes both videos and increases GPU and memory use.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在浅色与深色外观之间切换时，会短暂同时解码两个视频，从而增加 GPU 和内存用量。"
+          }
+        }
+      }
+    },
     "The %lld videos leave your library and System Settings.": {
       "localizations": {
         "en": {
@@ -2905,12 +4245,62 @@
         }
       }
     },
+    "The destination changed during conversion. Choose it again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "转换期间保存位置发生了变化，请重新选择。"
+          }
+        }
+      }
+    },
     "The download isn’t complete.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "下载尚未完成。"
+          }
+        }
+      }
+    },
+    "The output contains video only.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输出仅包含视频画面。"
+          }
+        }
+      }
+    },
+    "The selected items will be removed from your library and System Settings. Both library copies of each pair below will be permanently deleted.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选项目将从资料库和系统设置中移除，下列每个配对在资料库中的两个视频副本也将被永久删除。"
+          }
+        }
+      }
+    },
+    "The selection changed. Close this sheet and select the videos again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选内容已更改，请关闭此窗口后重新选择。"
+          }
+        }
+      }
+    },
+    "The source dimensions, frame rate, or duration could not be read.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取源视频的尺寸、帧率或时长。"
           }
         }
       }
@@ -3012,12 +4402,32 @@
         }
       }
     },
+    "This removes the pair from your library and System Settings and permanently deletes both library copies.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这将从资料库和系统设置中移除该配对，并永久删除资料库中的两个视频副本。"
+          }
+        }
+      }
+    },
     "This will delete the optimized variants. The original video is not affected.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "这将删除已优化的版本。原始视频不受影响。"
+          }
+        }
+      }
+    },
+    "This will remove the optimized versions of both videos and keep the original pair.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这将移除两个视频的优化版本，同时保留原始配对。"
           }
         }
       }
@@ -3039,6 +4449,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "热门"
+          }
+        }
+      }
+    },
+    "Trim the video to %@ s.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将视频裁剪至 %@ 秒。"
           }
         }
       }
@@ -3143,22 +4563,22 @@
         }
       }
     },
-    "Update failed": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更新失败"
-          }
-        }
-      }
-    },
     "Update Sevoflurane to get wallpapers from here.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "更新 Sevoflurane 后即可在此获取壁纸。"
+          }
+        }
+      }
+    },
+    "Update failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新失败"
           }
         }
       }
@@ -3233,6 +4653,16 @@
         }
       }
     },
+    "Use one video track per file, with a full-length, untrimmed timeline.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个文件只能包含一条视频轨道，且时间线须完整、未经裁剪。"
+          }
+        }
+      }
+    },
     "Uses %@, which Phosphene can’t draw yet.": {
       "localizations": {
         "zh-Hans": {
@@ -3259,6 +4689,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "视频"
+          }
+        }
+      }
+    },
+    "Video resolution is unavailable.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法获取视频分辨率。"
+          }
+        }
+      }
+    },
+    "Videos are compatible": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两个视频可以配对"
           }
         }
       }
@@ -3319,6 +4769,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "等待制作"
+          }
+        }
+      }
+    },
+    "Wallpaper": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "墙纸"
           }
         }
       }
@@ -3463,6 +4923,16 @@
         }
       }
     },
+    "Width": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宽度"
+          }
+        }
+      }
+    },
     "With “Show on all Spaces” off, switch to that desktop, then choose the video.": {
       "localizations": {
         "zh-Hans": {
@@ -3531,6 +5001,16 @@
         }
       }
     },
+    "You’re up to date!": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已是最新版本"
+          }
+        }
+      }
+    },
     "a %@ loop that crossfades into its start": {
       "localizations": {
         "zh-Hans": {
@@ -3571,12 +5051,22 @@
         }
       }
     },
-    "Software Update": {
+    "fps": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "软件更新"
+            "value": "fps"
+          }
+        }
+      }
+    },
+    "px": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "像素"
           }
         }
       }
@@ -3624,12 +5114,12 @@
     "v%@": {
       "shouldTranslate": false
     },
-    "You’re up to date!": {
+    "×": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已是最新版本"
+            "value": "×"
           }
         }
       }

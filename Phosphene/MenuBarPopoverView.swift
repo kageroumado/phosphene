@@ -242,19 +242,71 @@ struct MenuBarPopoverView: View {
     // MARK: - Settings
 
     private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+        @Bindable var prefsService = prefsService
+        return VStack(alignment: .leading, spacing: Theme.Space.sm) {
             SectionLabel(String(localized: "Settings"))
 
             HStack(spacing: Theme.Space.sm) {
-                @Bindable var prefsService = prefsService
                 Toggle("Launch at Login", isOn: $manager.launchAtLogin)
                 Toggle("Pause When Hidden", isOn: $prefsService.pauseWhenOccluded)
                     .help("Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.")
             }
             .toggleStyle(SettingPillToggleStyle())
 
+            dynamicRangeMenu
+
+            Toggle("Blend Matching Frames", isOn: $prefsService.frameMatchedTransitions)
+                .toggleStyle(SettingPillToggleStyle())
+                .help("Switching between light and dark briefly decodes both videos and increases GPU and memory use.")
+
             UsageCountingSettings()
                 .toggleStyle(SettingPillToggleStyle())
+        }
+    }
+
+    private var dynamicRangeMenu: some View {
+        @Bindable var prefsService = prefsService
+        let selection = hdrModeLabel(prefsService.hdrMode)
+        return Menu {
+            Picker("Dynamic Range", selection: $prefsService.hdrMode) {
+                hdrModeLabel(.automatic).tag(HDRMode.automatic)
+                hdrModeLabel(.standard).tag(HDRMode.standard)
+                hdrModeLabel(.constrainedHigh).tag(HDRMode.constrainedHigh)
+                hdrModeLabel(.high).tag(HDRMode.high)
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            HStack(spacing: 6) {
+                Text("Dynamic Range")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: Theme.Space.sm)
+                selection
+                    .foregroundStyle(.primary)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .font(.caption)
+            .padding(Theme.Space.sm)
+            .contentShape(Theme.concentricInnerShape)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .glassEffect(.regular, in: Theme.concentricInnerShape)
+        .accessibilityLabel("Dynamic Range")
+        .accessibilityValue(selection)
+        .help("Choose Constrained High for more subdued desktop highlights.")
+    }
+
+    private func hdrModeLabel(_ mode: HDRMode) -> Text {
+        switch mode {
+        case .automatic: Text("Automatic")
+        case .standard: Text("Standard")
+        case .constrainedHigh: Text("Constrained High")
+        case .high: Text("High")
         }
     }
 
