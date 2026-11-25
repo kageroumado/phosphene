@@ -135,7 +135,7 @@ enum VideoDeploymentService {
             try Task.checkCancellation()
             try AppearancePair.requireSingle(entryID, in: videosFolderURL)
             var current = try readEntry(entryID, in: dir, matching: identity)
-            let retired = Set((current.variants ?? []).map(\.filename) + [current.filename, "thumbnail.jpg", "metadata.json"])
+            let retired = Set((current.variants ?? []).map(\.filename) + [current.filename, "thumbnail.jpg", "metadata.json", ".media-replaced"])
             for file in try fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) where !retired.contains(file.lastPathComponent) {
                 try fm.linkItem(at: file, to: staged.appendingPathComponent(file.lastPathComponent))
             }
@@ -147,6 +147,7 @@ enum VideoDeploymentService {
             current.variants = nil
             try JSONEncoder().encode(current).write(to: staged.appendingPathComponent("metadata.json"))
             try Task.checkCancellation()
+            try Data().write(to: staged.appendingPathComponent(".media-replaced"))
             // Publish media and metadata together. Open readers can finish on their old inodes.
             guard unsafe renamex_np(staged.path, dir.path, UInt32(RENAME_SWAP)) == 0 else {
                 throw POSIXError(.init(rawValue: errno) ?? .EIO)
@@ -156,7 +157,7 @@ enum VideoDeploymentService {
     }
 
     private nonisolated static func isMediaFilename(_ name: String) -> Bool {
-        PathSafety.isSafeComponent(name) && !["metadata.json", "thumbnail.jpg", workshopRecordName].contains(name.lowercased())
+        PathSafety.isSafeComponent(name) && !["metadata.json", "thumbnail.jpg", ".media-replaced", workshopRecordName].contains(name.lowercased())
     }
 
     // MARK: - Wallpaper Engine provenance
