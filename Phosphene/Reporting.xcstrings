@@ -1,0 +1,86 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Checking the older registration…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查旧版登记…"
+          }
+        }
+      }
+    },
+    "Older Counting Registration": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "旧版统计登记"
+          }
+        }
+      }
+    },
+    "The older registration could not be reused. It may still have queued data.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法继续使用旧版登记，其中可能仍有排队的数据。"
+          }
+        }
+      }
+    },
+    "Keep the Older Release Registration": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续使用旧版发行版登记"
+          }
+        }
+      }
+    },
+    "Use a New Counting Registration": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用新的统计登记"
+          }
+        }
+      }
+    },
+    "Turn Off Counting and Request Older Data Deletion": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭统计并请求删除旧数据"
+          }
+        }
+      }
+    },
+    "Keep the older registration only if you know it was used exclusively by Release. A new registration may be counted as a reinstall. Requesting deletion sends signed requests for the older registration to the Release service.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有在确认旧版登记仅用于发行版时，才应继续使用它。新的登记可能被视为重新安装。请求删除会把旧版登记的带签名请求发送给发行版服务。"
+          }
+        }
+      }
+    },
+    "Counting is paused until you choose what to do with the older registration.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在你决定如何处理旧版登记之前，统计已暂停。"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

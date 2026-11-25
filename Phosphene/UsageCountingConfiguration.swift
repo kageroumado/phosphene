@@ -6,10 +6,17 @@ import os
 extension UsageCounting {
     static let shared = UsageCounting(
         stateURL: supportFolder.appending(path: "Reporting.json"),
-        initialState: { build.initialState { UserDefaults.standard.string(forKey: "usageCounting") } },
-        statistics: statistics,
-        previousCrashes: previousCrashes,
-        crashDestination: (crashReportsApp, crashes),
+        initialState: { build.initialState { UserDefaults.standard.string(forKey: legacyConsentKey) } },
+        retireLegacy: build == .release ? { UserDefaults.standard.removeObject(forKey: legacyConsentKey) } : nil,
+        legacyStore: build == .release ? LegacyStatisticsStore(
+            old: supportFolder.appending(path: "Digoxin", directoryHint: .isDirectory),
+            new: storageFolder(for: .statistics).appending(path: "Digoxin", directoryHint: .isDirectory),
+        ) : nil,
+        makeClient: makeClient,
+        hasStrandedData: { stream, status in
+            ReportingBuild.hasStrandedData(in: storageFolder(for: stream), deletionPending: status == .deletionPending)
+        },
+        crashApp: crashReportsApp,
         currentCrashSlice: build.crashSlice,
         findReports: build.reports,
     )
@@ -22,6 +29,7 @@ extension UsageCounting {
         #endif
     }()
 
+    private nonisolated static let legacyConsentKey = "usageCounting"
     private nonisolated static let statisticsApp = "phosphene"
     private nonisolated static let crashReportsApp = "phosphene-crashes"
 
@@ -39,22 +47,23 @@ extension UsageCounting {
 
     private nonisolated static let logger = Logger(subsystem: "glass.kagerou.phosphene", category: "UsageCounting")
 
-    private nonisolated static let statistics = Digoxin(configuration: .init(
-        app: statisticsApp, baseURL: baseURL, storageDirectory: supportFolder,
-        propertiesProvider: { await libraryProperties() },
-        log: { logger.info("\($0, privacy: .private)") },
-    ))
-    private nonisolated static let previousCrashes = Digoxin(configuration: .init(
-        app: statisticsApp, baseURL: baseURL,
-        storageDirectory: supportFolder.appending(path: "CrashReports", directoryHint: .isDirectory),
-        log: { logger.info("\($0, privacy: .private)") },
-    ))
+    private nonisolated static func storageFolder(for stream: ReportingStream) -> URL {
+        switch stream {
+        case .statistics: build.statisticsFolder(in: supportFolder)
+        case .legacyStatistics: supportFolder
+        case .previousCrashes: supportFolder.appending(path: "CrashReports", directoryHint: .isDirectory)
+        case .crashes: supportFolder.appending(path: crashReportsApp, directoryHint: .isDirectory)
+        }
+    }
 
-    private nonisolated static let crashes = Digoxin(configuration: .init(
-        app: crashReportsApp, baseURL: baseURL,
-        storageDirectory: supportFolder.appending(path: crashReportsApp, directoryHint: .isDirectory),
-        log: { logger.info("\($0, privacy: .private)") },
-    ))
+    private static func makeClient(for stream: ReportingStream) -> any ReportingClient {
+        Digoxin(configuration: .init(
+            app: stream == .crashes ? crashReportsApp : statisticsApp,
+            baseURL: baseURL, storageDirectory: storageFolder(for: stream),
+            propertiesProvider: { await stream == .statistics ? libraryProperties() : [:] },
+            log: { logger.info("\($0, privacy: .private)") },
+        ))
+    }
 
     private static func libraryProperties() -> [String: TelemetryValue] {
         [
@@ -97,7 +106,10 @@ extension UsageCounting {
         }
 
         private static func fetch() async -> Int? {
-            try? await statistics.activeCount().active
+            let reader = Digoxin(configuration: .init(
+                app: statisticsApp, baseURL: baseURL, storageDirectory: supportFolder.appending(path: "ActiveCount"),
+            ))
+            return try? await reader.activeCount().active
         }
     }
 }

@@ -55,7 +55,7 @@ struct UsageQuestionCard: View {
 
     private func answer(countThisMac: Bool) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            reporting.consent.usageStatistics = countThisMac
+            reporting.choose(countThisMac, for: \.usageStatistics)
         }
     }
 }
@@ -77,15 +77,16 @@ private struct ActiveMacsLine: View {
 
 /// Usage and crash reporting controls in the popover's settings.
 struct UsageCountingSettings: View {
-    @Bindable private var reporting = UsageCounting.shared
+    private let reporting = UsageCounting.shared
     @State private var activeMacs: Int?
     @State private var showsDetails = false
+    @State private var showsLegacyChoices = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
             HStack(alignment: .top, spacing: Theme.Space.sm) {
-                reportingToggle("Count this Mac", isOn: $reporting.consent.usageStatistics, stream: .statistics)
-                reportingToggle("Send crash reports", isOn: $reporting.consent.crashReports, stream: .crashes)
+                reportingToggle("Count this Mac", isOn: permission(\.usageStatistics), stream: .statistics)
+                reportingToggle("Send crash reports", isOn: permission(\.crashReports), stream: .crashes)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -94,6 +95,7 @@ struct UsageCountingSettings: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                legacyStatistics
                 if reporting.consent.usageStatistics, let activeMacs {
                     ActiveMacsLine(count: activeMacs)
                 }
@@ -111,6 +113,71 @@ struct UsageCountingSettings: View {
             if !Task.isCancelled {
                 activeMacs = count
             }
+        }
+    }
+
+    private func permission(_ keyPath: WritableKeyPath<ReportingConsent, Bool>) -> Binding<Bool> {
+        Binding(get: { reporting.consent[keyPath: keyPath] }, set: { value in
+            reporting.choose(value, for: keyPath)
+            if keyPath == \.usageStatistics, !value,
+               let legacy = reporting.legacyStatistics, legacy != .deletionRequested, legacy != .keepRequested {
+                showsLegacyChoices = true
+            }
+        })
+    }
+
+    @ViewBuilder
+    private var legacyStatistics: some View {
+        if let choice = reporting.legacyStatistics {
+            VStack(alignment: .leading, spacing: 2) {
+                if choice == .keepRequested {
+                    Text("Checking the older registration…", tableName: "Reporting")
+                } else if choice == .deletionRequested {
+                    Text("Older Counting Registration", tableName: "Reporting")
+                    if let status = reporting.deletionStatus(for: .legacyStatistics) {
+                        Text(deletionLine(status))
+                    }
+                } else {
+                    if choice == .undecided, reporting.consent.usageStatistics {
+                        Text("Counting is paused until you choose what to do with the older registration.", tableName: "Reporting")
+                    }
+                    if choice == .keepUnavailable {
+                        Text("The older registration could not be reused. It may still have queued data.", tableName: "Reporting")
+                    }
+                    Button {
+                        showsLegacyChoices = true
+                    } label: {
+                        Text("Older Counting Registration", tableName: "Reporting")
+                    }
+                    .confirmationDialog(
+                        Text("Older Counting Registration", tableName: "Reporting"),
+                        isPresented: $showsLegacyChoices,
+                        titleVisibility: .visible,
+                    ) {
+                        if choice.pausesCounting {
+                            if reporting.consent.usageStatistics {
+                                Button { reporting.chooseLegacy(.keepRequested) } label: {
+                                    Text("Keep the Older Release Registration", tableName: "Reporting")
+                                }
+                            }
+                            Button { reporting.chooseLegacy(.startNew) } label: {
+                                Text("Use a New Counting Registration", tableName: "Reporting")
+                            }
+                        }
+                        Button(role: .destructive) { reporting.chooseLegacy(.deletionRequested) } label: {
+                            Text("Turn Off Counting and Request Older Data Deletion", tableName: "Reporting")
+                        }
+                    } message: {
+                        Text("""
+                        Keep the older registration only if you know it was used exclusively by Release. A new registration may be counted as a reinstall. \
+                        Requesting deletion sends signed requests for the older registration to the Release service.
+                        """, tableName: "Reporting")
+                    }
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -163,7 +230,6 @@ struct UsageCountingSettings: View {
             When Phosphene crashes, it sends the crash log, app and macOS versions, hardware details, and \
             language. Your account name, Mac name, and home folder path are redacted.
             """)
-            Text("Crash reports sent by older versions may share the usage registration. Turn off Count this Mac to request deletion of that data.")
             #if DEBUG
                 Text("Debug builds skip macOS crash log discovery.")
             #endif

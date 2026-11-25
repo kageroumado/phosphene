@@ -101,18 +101,20 @@ struct ReportingLifecycleTests {
     }
 
     @Test
-    func `migration preserves statistics identity and retires the previous crash identity`() async throws {
+    func `scoped Release consent preserves its statistics grant and retires the previous crash identity`() async throws {
         let fixture = try ReportingFixture(
-            statistics: RecordingClient(tier: .crashReports),
+            statistics: RecordingClient(tier: .counting),
             previousCrashes: RecordingClient(tier: .crashReports),
         )
         defer { fixture.remove() }
+        try ReportingState(consent: ReportingConsent(crashReports: true, usageStatistics: true)).save(to: fixture.stateURL)
         let reporting = fixture.controller(initial: ReportingBuild.release.initialState { "crashReports" })
 
         reporting.noteUse()
         await finish(reporting)
         #expect(reporting.consent == ReportingConsent(crashReports: true, usageStatistics: true))
-        #expect(await fixture.statistics.tierChanges == [.counting])
+        #expect(await fixture.statistics.tierChanges.isEmpty)
+        #expect(await fixture.statistics.useCount == 1)
         #expect(await fixture.previousCrashes.tierChanges == [.off])
         #expect(await fixture.previousCrashes.useCount == 0)
         #expect(await fixture.crashes.tierChanges == [.crashReports])
@@ -120,17 +122,207 @@ struct ReportingLifecycleTests {
     }
 
     @Test
-    func `migrated crash-only consent retires stale statistics before a new grant`() async throws {
+    func `the shared legacy preference and queue cannot start Release reporting`() async throws {
+        let fixture = try ReportingFixture()
+        defer { fixture.remove() }
+        let legacy = fixture.root.appending(path: "Digoxin")
+        let pending = legacy.appending(path: "heartbeats.json")
+        try FileManager.default.createDirectory(at: legacy, withIntermediateDirectories: true)
+        let data = Data("synthetic ambiguous queue".utf8)
+        try data.write(to: pending)
+
+        let current = ReportingBuild.release.statisticsFolder(in: fixture.root)
+        #expect(current == fixture.root.appending(path: "Statistics", directoryHint: .isDirectory))
+        #expect(ReportingBuild.hasStrandedData(in: fixture.root, deletionPending: false))
+        #expect(!ReportingBuild.hasStrandedData(in: current, deletionPending: false))
+        let migration = LegacyStatisticsStore(old: legacy, new: current.appending(path: "Digoxin"))
+        let reporting = fixture.controller(
+            initial: ReportingBuild.release.initialState { "crashReports" },
+            legacyStore: migration,
+        )
+        reporting.noteUse()
+        await finish(reporting)
+        #expect(reporting.legacyStatistics == .undecided)
+        #expect(reporting.shouldAsk)
+        #expect(reporting.consent == ReportingConsent())
+        #expect(await fixture.statistics.useCount == 0)
+        #expect(await fixture.crashes.tier == .off)
+        #expect(try Data(contentsOf: pending) == data)
+        #expect(ReportingBuild.release.initialState { "off" }.consent == ReportingConsent())
+    }
+
+    @Test(arguments: [false, true])
+    func `known Release identity moves intact only with empty queues`(queued: Bool) async throws {
         let fixture = try ReportingFixture(statistics: RecordingClient(tier: .counting))
         defer { fixture.remove() }
-        let reporting = fixture.controller(initial: ReportingBuild.release.initialState { "crashesOnly" })
-        #expect(reporting.consent == ReportingConsent(crashReports: true))
-
-        reporting.consent.usageStatistics = true
+        let legacy = RecordingClient(tier: .counting, status: .registered(trust: "device"))
+        let migration = fixture.legacyStore
+        let key = Data("synthetic old key".utf8)
+        let state = Data("synthetic state and sequence 13".utf8)
+        try FileManager.default.createDirectory(at: migration.old, withIntermediateDirectories: true)
+        try key.write(to: migration.old.appending(path: "identity.key"))
+        try state.write(to: migration.old.appending(path: "state.json"))
+        try Data((queued ? "[{}]" : "[]").utf8).write(to: migration.old.appending(path: "heartbeats.json"))
+        let reporting = fixture.controller(
+            initial: ReportingState(consent: ReportingConsent(usageStatistics: true)),
+            legacyStore: migration,
+            legacyClient: legacy,
+        )
+        reporting.noteUse()
         await finish(reporting)
-        #expect(await fixture.statistics.tierChanges == [.off, .counting])
-        #expect(await fixture.crashes.tierChanges == [.crashReports])
-        #expect(await fixture.crashes.useCount == 0)
+        #expect(await fixture.statistics.useCount == 0)
+
+        reporting.chooseLegacy(.keepRequested)
+        await finish(reporting)
+        #expect(await legacy.tierChanges.isEmpty)
+        #expect(await legacy.flushTiers.isEmpty)
+        if queued {
+            #expect(reporting.legacyStatistics == .keepUnavailable)
+            #expect(await fixture.statistics.useCount == 0)
+            #expect(try Data(contentsOf: migration.old.appending(path: "identity.key")) == key)
+        } else {
+            #expect(reporting.legacyStatistics == nil)
+            #expect(await fixture.statistics.useCount == 1)
+            #expect(await fixture.statistics.tierChanges.isEmpty)
+            #expect(try Data(contentsOf: migration.new.appending(path: "identity.key")) == key)
+            #expect(try Data(contentsOf: migration.new.appending(path: "state.json")) == state)
+            #expect(!FileManager.default.fileExists(atPath: migration.old.path))
+        }
+    }
+
+    @Test
+    func `historical retirement requires confirmation and never drains its reporting tier`() async throws {
+        let fixture = try ReportingFixture()
+        defer { fixture.remove() }
+        let legacy = RecordingClient(tier: .crashReports)
+        let migration = fixture.legacyStore
+        try FileManager.default.createDirectory(at: migration.old, withIntermediateDirectories: true)
+        try Data("[{}]".utf8).write(to: migration.old.appending(path: "heartbeats.json"))
+        let reporting = fixture.controller(
+            initial: ReportingState(consent: ReportingConsent(crashReports: true, usageStatistics: true)),
+            legacyStore: migration,
+            legacyClient: legacy,
+        )
+        reporting.noteUse()
+        reporting.choose(false, for: \.usageStatistics)
+        reporting.chooseLegacy(.keepRequested)
+        await finish(reporting)
+        #expect(reporting.legacyStatistics == .undecided)
+        #expect(await legacy.tierChanges.isEmpty)
+        #expect(await legacy.flushTiers.isEmpty)
+
+        reporting.chooseLegacy(.deletionRequested)
+        await finish(reporting)
+        #expect(await legacy.tierChanges == [.off])
+        #expect(await legacy.useCount == 0)
+        #expect(await legacy.reports.isEmpty)
+        #expect(await legacy.flushTiers == [.off])
+        #expect(reporting.consent == ReportingConsent(crashReports: true))
+        #expect(reporting.deletionStatus(for: .legacyStatistics) == .unconfirmed)
+    }
+
+    @Test
+    func `migration retires the preference even if the consent file later disappears`() throws {
+        let fixture = try ReportingFixture()
+        defer { fixture.remove() }
+        let store = ReportingStore(url: fixture.stateURL)
+        var legacy: String? = "off"
+        let first = try store.initialize(
+            initial: { ReportingState(consent: ReportingConsent(storedValue: legacy)) },
+            retireLegacy: { legacy = nil },
+            configure: { _ in },
+        )
+        #expect(first.consent == ReportingConsent())
+        #expect(legacy == nil)
+
+        try FileManager.default.removeItem(at: fixture.stateURL)
+        legacy = "crashReports"
+        let second = try store.initialize(
+            initial: { ReportingState(consent: ReportingConsent(storedValue: legacy)) },
+            retireLegacy: { legacy = nil },
+            configure: { _ in },
+        )
+        #expect(second.consent == nil)
+        #expect(second.requiredRevocations == [.statistics, .crashes])
+        #expect(legacy == nil)
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func `a second controller can revoke but only the owner uses Digoxin`() async throws {
+        let sending = ReportingGate()
+        let revoking = ReportingGate()
+        let primary = try ReportingFixture(statistics: RecordingClient(sendGate: sending, offGate: revoking))
+        defer { primary.remove() }
+        let secondary = try ReportingFixture(root: primary.root)
+        var owner: UsageCounting? = primary.controller()
+        owner?.consent = ReportingConsent(crashReports: true, usageStatistics: true)
+        await sending.waitUntilEntered()
+
+        let peer = secondary.controller()
+        peer.noteUse()
+        await finish(peer)
+        #expect(await secondary.statistics.tierChanges.isEmpty)
+        #expect(await secondary.crashes.tierChanges.isEmpty)
+
+        peer.choose(false, for: \.usageStatistics)
+        await revoking.waitUntilEntered()
+        #expect(await primary.statistics.tier == .off)
+        let shared = try ReportingState.load(from: primary.stateURL)
+        #expect(shared?.consent == ReportingConsent(crashReports: true))
+        #expect(shared?.requiredRevocations == [.statistics])
+
+        await sending.open()
+        await revoking.open()
+        if let owner {
+            await finish(owner)
+        }
+        owner = nil
+        peer.noteUse()
+        await finish(peer)
+        #expect(await secondary.statistics.useCount == 0)
+        #expect(await secondary.crashes.tierChanges == [.crashReports])
+    }
+
+    @Test
+    func `an off Digoxin client with unreadable state keeps the revocation blocked`() async throws {
+        let fixture = try ReportingFixture()
+        defer { fixture.remove() }
+        let storage = fixture.root.appending(path: "Statistics")
+        let root = storage.appending(path: "Digoxin")
+        let key = root.appending(path: "identity.key")
+        let invalid = Data("synthetic corrupt state".utf8)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try invalid.write(to: root.appending(path: "state.json"))
+        try invalid.write(to: key)
+        try ReportingState(
+            consent: ReportingConsent(usageStatistics: true), requiredRevocations: [.statistics],
+        ).save(to: fixture.stateURL)
+
+        let client = Digoxin(configuration: .init(app: "phosphene", baseURL: fixture.root, storageDirectory: storage))
+        #expect(await client.tier == .off)
+        let reporting = UsageCounting(
+            stateURL: fixture.stateURL,
+            initialState: { ReportingState() },
+            makeClient: { stream in
+                if stream == .statistics {
+                    return client
+                }
+                return RecordingClient()
+            },
+            hasStrandedData: { stream, status in
+                stream == .statistics && ReportingBuild.hasStrandedData(in: storage, deletionPending: status == .deletionPending)
+            },
+            crashApp: "phosphene-crashes",
+            findReports: { _, _, _ in [] },
+        )
+        reporting.noteUse()
+        await finish(reporting)
+        #expect(reporting.deletionStatus(for: .statistics) == .unconfirmed)
+        let saved = try ReportingState.load(from: fixture.stateURL)
+        #expect(saved?.requiredRevocations == [.statistics])
+        #expect(saved?.isBlocked(.statistics) == true)
+        #expect(await client.tier == .off)
+        #expect(try Data(contentsOf: key) == invalid)
     }
 
     @Test
@@ -141,7 +333,7 @@ struct ReportingLifecycleTests {
             statistics: RecordingClient(tier: .counting),
             root: ReportingBuild.debug.supportFolder(in: release.root),
         )
-        try ReportingBuild.release.initialState { "crashReports" }.save(to: release.stateURL)
+        try ReportingState(consent: ReportingConsent(crashReports: true, usageStatistics: true)).save(to: release.stateURL)
         let reporting = debug.controller(
             initial: ReportingBuild.debug.initialState { "crashReports" },
             findReports: ReportingBuild.debug.reports,
@@ -161,30 +353,53 @@ struct ReportingLifecycleTests {
         #expect(try ReportingState.load(from: debug.stateURL)?.consent?.crashReports == false)
     }
 
-    @Test
-    func `interrupted scan resumes without handing off a claimed crash twice`() async throws {
+    @Test(.timeLimit(.minutes(1)))
+    func `interrupted scan and a later scan never hand off a recent incident again`() async throws {
         let sending = ReportingGate()
         let fixture = try ReportingFixture(crashes: RecordingClient(crashGate: sending))
         defer { fixture.remove() }
         let first = OwnCrashReports.Report(url: fixture.root.appending(path: "first.ips"), id: "incident-1")
         let second = OwnCrashReports.Report(url: fixture.root.appending(path: "second.ips"), id: "incident-2")
-        let findReports: @Sendable (Date, Date, Set<UUID>) async -> [OwnCrashReports.Report] = { _, _, _ in [first, second] }
-        let reporting = fixture.controller(findReports: findReports)
-        reporting.consent.crashReports = true
+        let rediscovered = OwnCrashReports.Report(url: fixture.root.appending(path: "copy.ips"), id: first.id)
+        var reporting: UsageCounting? = fixture.controller(findReports: { _, _, _ in [first, second] })
+        reporting?.consent.crashReports = true
         await sending.waitUntilEntered()
-        #expect(try ReportingState.load(from: fixture.stateURL)?.crashScan?.claimed == [first.id])
+        #expect(try ReportingState.load(from: fixture.stateURL)?.crashScan?.incidents?[first.id] != nil)
 
-        reporting.activity[.crashes]?.cancel()
+        reporting?.activity[.crashes]?.cancel()
         await sending.open()
-        await finish(reporting)
+        if let reporting {
+            await finish(reporting)
+        }
+        reporting = nil
 
-        let restarted = fixture.controller(findReports: findReports)
+        let restarted = fixture.controller(findReports: { _, _, _ in [rediscovered, second] })
         restarted.noteUse()
         await sending.waitUntilEntered()
         await sending.open()
         await finish(restarted)
+        restarted.noteUse()
+        await finish(restarted)
         #expect(await fixture.crashes.reports == [first.url, second.url])
-        #expect(try ReportingState.load(from: fixture.stateURL)?.crashScan?.claimed.isEmpty == true)
+        let saved = try ReportingState.load(from: fixture.stateURL)
+        #expect(saved?.crashScan?.incidents?.count == 2)
+    }
+
+    @Test
+    func `crash claims age out and the journal caps their number`() {
+        let now = Date.now
+        var scan = ReportingCrashScan(app: "phosphene-crashes", checkedThrough: now)
+        scan.prune(at: now)
+        for id in 0 ..< 1_024 {
+            let claimed = scan.claim(String(id), at: now)
+            #expect(claimed)
+        }
+        let overflow = scan.claim("extra", at: now)
+        #expect(!overflow)
+        scan.prune(at: now.addingTimeInterval(ReportingCrashScan.retention))
+        #expect(scan.incidents?.isEmpty == true)
+        let regained = scan.claim("extra", at: now.addingTimeInterval(ReportingCrashScan.retention))
+        #expect(regained)
     }
 
     @Test
@@ -230,7 +445,8 @@ struct ReportingLifecycleTests {
     }
 
     private func finish(_ reporting: UsageCounting) async {
-        let streams: [ReportingStream] = [.statistics, .crashes, .previousCrashes]
+        await reporting.legacyTask?.value
+        let streams: [ReportingStream] = [.statistics, .crashes, .previousCrashes, .legacyStatistics]
         for stream in streams {
             await reporting.transitions[stream]?.value
         }
@@ -270,6 +486,9 @@ private struct ReportingFixture {
     var stateURL: URL {
         root.appending(path: "Reporting.json")
     }
+    var legacyStore: LegacyStatisticsStore {
+        LegacyStatisticsStore(old: root.appending(path: "Digoxin"), new: root.appending(path: "Statistics/Digoxin"))
+    }
     let statistics: RecordingClient
     let crashes: RecordingClient
     let previousCrashes: RecordingClient
@@ -289,15 +508,24 @@ private struct ReportingFixture {
 
     func controller(
         initial: ReportingState = ReportingState(),
+        legacyStore: LegacyStatisticsStore? = nil,
+        legacyClient: RecordingClient = RecordingClient(),
         currentCrashSlice: UUID? = nil,
         findReports: @escaping @Sendable (Date, Date, Set<UUID>) async -> [OwnCrashReports.Report] = { _, _, _ in [] },
     ) -> UsageCounting {
         UsageCounting(
             stateURL: stateURL,
             initialState: { initial },
-            statistics: statistics,
-            previousCrashes: previousCrashes,
-            crashDestination: ("phosphene-crashes", crashes),
+            legacyStore: legacyStore,
+            makeClient: { stream in
+                switch stream {
+                case .statistics: statistics
+                case .crashes: crashes
+                case .previousCrashes: previousCrashes
+                case .legacyStatistics: legacyClient
+                }
+            },
+            crashApp: "phosphene-crashes",
             currentCrashSlice: currentCrashSlice,
             findReports: findReports,
         )
@@ -314,6 +542,7 @@ private actor RecordingClient {
     private(set) var tierChanges: [ConsentTier] = []
     private(set) var reports: [URL] = []
     private(set) var useCount = 0
+    private(set) var flushTiers: [ConsentTier] = []
     private var sendGate: ReportingGate?
     private let offGate: ReportingGate?
     private let crashGate: ReportingGate?
@@ -357,7 +586,9 @@ private actor RecordingClient {
         await crashGate?.pause()
     }
 
-    func flush() async {}
+    func flush() async {
+        flushTiers.append(tier)
+    }
 }
 
 extension RecordingClient: ReportingClient {}

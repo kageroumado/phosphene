@@ -46,7 +46,7 @@ The menu bar asks once whether to count this Mac. In the popover’s settings, *
 - **Count this Mac** sends one anonymous check-in per day of use. It includes the Phosphene and macOS versions, chip family, memory size, language, date, days active in the last week, display count, and whether you imported videos. It does not include which videos you use.
 - **Send crash reports** sends a scrubbed report when Phosphene itself crashes, with the account name, Mac name, and home folder path redacted.
 
-Turning off either choice clears its queue and asks the service to delete data under that registration. Signed deletion requests expire after 30 days, and Phosphene cannot confirm server deletion. Crash reports previously sent under a combined registration share the usage registration. Turning off **Count this Mac** requests deletion of that older data.
+Turning off either choice stops reporting and requests deletion for its current registration when the local identity can be retired. Signed deletion requests expire after 30 days, and Phosphene cannot confirm server deletion. If the older shared registration is still listed, choose **Older Counting Registration** in Settings and confirm the deletion request. This sends the old registration’s signed deletion requests to the Release service.
 
 Crash reports use the separate `phosphene-crashes` service route. An unconfigured route leaves queued reports waiting until the next launch. Queued reports expire after seven days. See the [reporting reference](REFERENCE.md#reporting) for migration and service setup and the [Digoxin reference](https://github.com/kageroumado/digoxin/blob/dda76c91c95001942d82e124cfc3f7a38595160e/REFERENCE.md) for the fields sent.
 
