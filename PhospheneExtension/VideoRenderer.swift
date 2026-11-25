@@ -795,8 +795,9 @@ final class VideoRenderer: @unchecked Sendable {
         return startReader()
     }
 
-    private func loadSource(_ url: URL, pair: PairRendition.Playback?) -> Bool {
+    func loadSource(_ url: URL, pair: PairRendition.Playback?, matching expected: FileIdentity? = nil) -> Bool {
         guard let identity = FileIdentity(of: url),
+              expected.map({ $0 == identity }) ?? true,
               pair.map({ $0.identity(for: url) == identity && $0.filesMatch }) ?? true else { return false }
         if url != asset.url || identity != openedFile {
             let newAsset = AVURLAsset(url: url)

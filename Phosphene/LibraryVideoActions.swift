@@ -86,14 +86,20 @@ struct LibraryVideoActions {
                     ForEach(target.tiers, id: \.fps) { variant in
                         Text("\(variant.fps) fps · \(Int(variant.resolution.width)) × \(Int(variant.resolution.height))")
                     }
-                    Divider()
-                    Button("Remove Variants…") { store.pendingVariantRemoval = target }
                 } else if let error = target.eligibilityError {
                     Text(error.localizedDescription)
                 } else if store.manager.isOptimizing {
                     Text("Wait for the current video to finish optimizing, then try again.")
-                } else {
+                } else if target.storedTiers.isEmpty {
                     CreateVideoVariantActions(store: store, target: target)
+                } else {
+                    Menu("Regenerate Variants") {
+                        CreateVideoVariantActions(store: store, target: target)
+                    }
+                }
+                if !target.storedTiers.isEmpty, store.manager.optimizingEntryID != target.id {
+                    Divider()
+                    Button("Remove Variants…") { store.pendingVariantRemoval = target }
                 }
             }
             .help("Optimize")

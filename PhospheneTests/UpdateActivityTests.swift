@@ -1,0 +1,223 @@
+import Foundation
+import Testing
+import Tiptoe
+
+@MainActor
+struct UpdateActivityTests {
+    @Test
+    func `Update Now waits for the offered download and reserves through the install`() async throws {
+        let (preparing, started) = AsyncStream<Void>.makeStream()
+        let (finishPreparation, resumePreparation) = AsyncStream<Void>.makeStream()
+        let (manualRequested, requested) = AsyncStream<Void>.makeStream()
+        let tiptoe = makeTiptoe()
+        let activity = UpdateActivity(tiptoe: tiptoe) {
+            requested.yield()
+            return true
+        }
+        var completedPreparation = false
+        var installed = false
+        let background = Task {
+            await activity.check {
+                started.yield()
+                for await _ in finishPreparation {
+                    break
+                }
+                await stage(candidate("2.0.0") {
+                    #expect(completedPreparation)
+                    #expect(activity.isReplacingApp)
+                    await activity.check {
+                        Issue.record("A background check started during the swap.")
+                    }
+                    installed = true
+                }, in: activity)
+                completedPreparation = true
+            }
+        }
+        for await _ in preparing {
+            break
+        }
+        let manual = Task {
+            try await activity.install(version: "2.0.0") {
+                Issue.record("The offered version was already prepared.")
+                return nil
+            }
+        }
+        for await _ in manualRequested {
+            break
+        }
+        #expect(!installed)
+        #expect(!activity.isReplacingApp)
+        resumePreparation.yield()
+        await background.value
+        #expect(try await manual.value == .attempted)
+        #expect(installed)
+        #expect(activity.isReplacingApp)
+    }
+
+    @Test
+    func `running video work blocks manual installation before checking for a candidate`() async throws {
+        let activity = UpdateActivity(tiptoe: makeTiptoe(), videoIsIdle: { false })
+        let result = try await activity.install(version: "2.0.0") {
+            Issue.record("The updater started while video work was active.")
+            return nil
+        }
+        #expect(result == .videoWorkInProgress)
+    }
+
+    @Test
+    func `video work started during background preparation blocks manual installation`() async throws {
+        let (preparing, started) = AsyncStream<Void>.makeStream()
+        let (finishPreparation, resumePreparation) = AsyncStream<Void>.makeStream()
+        let (manualRequested, requested) = AsyncStream<Void>.makeStream()
+        let video = VideoWork()
+        let activity = UpdateActivity(tiptoe: makeTiptoe()) {
+            requested.yield()
+            return video.isIdle
+        }
+        let background = Task {
+            await activity.check {
+                started.yield()
+                for await _ in finishPreparation {
+                    break
+                }
+            }
+        }
+        for await _ in preparing {
+            break
+        }
+        let manual = Task {
+            try await activity.install(version: "2.0.0") {
+                Issue.record("The updater started after video work began.")
+                return nil
+            }
+        }
+        for await _ in manualRequested {
+            break
+        }
+        video.isIdle = false
+        activity.videoWorkChanged()
+        resumePreparation.yield()
+        await background.value
+        #expect(try await manual.value == .videoWorkInProgress)
+        #expect(!activity.isReplacingApp)
+    }
+
+    @Test
+    func `quiet swap remains reserved when another Tiptoe clears the notice`() async {
+        let defaults = updateDefaults()
+        let tiptoe = makeTiptoe(defaults: defaults)
+        let video = VideoWork()
+        let activity = UpdateActivity(tiptoe: tiptoe) { video.isIdle }
+        let (installing, started) = AsyncStream<Void>.makeStream()
+        video.isIdle = false
+        activity.autoInstall = true
+        await activity.check {
+            await stage(candidate("2.0.0") {
+                #expect(tiptoe.justUpdatedTo == "2.0.0")
+                _ = makeTiptoe(defaults: defaults)
+                #expect(tiptoe.justUpdatedTo == nil)
+                #expect(activity.isReplacingApp)
+                started.yield()
+            }, in: activity)
+        }
+        #expect(tiptoe.pending?.version == "2.0.0")
+        #expect(tiptoe.justUpdatedTo == nil)
+        video.isIdle = true
+        activity.videoWorkChanged()
+        for await _ in installing {
+            break
+        }
+        #expect(activity.isReplacingApp)
+        tiptoe.stop()
+    }
+
+    @Test
+    func `a quiet swap keeps its reservation until its failed operation returns`() async {
+        let defaults = updateDefaults()
+        let tiptoe = makeTiptoe(defaults: defaults, secondsSinceInput: 0)
+        let activity = UpdateActivity(tiptoe: tiptoe, videoIsIdle: { true })
+        activity.autoInstall = true
+        await activity.check {
+            await stage(candidate("2.0.0") {
+                _ = makeTiptoe(defaults: defaults)
+                #expect(tiptoe.justUpdatedTo == nil)
+                #expect(activity.isReplacingApp)
+                activity.autoInstall = false
+                #expect(!Task.isCancelled)
+                throw URLError(.cannotWriteToFile)
+            }, in: activity)
+        }
+        await tiptoe.installNow().value
+        #expect(!activity.isReplacingApp)
+        #expect(tiptoe.justUpdatedTo == nil)
+    }
+
+    @Test
+    func `Update Now offline leaves an older held download untouched`() async throws {
+        let tiptoe = makeTiptoe()
+        let activity = UpdateActivity(tiptoe: tiptoe, videoIsIdle: { true })
+        var installs = 0
+        await activity.check {
+            await stage(candidate("2.0.0") { installs += 1 }, in: activity)
+        }
+        await #expect(throws: URLError.self) {
+            _ = try await activity.install(version: "3.0.0") {
+                throw URLError(.notConnectedToInternet)
+            }
+        }
+        #expect(tiptoe.pending?.version == "2.0.0")
+        #expect(activity.pendingVersion == "2.0.0")
+        #expect(installs == 0)
+
+        #expect(try await activity.install(version: "2.0.0") {
+            Issue.record("The exact offline download was already verified.")
+            return nil
+        } == .attempted)
+        #expect(installs == 1)
+    }
+
+    @Test(arguments: ["2.0.0", "4.0.0"])
+    func `a different online candidate cannot replace the advertised version`(version: String) async throws {
+        let activity = UpdateActivity(tiptoe: makeTiptoe(), videoIsIdle: { true })
+        let result = try await activity.install(version: "3.0.0") {
+            .init(version: version) {
+                Issue.record("A different version was prepared for the swap.")
+                return .init(install: {}, discard: {})
+            }
+        }
+        #expect(result == .noMatchingDownload)
+        #expect(!activity.isReplacingApp)
+    }
+
+    private func candidate(_ version: String, install: @escaping @MainActor () async throws -> Void) -> UpdateActivity.Candidate {
+        .init(version: version) { .init(install: install, discard: {}) }
+    }
+
+    private func stage(_ candidate: UpdateActivity.Candidate, in activity: UpdateActivity) async {
+        do {
+            try await activity.prepare(candidate)
+        } catch {
+            Issue.record(error)
+        }
+    }
+
+    private func updateDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "UpdateActivityTests-\(UUID().uuidString)")!
+    }
+
+    private func makeTiptoe(defaults: UserDefaults? = nil, secondsSinceInput: TimeInterval = 600) -> Tiptoe {
+        Tiptoe(
+            environment: .init(
+                now: { Date() },
+                secondsSinceInput: { secondsSinceInput },
+                windows: { .init(hasVisibleMainCapableWindow: false, hasUnsavedWork: false) },
+                appVersion: { "1.0.0" },
+            ),
+            defaults: defaults ?? updateDefaults(),
+        )
+    }
+
+    private final class VideoWork {
+        var isIdle = true
+    }
+}

@@ -8,30 +8,50 @@ struct VideoOptimizationTarget {
         pair?.id ?? entry.id
     }
 
-    var tiers: [(fps: Int, resolution: CGSize)] {
+    var storedTiers: [(fps: Int, resolution: CGSize)] {
         if let record = pair?.saved {
             return record.optimization?.tiers.map { ($0.fps, $0.resolution) } ?? []
         }
         return entry.variants?.map { ($0.fps, $0.resolution) } ?? []
     }
 
+    var tiers: [(fps: Int, resolution: CGSize)] {
+        if pair?.saved != nil {
+            return storedTiers
+        }
+        return playableVariants.map { ($0.fps, $0.resolution) }
+    }
+
+    private var playableVariants: [VideoVariant] {
+        let library = VideoDeploymentService.videosFolderURL
+        let directory = library.appendingPathComponent(entry.id, isDirectory: true)
+        return (entry.variants ?? []).filter {
+            $0.supports(sourceIsHDR: entry.sourceIsHDR) && $0.isAvailable(in: directory, library: library)
+        }
+    }
+
     var convertedToSDR: Bool {
         if let record = pair?.saved {
             return record.optimization?.toneMappedToSDR == true
         }
-        return entry.variants?.contains { $0.toneMappedToSDR == true } == true
+        return playableVariants.contains { $0.toneMappedToSDR == true }
     }
 
     var eligibilityError: (any Error)? {
-        if let pair, pair.members.count != 2 || pair.saved?.deletionPending == true {
-            return PairIssue.changed
+        guard let pair else {
+            return VideoOptimizationService.resolutionError(entry.resolution)
         }
-        return (pair?.members ?? [entry]).compactMap {
-            VideoOptimizationService.eligibilityError(sourceIsHDR: $0.sourceIsHDR, resolution: $0.resolution)
-        }.first
+        guard pair.members.count == 2, let record = pair.saved, record.deletionPending != true else { return PairIssue.changed }
+        guard pair.members.allSatisfy({ $0.sourceIsHDR != nil }) else {
+            return VideoOptimizationService.OptimizationError.unsupportedDynamicRange
+        }
+        return pair.members.lazy.compactMap { VideoOptimizationService.resolutionError($0.resolution) }.first
     }
 
-    func optimize(preset: OptimizationPreset, convertToSDR: Bool, progress: @escaping @MainActor @Sendable (Double) -> Void) async throws {
+    func optimize(
+        preset: OptimizationPreset, convertToSDR: Bool, confirmUntaggedSDR: () -> Bool,
+        progress: @escaping @MainActor @Sendable (Double) -> Void,
+    ) async throws {
         let files = FileManager.default
         let library = VideoDeploymentService.videosFolderURL
         let work = try files.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: library, create: true)
@@ -41,18 +61,35 @@ struct VideoOptimizationTarget {
         let source = VideoDeploymentService.videoURL(for: entry)
         guard let identity = FileIdentity(of: source) else { throw CocoaError(.fileNoSuchFile) }
 
-        guard let pair, let record = pair.saved else {
+        guard let pair else {
             try AppearancePair.requireSingle(id, in: library)
+            let sourceIsHDR: Bool
+            if let knownRange = entry.sourceIsHDR {
+                sourceIsHDR = knownRange
+            } else {
+                let inspected = try await ConversionSource.inspect(url: source, name: entry.name)
+                guard inspected.identity == identity else { throw PairIssue.changed }
+                try Task.checkCancellation()
+                if inspected.range == nil, !confirmUntaggedSDR() {
+                    return
+                }
+                guard FileIdentity(of: source) == identity else { throw PairIssue.changed }
+                sourceIsHDR = inspected.range == .hlg || inspected.range == .pq
+            }
             let variants = try await VideoOptimizationService.createVariants(
-                sourceURL: source, targetResolution: targetSize, outputDirectory: work, convertToSDR: convertToSDR, progress: progress,
+                sourceURL: source, sourceIsHDR: sourceIsHDR, targetResolution: targetSize,
+                outputDirectory: work, convertToSDR: convertToSDR, progress: progress,
             )
             try Task.checkCancellation()
-            try VideoDeploymentService.deployVariants(entryID: id, source: identity, variants: variants)
+            try VideoDeploymentService.deployVariants(entryID: id, source: identity, sourceIsHDR: sourceIsHDR, variants: variants)
             return
         }
 
-        guard let second = pair.second, entry.id == record.owner, second.id == record.counterpart,
+        guard let record = pair.saved, let second = pair.second, entry.id == record.owner, second.id == record.counterpart,
               identity == record.validation.original else { throw PairIssue.changed }
+        guard let sourceIsHDR = entry.sourceIsHDR, let alternateIsHDR = second.sourceIsHDR else {
+            throw VideoOptimizationService.OptimizationError.unsupportedDynamicRange
+        }
         let alternate = VideoDeploymentService.videoURL(for: second)
         guard FileIdentity(of: alternate) == record.validation.alternate else { throw PairIssue.changed }
         let originalDir = work.appendingPathComponent("original", isDirectory: true)
@@ -60,11 +97,13 @@ struct VideoOptimizationTarget {
         try files.createDirectory(at: originalDir, withIntermediateDirectories: false)
         try files.createDirectory(at: alternateDir, withIntermediateDirectories: false)
         let originalTiers = try await VideoOptimizationService.createVariants(
-            sourceURL: source, targetResolution: targetSize, outputDirectory: originalDir, forPair: true, convertToSDR: convertToSDR,
+            sourceURL: source, sourceIsHDR: sourceIsHDR, targetResolution: targetSize,
+            outputDirectory: originalDir, forPair: true, convertToSDR: convertToSDR,
         ) { progress($0 * 0.45) }
         try Task.checkCancellation()
         let alternateTiers = try await VideoOptimizationService.createVariants(
-            sourceURL: alternate, targetResolution: targetSize, outputDirectory: alternateDir, forPair: true, convertToSDR: convertToSDR,
+            sourceURL: alternate, sourceIsHDR: alternateIsHDR, targetResolution: targetSize,
+            outputDirectory: alternateDir, forPair: true, convertToSDR: convertToSDR,
         ) { progress(0.45 + $0 * 0.45) }
         guard originalTiers.count == alternateTiers.count else { throw PairIssue.timeline }
         var tiers = [AppearancePair.Tier]()

@@ -12,7 +12,9 @@ final class PhospheneManager {
 
     // MARK: - Optimization State
 
-    private(set) var isOptimizing = false
+    private(set) var isOptimizing = false {
+        didSet { SilentUpdates.shared.videoWorkChanged() }
+    }
     private(set) var optimizationProgress: Double = 0
     private(set) var optimizingEntryID: String?
     /// Whether the running operation re-encodes the entry's original file as HEVC.
@@ -143,7 +145,7 @@ final class PhospheneManager {
     }
 
     func optimize(_ target: VideoOptimizationTarget, preset: OptimizationPreset, convertToSDR: Bool) {
-        guard !isOptimizing, target.tiers.isEmpty else { return }
+        guard !isOptimizing, !SilentUpdates.shared.isReplacingApp, target.tiers.isEmpty else { return }
         let title = String(localized: "Couldn't optimize the video.")
         if let error = target.eligibilityError {
             reportLibraryError(error, title: title)
@@ -156,7 +158,16 @@ final class PhospheneManager {
             defer { finishOptimization() }
             do {
                 try Task.checkCancellation()
-                try await target.optimize(preset: preset, convertToSDR: convertToSDR && target.entry.sourceIsHDR == true) { progress in
+                try await target.optimize(
+                    preset: preset, convertToSDR: convertToSDR && target.entry.sourceIsHDR == true,
+                ) {
+                    let alert = NSAlert()
+                    alert.messageText = String(localized: "Create Variants")
+                    alert.informativeText = target.entry.name
+                    alert.addButton(withTitle: String(localized: "Interpret as SDR (Rec. 709)"))
+                    alert.addButton(withTitle: String(localized: "Cancel")).keyEquivalent = "\u{1b}"
+                    return alert.runModal() == .alertFirstButtonReturn
+                } progress: { progress in
                     self.optimizationProgress = progress
                 }
             } catch {
@@ -170,7 +181,7 @@ final class PhospheneManager {
     /// selections that use it. Shares the optimization state, so one conversion or
     /// optimization runs at a time and app updates wait for it.
     func convertToHEVC(entryID: String) {
-        guard !isOptimizing,
+        guard !isOptimizing, !SilentUpdates.shared.isReplacingApp,
               let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID })
         else { return }
         isOptimizing = true
@@ -207,6 +218,7 @@ final class PhospheneManager {
     }
 
     func cancelOptimization() {
+        // Keep the update gate closed until the cancelled task finishes its cleanup.
         optimizationTask?.cancel()
     }
 

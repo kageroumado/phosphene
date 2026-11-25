@@ -11,6 +11,57 @@ nonisolated struct AppearancePair: Codable, Equatable, Sendable {
     private(set) var deletionPending: Bool?
     private(set) var optimization: Optimization?
     private(set) var membershipID: UUID? = UUID()
+    private var deletion: Deletion? = nil
+
+    private struct Deletion: Codable, Equatable, Sendable {
+        var token = UUID()
+        let members: [String: DeletionMember]
+        var split = false
+        var detached = false
+
+        func stagingURL(for id: String, in directory: URL) -> URL {
+            directory.appendingPathComponent(".delete-\(token.uuidString)-\(id)")
+        }
+    }
+
+    private struct DeletionMember: Codable, Equatable, Sendable {
+        let device: UInt64
+        let inode: UInt64
+        let media: FileIdentity
+
+        init?(at directory: URL, media: FileIdentity) throws {
+            guard let attributes = try PathSafety.attributes(at: directory) else { return nil }
+            guard attributes[.type] as? FileAttributeType == .typeDirectory,
+                  let device = (attributes[.systemNumber] as? NSNumber)?.uint64Value,
+                  let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value else { throw PairIssue.changed }
+            self.device = device
+            self.inode = inode
+            self.media = media
+            guard try matchesMedia(in: directory) else { throw PairIssue.changed }
+        }
+
+        func matchesDirectory(_ directory: URL) throws -> Bool {
+            guard let attributes = try PathSafety.attributes(at: directory) else { return false }
+            return attributes[.type] as? FileAttributeType == .typeDirectory &&
+                (attributes[.systemNumber] as? NSNumber)?.uint64Value == device &&
+                (attributes[.systemFileNumber] as? NSNumber)?.uint64Value == inode
+        }
+
+        func matchesMedia(in directory: URL) throws -> Bool {
+            guard PathSafety.isSafeComponent(media.basename),
+                  let attributes = try PathSafety.attributes(at: directory.appendingPathComponent(media.basename)),
+                  attributes[.type] as? FileAttributeType == .typeRegular else { return false }
+            return FileIdentity(basename: media.basename, attributes: attributes) == media
+        }
+
+        func detach(from source: URL, to staged: URL) throws -> Bool {
+            guard try matchesDirectory(source), try matchesMedia(in: source) else { return false }
+            guard unsafe renamex_np(source.path, staged.path, UInt32(RENAME_EXCL)) == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            return true
+        }
+    }
 
     struct Validation: Codable, Equatable, Sendable {
         var version = 1
@@ -247,42 +298,123 @@ nonisolated struct AppearancePair: Codable, Equatable, Sendable {
         }
     }
 
-    /// Persist the confirmed IDs before removing either directory so a restart can finish the same deletion.
+    /// Persist the confirmed identities before detaching either member.
     func remove(in directory: URL) throws {
-        try Self.update(in: directory) { pairs in
-            guard let index = pairs.firstIndex(of: self) else { throw PairIssue.changed }
-            _ = try memberDirectories(in: directory)
-            pairs[index].deletionPending = true
+        try Self.withLibraryLock(in: directory) {
+            try removeWhileLocked(in: directory, pairs: Self.read(in: directory))
         }
-        try finishDeletion(in: directory)
     }
 
-    private func memberDirectories(in directory: URL) throws -> [URL] {
-        try [owner, counterpart].map { id in
-            let url = directory.appendingPathComponent(id)
-            guard PathSafety.isValidEntryID(id), PathSafety.contained(url, in: directory) else {
-                throw CocoaError(.fileWriteInvalidFileName)
-            }
-            return url
+    func removeWhileLocked(in directory: URL, pairs: [Self]) throws {
+        guard owner != counterpart, [owner, counterpart].allSatisfy(PathSafety.isValidEntryID) else { throw PairIssue.changed }
+        let directory = directory.standardizedFileURL.resolvingSymlinksInPath()
+        let original = try DeletionMember(at: directory.appendingPathComponent(owner), media: validation.original)
+        let alternate = try DeletionMember(at: directory.appendingPathComponent(counterpart), media: validation.alternate)
+        let members = [owner: original, counterpart: alternate].compactMapValues { $0 }
+        try beginDeletion(Deletion(members: members), in: directory, pairs: pairs)
+    }
+
+    func removeDegradedWhileLocked(_ id: String, media: FileIdentity, in directory: URL, pairs: [Self]) throws {
+        let directory = directory.standardizedFileURL.resolvingSymlinksInPath()
+        guard contains(id), PathSafety.isValidEntryID(id),
+              let member = try DeletionMember(at: directory.appendingPathComponent(id), media: media) else {
+            throw PairIssue.changed
         }
+        try beginDeletion(Deletion(members: [id: member], split: true), in: directory, pairs: pairs)
+    }
+
+    private func beginDeletion(_ deletion: Deletion, in directory: URL, pairs: [Self]) throws {
+        guard deletionPending != true, let index = pairs.firstIndex(of: self) else { throw PairIssue.changed }
+        var pending = pairs
+        pending[index].deletionPending = true
+        pending[index].deletion = deletion
+        try Self.write(pending, in: directory)
+
+        if deletion.split, let (id, member) = deletion.members.first {
+            do {
+                guard try member.detach(from: directory.appendingPathComponent(id), to: deletion.stagingURL(for: id, in: directory)) else {
+                    throw PairIssue.changed
+                }
+            } catch {
+                // A failed rename leaves the visible entry and all its tiers intact.
+                try? Self.write(pairs, in: directory)
+                throw error
+            }
+        }
+        try Self.finishDeletion(at: index, in: directory, pairs: pending)
     }
 
     func finishDeletion(in directory: URL) throws {
-        try Self.update(in: directory) { pairs in
-            guard let index = pairs.firstIndex(where: { $0.owner == owner && $0.counterpart == counterpart && $0.deletionPending == true }) else { return }
-            for url in try memberDirectories(in: directory) {
-                do {
-                    try FileManager.default.removeItem(at: url)
-                } catch let error as CocoaError where error.code == .fileNoSuchFile {
-                    continue
-                }
-            }
-            pairs.remove(at: index)
+        try Self.withLibraryLock(in: directory) {
+            let pairs = try Self.read(in: directory)
+            guard deletionPending == true, let index = pairs.firstIndex(where: {
+                $0.deletionPending == true && $0.owner == owner && $0.counterpart == counterpart &&
+                    $0.membershipID == membershipID && $0.deletion?.token == deletion?.token
+            }) else { return }
+            try Self.finishDeletion(at: index, in: directory.standardizedFileURL.resolvingSymlinksInPath(), pairs: pairs)
         }
+    }
+
+    private static func finishDeletion(at index: Int, in directory: URL, pairs: [Self]) throws {
+        var pairs = pairs
+        let pair = pairs[index]
+        // Legacy records have no removal-specific identities. Release any survivors untouched.
+        guard var deletion = pair.deletion else {
+            pairs.remove(at: index)
+            try write(pairs, in: directory)
+            return
+        }
+        guard deletion.members.keys.allSatisfy(pair.contains),
+              !deletion.split || deletion.members.count == 1,
+              deletion.members.allSatisfy({ id, member in
+                  PathSafety.isSafeComponent(member.media.basename) &&
+                      (deletion.split || member.media == (id == pair.owner ? pair.validation.original : pair.validation.alternate))
+              }) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let members = [pair.owner, pair.counterpart].compactMap { id in deletion.members[id].map { (id, $0) } }
+        if !deletion.detached {
+            for (id, member) in members {
+                let staged = deletion.stagingURL(for: id, in: directory)
+                if try PathSafety.attributes(at: staged) == nil {
+                    if deletion.split {
+                        // A degraded removal that never detached must keep its membership and tiers.
+                        pairs[index].deletionPending = nil
+                        pairs[index].deletion = nil
+                        try write(pairs, in: directory)
+                        return
+                    }
+                    guard try member.detach(from: directory.appendingPathComponent(id), to: staged) else { continue }
+                }
+                guard try member.matchesDirectory(staged), try member.matchesMedia(in: staged) else { throw PairIssue.changed }
+            }
+            // A later cleanup attempt may find a staged directory whose media was already removed.
+            deletion.detached = true
+            pairs[index].deletion = deletion
+            try write(pairs, in: directory)
+        }
+
+        for (id, member) in members {
+            let staged = deletion.stagingURL(for: id, in: directory)
+            if try PathSafety.attributes(at: staged) != nil {
+                guard try member.matchesDirectory(staged) else { throw PairIssue.changed }
+                try FileManager.default.removeItem(at: staged)
+            }
+        }
+        pairs.remove(at: index)
+        try write(pairs, in: directory)
     }
 }
 
 extension PathSafety {
+    nonisolated static func attributes(at url: URL) throws -> [FileAttributeKey: Any]? {
+        do {
+            return try FileManager.default.attributesOfItem(atPath: url.path)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return nil
+        }
+    }
+
     nonisolated static func isItem(at url: URL, ofType type: FileAttributeType) -> Bool {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.type] as? FileAttributeType) == type
     }

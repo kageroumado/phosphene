@@ -38,10 +38,15 @@ final class VideoLibrary: Sendable {
     var choices: [(entry: VideoEntry, pair: AppearancePair?)] {
         let physical = lock.withLock { $0 }
         let ids = Set(physical.map(\.id))
-        let pairs = ((try? AppearancePair.read(in: videosDir)) ?? []).filter { ids.contains($0.owner) && ids.contains($0.counterpart) }
-        let owners = Dictionary(uniqueKeysWithValues: pairs.map { ($0.owner, $0) })
-        let hidden = Set(pairs.map(\.counterpart))
-        return physical.compactMap { hidden.contains($0.id) ? nil : ($0, owners[$0.id]) }
+        let pairs = (try? AppearancePair.read(in: videosDir)) ?? []
+        let membership = Dictionary(uniqueKeysWithValues: pairs.flatMap { [($0.owner, $0), ($0.counterpart, $0)] })
+        return physical.compactMap { entry in
+            let pair = membership[entry.id]
+            if let pair {
+                guard pair.deletionPending != true, entry.id == pair.owner || !ids.contains(pair.owner) else { return nil }
+            }
+            return (entry, pair)
+        }
     }
 
     func pairRendition(for id: String) -> PairRendition? {
@@ -69,48 +74,57 @@ final class VideoLibrary: Sendable {
         return videoURL(for: entry)
     }
 
-    func choiceFiles(for entry: VideoEntry, pair: AppearancePair?) -> [URL] {
-        let original = videoURL(for: entry)
-        guard let pair, let alternate = videoURL(for: pair.counterpart) else { return [original] }
-        return [original, alternate]
-    }
-
     func isChoiceDownloaded(_ id: String) -> Bool {
         guard let original = videoURL(for: id), isLocalVideo(original) else { return false }
-        guard let pair = (try? AppearancePair.read(in: videosDir))?.first(where: { $0.contains(id) }) else { return true }
-        let other = id == pair.owner ? pair.counterpart : pair.owner
-        return pair.deletionPending != true && videoURL(for: other).map(isLocalVideo) == true
+        let pair = (try? AppearancePair.read(in: videosDir))?.first { $0.contains(id) }
+        return pair?.deletionPending != true
     }
 
     func removeDownloadedChoice(_ id: String, files: [URL]) throws {
         guard PathSafety.isValidEntryID(id) else { throw CocoaError(.fileWriteInvalidFileName) }
-        let directory = videosDir.appendingPathComponent(id)
-        guard PathSafety.contained(directory, in: videosDir) else { throw CocoaError(.fileWriteInvalidFileName) }
         guard files.allSatisfy(\.isFileURL) else { throw PairIssue.changed }
         let paths = files.map(\.standardizedFileURL.path)
 
-        if let pair = try AppearancePair.read(in: videosDir).first(where: { $0.contains(id) }) {
-            let alternate = videosDir.appendingPathComponent(pair.counterpart)
-            let ownerFile = videoURL(for: pair.owner) ?? directory.appendingPathComponent(pair.validation.original.basename)
-            let alternateFile = videoURL(for: pair.counterpart) ?? alternate.appendingPathComponent(pair.validation.alternate.basename)
-            // A cached single tile must not authorize removing a second library entry.
-            guard pair.owner == id, paths == [ownerFile, alternateFile].map(\.standardizedFileURL.path) else {
-                throw PairIssue.changed
-            }
-            try pair.remove(in: videosDir)
-            return
-        }
-
         try AppearancePair.withLibraryLock(in: videosDir) {
-            try AppearancePair.requireSingle(id, in: videosDir)
-            guard let original = videoURL(for: id) else { return }
-            guard paths.isEmpty || paths == [original.standardizedFileURL.path] else { throw PairIssue.changed }
-            do {
-                try FileManager.default.removeItem(at: directory)
-            } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            let pairs = try AppearancePair.read(in: videosDir)
+            let selected = try currentVideoURL(for: id)
+            if let pair = pairs.first(where: { $0.contains(id) }) {
+                guard pair.deletionPending != true, let selected else { throw PairIssue.changed }
+                let original = id == pair.owner ? selected : try currentVideoURL(for: pair.owner, allowMissingMedia: true)
+                let alternate = id == pair.counterpart ? selected : try currentVideoURL(for: pair.counterpart, allowMissingMedia: true)
+                if let original, let alternate,
+                   PairRendition.Playback(original: original, alternate: alternate, validation: pair.validation) != nil {
+                    guard id == pair.owner, paths == [original, alternate].map(\.standardizedFileURL.path) else { throw PairIssue.changed }
+                    try pair.removeWhileLocked(in: videosDir, pairs: pairs)
+                    return
+                }
+                guard id == (original == nil ? pair.counterpart : pair.owner),
+                      paths == [selected.standardizedFileURL.path], let identity = FileIdentity(of: selected) else { throw PairIssue.changed }
+                try pair.removeDegradedWhileLocked(id, media: identity, in: videosDir, pairs: pairs)
                 return
             }
+            guard let selected else { return }
+            guard paths.isEmpty || paths == [selected.standardizedFileURL.path] else { throw PairIssue.changed }
+            try FileManager.default.removeItem(at: selected.deletingLastPathComponent())
         }
+    }
+
+    /// Resolve current metadata under the library lock, since the scanned index can predate a replacement.
+    private func currentVideoURL(for id: String, allowMissingMedia: Bool = false) throws -> URL? {
+        let directory = videosDir.appendingPathComponent(id)
+        guard let attributes = try PathSafety.attributes(at: directory) else { return nil }
+        let metadata = directory.appendingPathComponent("metadata.json")
+        guard attributes[.type] as? FileAttributeType == .typeDirectory, PathSafety.contained(directory, in: videosDir),
+              try PathSafety.attributes(at: metadata)?[.type] as? FileAttributeType == .typeRegular else { throw PairIssue.changed }
+        let entry = try JSONDecoder().decode(VideoEntry.self, from: Data(contentsOf: metadata))
+        guard entry.id == id, PathSafety.isSafeComponent(entry.filename) else { throw PairIssue.changed }
+        let url = videoURL(for: entry)
+        let media = try PathSafety.attributes(at: url)
+        if media == nil, allowMissingMedia {
+            return nil
+        }
+        guard media?[.type] as? FileAttributeType == .typeRegular else { throw PairIssue.changed }
+        return url
     }
 
     func legacySnapshotOriginal(_ url: URL, for choice: String) -> URL? {
@@ -156,11 +170,8 @@ final class VideoLibrary: Sendable {
     private func availableVariants(for entry: VideoEntry) -> [VideoVariant] {
         guard let variants = entry.variants, !variants.isEmpty,
               (try? AppearancePair.requireSingle(entry.id, in: videosDir)) != nil else { return [] }
-        return variants.filter { variant in
-            guard PathSafety.isSafeComponent(variant.filename), variant.fps > 0 else { return false }
-            let url = variantURL(for: entry.id, variant: variant)
-            return isLocalVideo(url)
-        }
+        let directory = videosDir.appendingPathComponent(entry.id)
+        return variants.filter { $0.isAvailable(in: directory, library: videosDir) }
     }
 
     /// Update the variants array for an entry and persist to metadata.json.

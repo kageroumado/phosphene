@@ -127,7 +127,7 @@ private struct LibraryRoot: View {
             if target.pair != nil {
                 Text("This will remove the optimized versions of both videos and keep the original pair.")
             } else {
-                let rates = target.tiers.map { String(localized: "\($0.fps) fps") }
+                let rates = target.storedTiers.map { String(localized: "\($0.fps) fps") }
                 Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
             }
         }

@@ -388,18 +388,22 @@ struct VideoInspector: View {
                     Text("\(Int(variant.resolution.width)) × \(Int(variant.resolution.height))")
                 }
             }
-            Button("Remove Variants…") { store.pendingVariantRemoval = target }
-                .disabled(isWorkingOnThis)
         } else {
             let unavailable = target.eligibilityError
-            Menu("Create Variants") {
+            Menu {
                 CreateVideoVariantActions(store: store, target: target)
+            } label: {
+                Text(target.storedTiers.isEmpty ? "Create Variants" : "Regenerate Variants")
             }
             .disabled(unavailable != nil || manager.isOptimizing)
             if let unavailable {
                 Text(unavailable.localizedDescription)
                     .foregroundStyle(.secondary)
             }
+        }
+        if !target.storedTiers.isEmpty {
+            Button("Remove Variants…") { store.pendingVariantRemoval = target }
+                .disabled(isWorkingOnThis)
         }
     }
 }

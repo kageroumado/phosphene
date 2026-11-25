@@ -10,7 +10,9 @@ nonisolated enum PairConverterRequest: Codable, Hashable {
 
 @MainActor @Observable
 final class ConversionToolModel {
-    private(set) static var runningJobCount = 0
+    private(set) static var runningJobCount = 0 {
+        didSet { SilentUpdates.shared.videoWorkChanged() }
+    }
     let mode: ConversionMode
     private(set) var light: ConversionSource?
     private(set) var dark: ConversionSource?
@@ -236,6 +238,7 @@ final class ConversionToolModel {
             }
             destination = url
         }
+        guard !SilentUpdates.shared.isReplacingApp else { return }
         let output = destination.map { (url: $0, priorIdentity: FileIdentity(of: $0)) }
         let id = UUID()
         jobID = id

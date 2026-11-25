@@ -33,7 +33,9 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     var thumbnailURLs = [URL]()
 
     for (entry, record) in choices {
-        guard let (item, thumbnail) = await makeVideoItem(entry: entry, record: record, bundleID: bundleID, contextMenu: addVideoMenu) else { continue }
+        guard let (item, thumbnail) = await makeVideoItem(
+            entry: entry, record: record, library: library, bundleID: bundleID, contextMenu: addVideoMenu,
+        ) else { continue }
         thumbnailURLs.append(thumbnail)
         items.append(item)
     }
@@ -81,11 +83,13 @@ func buildSettingsViewModelsXPC() async -> AnyObject? {
     return remapToRealXPC(viewModels)
 }
 
-private func makeVideoItem(entry: VideoEntry, record: AppearancePair?, bundleID: String, contextMenu: ContextMenu) async -> (SettingsItem, URL)? {
-    let library = VideoLibrary.shared
-    let pair = record.flatMap { PairRendition($0, library: library)?.pair }
+private func makeVideoItem(
+    entry: VideoEntry, record: AppearancePair?, library: VideoLibrary, bundleID: String, contextMenu: ContextMenu,
+) async -> (SettingsItem, URL)? {
+    let rendition = record.flatMap { $0.owner == entry.id ? PairRendition($0, library: library) : nil }
+    let pair = rendition?.pair
     let name = record?.name ?? entry.name
-    let files = library.choiceFiles(for: entry, pair: record)
+    let files = rendition.map { [$0.originals.original, $0.originals.alternate] } ?? [library.videoURL(for: entry)]
     let choiceID = ChoiceID(
         id: entry.id,
         descriptor: ChoiceIDDescriptor(

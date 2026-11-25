@@ -55,7 +55,7 @@ struct UsageQuestionCard: View {
 
     private func answer(countThisMac: Bool) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            reporting.consent.usageStatistics = countThisMac
+            reporting.choose(countThisMac, for: \.usageStatistics)
         }
     }
 }
@@ -76,25 +76,33 @@ private struct ActiveMacsLine: View {
 // MARK: - The setting
 
 struct UsageCountingSettings: View {
-    @Bindable private var reporting = UsageCounting.shared
+    private let reporting = UsageCounting.shared
     @State private var activeMacs: Int?
+
+    @State private var showsLegacyChoices = false
 
     var body: some View {
         Section {
-            Toggle("Send crash reports", isOn: $reporting.consent.crashReports)
+            Toggle("Send crash reports", isOn: permission(\.crashReports))
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 Text("""
                 When Phosphene crashes, it sends the crash log, app and macOS versions, hardware details, and \
                 language. Your account name, Mac name, and home folder path are redacted.
                 """)
-                statusNote(reporting.crashStatus)
+                statusNote(.crashes)
+                if let deletion = reporting.deletionStatus(for: .previousCrashes) {
+                    Text("Earlier crash reports: \(Text(deletionLine(deletion)))")
+                }
+                #if DEBUG
+                    Text("Debug builds skip macOS crash log discovery.")
+                #endif
             }
             .font(.footnote)
         }
 
         Section {
-            Toggle("Count this Mac", isOn: $reporting.consent.usageStatistics)
+            Toggle("Count this Mac", isOn: permission(\.usageStatistics))
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 Text("""
@@ -104,7 +112,11 @@ struct UsageCountingSettings: View {
                 if reporting.consent.usageStatistics, let activeMacs {
                     Text("Yesterday, \(activeMacs) Macs counted themselves in.")
                 }
-                statusNote(reporting.statisticsStatus)
+                legacyStatistics
+                statusNote(.statistics)
+                if reporting.storageError {
+                    Text("Reporting is paused because its settings could not be saved.")
+                }
             }
             .font(.footnote)
         }
@@ -118,13 +130,88 @@ struct UsageCountingSettings: View {
         }
     }
 
+    private func permission(_ keyPath: WritableKeyPath<ReportingConsent, Bool>) -> Binding<Bool> {
+        Binding(get: { reporting.consent[keyPath: keyPath] }, set: { value in
+            reporting.choose(value, for: keyPath)
+            if keyPath == \.usageStatistics, !value,
+               let legacy = reporting.legacyStatistics, legacy != .deletionRequested, legacy != .keepRequested {
+                showsLegacyChoices = true
+            }
+        })
+    }
+
     @ViewBuilder
-    private func statusNote(_ status: DigoxinStatus) -> some View {
-        switch status {
-        case .deletionPending: Text("Deletion is pending until the service can be reached.")
+    private var legacyStatistics: some View {
+        if let choice = reporting.legacyStatistics {
+            VStack(alignment: .leading, spacing: 2) {
+                if choice == .keepRequested {
+                    Text("Checking the older registration…", tableName: "Reporting")
+                } else if choice == .deletionRequested {
+                    Text("Older Counting Registration", tableName: "Reporting")
+                    if let status = reporting.deletionStatus(for: .legacyStatistics) {
+                        Text(deletionLine(status))
+                    }
+                } else {
+                    if choice == .undecided, reporting.consent.usageStatistics {
+                        Text("Counting is paused until you choose what to do with the older registration.", tableName: "Reporting")
+                    }
+                    if choice == .keepUnavailable {
+                        Text("The older registration could not be reused. It may still have queued data.", tableName: "Reporting")
+                    }
+                    Button {
+                        showsLegacyChoices = true
+                    } label: {
+                        Text("Older Counting Registration", tableName: "Reporting")
+                    }
+                    .confirmationDialog(
+                        Text("Older Counting Registration", tableName: "Reporting"),
+                        isPresented: $showsLegacyChoices,
+                        titleVisibility: .visible,
+                    ) {
+                        if choice.pausesCounting {
+                            if reporting.consent.usageStatistics {
+                                Button { reporting.chooseLegacy(.keepRequested) } label: {
+                                    Text("Keep the Older Release Registration", tableName: "Reporting")
+                                }
+                            }
+                            Button { reporting.chooseLegacy(.startNew) } label: {
+                                Text("Use a New Counting Registration", tableName: "Reporting")
+                            }
+                        }
+                        Button(role: .destructive) { reporting.chooseLegacy(.deletionRequested) } label: {
+                            Text("Turn Off Counting and Request Older Data Deletion", tableName: "Reporting")
+                        }
+                    } message: {
+                        Text("""
+                        Keep the older registration only if you know it was used exclusively by Release. A new registration may be counted as a reinstall. \
+                        Requesting deletion sends signed requests for the older registration to the Release service.
+                        """, tableName: "Reporting")
+                    }
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private func statusNote(_ stream: ReportingStream) -> some View {
+        if let deletion = reporting.deletionStatus(for: stream) {
+            Text(deletionLine(deletion))
+        }
+        switch reporting.status(for: stream) {
         case .secureEnclaveUnavailable: Text("This Mac has no Secure Enclave, so nothing is sent.")
         case let .failing(reason): Text("Not sent yet: \(reason)")
-        case .off, .waiting, .registered: EmptyView()
+        case .off, .waiting, .registered, .deletionPending: EmptyView()
+        }
+    }
+
+    private func deletionLine(_ deletion: ReportingDeletion) -> LocalizedStringKey {
+        switch deletion {
+        case .requested: "Preparing a deletion request…"
+        case .pending: "Deletion was queued. Signed requests expire after 30 days."
+        case .unconfirmed: "Server deletion could not be confirmed."
         }
     }
 }

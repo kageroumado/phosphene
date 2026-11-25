@@ -4,6 +4,76 @@
     "%@": {
       "shouldTranslate": false
     },
+    "%@ (Dark)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（深色）"
+          }
+        }
+      }
+    },
+    "%@ (Light)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（浅色）"
+          }
+        }
+      }
+    },
+    "%@ Converted": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 转换版"
+          }
+        }
+      }
+    },
+    "%@ Pair": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 明暗配对"
+          }
+        }
+      }
+    },
+    "%@ fps": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ fps"
+          }
+        }
+      }
+    },
+    "%@ light": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色占 %@"
+          }
+        }
+      }
+    },
+    "%@ wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 张壁纸"
+          }
+        }
+      }
+    },
     "%@ · %lld waiting": {
       "localizations": {
         "en": {
@@ -208,76 +278,6 @@
     },
     "%lld × %lld": {
       "shouldTranslate": false
-    },
-    "%@ (Dark)": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@（深色）"
-          }
-        }
-      }
-    },
-    "%@ (Light)": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@（浅色）"
-          }
-        }
-      }
-    },
-    "%@ Converted": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 转换版"
-          }
-        }
-      }
-    },
-    "%@ Pair": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 明暗配对"
-          }
-        }
-      }
-    },
-    "%@ fps": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ fps"
-          }
-        }
-      }
-    },
-    "%@ light": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "浅色占 %@"
-          }
-        }
-      }
-    },
-    "%@ wallpapers": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 张壁纸"
-          }
-        }
-      }
     },
     "%lld × %lld px · %@ fps · %@ s": {
       "localizations": {
@@ -820,6 +820,16 @@
         }
       }
     },
+    "Can’t Reach the Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法连接创意工坊"
+          }
+        }
+      }
+    },
     "Can’t be made": {
       "localizations": {
         "zh-Hans": {
@@ -830,12 +840,12 @@
         }
       }
     },
-    "Can’t Reach the Workshop": {
+    "Check for Updates…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法连接创意工坊"
+            "value": "检查更新…"
           }
         }
       }
@@ -856,16 +866,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "立即检查更新"
-          }
-        }
-      }
-    },
-    "Check for Updates…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "检查更新…"
           }
         }
       }
@@ -1402,6 +1402,16 @@
         }
       }
     },
+    "Crash reports sent by older versions may share the usage registration. Turn off Count this Mac to request deletion of that data.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "旧版本发送的崩溃报告可能与使用统计共用一个注册记录。关闭“统计这台 Mac”即可请求删除这些数据。"
+          }
+        }
+      }
+    },
     "Create Light/Dark Pair": {
       "localizations": {
         "zh-Hans": {
@@ -1508,6 +1518,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "调试日志"
+          }
+        }
+      }
+    },
+    "Debug builds skip macOS crash log discovery.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调试版本不会查找 macOS 崩溃日志。"
           }
         }
       }
@@ -1642,6 +1662,16 @@
         }
       }
     },
+    "Deletion was queued. Signed requests expire after 30 days.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除请求已加入队列。签名请求的有效期为 30 天。"
+          }
+        }
+      }
+    },
     "Destination": {
       "localizations": {
         "zh-Hans": {
@@ -1768,6 +1798,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "每张壁纸都会变成资料库里的一个循环视频。一个场景大约需要一分钟。"
+          }
+        }
+      }
+    },
+    "Earlier crash reports: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "早期的崩溃报告：%@"
           }
         }
       }
@@ -2252,6 +2292,16 @@
         }
       }
     },
+    "In-app updates are disabled in development builds.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开发版本不支持在应用内安装更新。"
+          }
+        }
+      }
+    },
     "Information": {
       "localizations": {
         "zh-Hans": {
@@ -2272,22 +2322,22 @@
         }
       }
     },
-    "Install updates automatically": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动安装更新"
-          }
-        }
-      }
-    },
     "Install Wallpaper Engine in Sevoflurane’s Steam to get wallpapers from here.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "在 Sevoflurane 的 Steam 中安装 Wallpaper Engine 后即可在此获取壁纸。"
+          }
+        }
+      }
+    },
+    "Install updates automatically": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动安装更新"
           }
         }
       }
@@ -2884,6 +2934,16 @@
         }
       }
     },
+    "No installable update found": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有找到可安装的更新"
+          }
+        }
+      }
+    },
     "Not Made": {
       "localizations": {
         "zh-Hans": {
@@ -3084,22 +3144,22 @@
         }
       }
     },
-    "Open Wallpaper Settings…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开墙纸设置…"
-          }
-        }
-      }
-    },
     "Open Wallpaper Settings": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "打开墙纸设置"
+          }
+        }
+      }
+    },
+    "Open Wallpaper Settings…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开墙纸设置…"
           }
         }
       }
@@ -3517,6 +3577,16 @@
         }
       }
     },
+    "Preparing a deletion request…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备删除请求…"
+          }
+        }
+      }
+    },
     "Preparing…": {
       "localizations": {
         "zh-Hans": {
@@ -3637,6 +3707,16 @@
         }
       }
     },
+    "Regenerate Variants": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新生成优化版本"
+          }
+        }
+      }
+    },
     "Release Notes": {
       "localizations": {
         "zh-Hans": {
@@ -3693,6 +3773,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在渲染"
+          }
+        }
+      }
+    },
+    "Reporting is paused because its settings could not be saved.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置未能保存，数据发送已暂停。"
           }
         }
       }
@@ -3847,16 +3937,6 @@
         }
       }
     },
-    "Search the Workshop": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "搜索创意工坊"
-          }
-        }
-      }
-    },
     "Search Library": {
       "localizations": {
         "zh-Hans": {
@@ -3887,22 +3967,22 @@
         }
       }
     },
+    "Search the Workshop": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索创意工坊"
+          }
+        }
+      }
+    },
     "See what's new in version %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "查看 %@ 版本的新功能"
-          }
-        }
-      }
-    },
-    "Select a wallpaper to view its details.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择一张壁纸以查看其详细信息。"
           }
         }
       }
@@ -3933,6 +4013,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "请在“墙纸”设置中\n选择墙纸"
+          }
+        }
+      }
+    },
+    "Select a wallpaper to view its details.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一张壁纸以查看其详细信息。"
           }
         }
       }
@@ -3987,6 +4077,16 @@
         }
       }
     },
+    "Server deletion could not be confirmed.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未能确认服务器是否已删除数据。"
+          }
+        }
+      }
+    },
     "Settings": {
       "localizations": {
         "zh-Hans": {
@@ -4027,16 +4127,6 @@
         }
       }
     },
-    "Show in All Wallpapers": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在“所有壁纸”中显示"
-          }
-        }
-      }
-    },
     "Show Inspector": {
       "localizations": {
         "zh-Hans": {
@@ -4053,6 +4143,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "以图标或列表显示"
+          }
+        }
+      }
+    },
+    "Show in All Wallpapers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“所有壁纸”中显示"
           }
         }
       }
@@ -4093,6 +4193,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "大小"
+          }
+        }
+      }
+    },
+    "Software Update": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "软件更新"
           }
         }
       }
@@ -4227,22 +4337,22 @@
         }
       }
     },
-    "Steam is downloading it": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Steam 正在下载"
-          }
-        }
-      }
-    },
     "Steam Workshop": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "Steam 创意工坊"
+          }
+        }
+      }
+    },
+    "Steam is downloading it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 正在下载"
           }
         }
       }
@@ -4753,22 +4863,22 @@
         }
       }
     },
-    "Update failed": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "更新失败"
-          }
-        }
-      }
-    },
     "Update Sevoflurane to get wallpapers from here.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "更新 Sevoflurane 后即可在此获取壁纸。"
+          }
+        }
+      }
+    },
+    "Update failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新失败"
           }
         }
       }
@@ -4929,6 +5039,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 GitHub 上查看"
+          }
+        }
+      }
+    },
+    "Wait for the current video conversion or optimization to finish, then try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请等当前视频转换或优化完成后再试。"
           }
         }
       }
@@ -5221,6 +5341,16 @@
         }
       }
     },
+    "You’re up to date!": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已是最新版本"
+          }
+        }
+      }
+    },
     "a %@ loop that crossfades into its start": {
       "localizations": {
         "zh-Hans": {
@@ -5257,16 +5387,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "为列表"
-          }
-        }
-      }
-    },
-    "Software Update": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "软件更新"
           }
         }
       }
@@ -5333,16 +5453,6 @@
     },
     "v%@": {
       "shouldTranslate": false
-    },
-    "You’re up to date!": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已是最新版本"
-          }
-        }
-      }
     },
     "×": {
       "localizations": {
