@@ -265,6 +265,6 @@ final class SilentUpdates {
     /// answers "not safe" — an update is never so urgent that it is worth guessing.
     private static func noOptimizationRunning() async -> Bool {
         guard let manager = PhospheneManager.shared else { return false }
-        return !manager.isOptimizing
+        return !manager.isOptimizing && ConversionToolModel.runningJobCount == 0
     }
 }
