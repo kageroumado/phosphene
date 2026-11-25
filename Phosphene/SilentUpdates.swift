@@ -5,7 +5,6 @@ import Observation
 import os
 import SwiftUI
 import Tiptoe
-import TiptoeGitHub
 
 /// The app's updater: downloads from GitHub Releases, verifies, and swaps the bundle in place —
 /// silently when the user allows it, on an explicit install otherwise.
@@ -20,7 +19,7 @@ import TiptoeGitHub
 ///
 /// One check loop serves both modes: with auto-update off the check still runs and still
 /// answers ``availableVersion`` — the menu bar badge and version chip draw from it — but nothing
-/// downloads or installs except through ``updateNow()``.
+/// downloads or installs except through ``updateNow(version:)``.
 ///
 /// The loop ticks every ``checkInterval``; between ticks, opening the popover or waking the Mac
 /// repeats the check once it is ``staleAfter`` old, and the version chip's refresh button makes
@@ -66,9 +65,7 @@ final class SilentUpdates {
 
     private(set) var manualPhase: ManualPhase = .idle
 
-    /// The newest published version when it is newer than the running app, from the check loop —
-    /// in both modes, downloaded or not. Refreshed by ``refresh()`` — Tiptoe itself is not
-    /// observable.
+    /// The newest installable release newer than the running app, whether downloaded or not.
     private(set) var availableVersion: String?
 
     /// The version the automatic path has downloaded and is holding for a quiet moment, if any.
@@ -85,7 +82,9 @@ final class SilentUpdates {
     /// True briefly after a successful explicit check found no installable update.
     private(set) var checkedNoInstallableUpdate = false
 
-    var isReplacingApp: Bool { activity.isReplacingApp }
+    var isReplacingApp: Bool {
+        activity.isReplacingApp
+    }
 
     /// The updater: check loop, plus the quiet-moment install when auto-update is on.
     /// Created up front so its `Tiptoe` reconciles the recorded wait and the post-update notice
@@ -93,7 +92,7 @@ final class SilentUpdates {
     /// loop starts. Notify-only until ``start(autoInstall:)``
     /// applies the user's setting — which never happens in DEBUG, so a development build's
     /// manual check stays a metadata request and cannot download a DMG on the side.
-    @ObservationIgnored private let github: TiptoeGitHub
+    @ObservationIgnored private let tiptoe: Tiptoe
     @ObservationIgnored private let updater: AppUpdater
     @ObservationIgnored private let activity: UpdateActivity
     @ObservationIgnored private var checkingPanel: NSPanel?
@@ -103,17 +102,13 @@ final class SilentUpdates {
 
     /// When the shared check last finished.
     @ObservationIgnored private var lastCheckedAt: Date?
+    @ObservationIgnored private var consecutiveCheckFailures = 0
 
     private init() {
-        let updater = AppUpdater(owner: Self.owner, repo: Self.repo)
-        self.updater = updater
-        github = TiptoeGitHub(updater: updater, checkInterval: Self.checkInterval)
-            .installsAutomatically(false)
-        activity = UpdateActivity(tiptoe: github.tiptoe) { Self.noOptimizationRunning() }
-        github.onChecksFailing = { error in
-            Log.update.error("update checks have been failing: \(error.localizedDescription, privacy: .public)")
-        }
-        justUpdatedVersion = github.tiptoe.justUpdatedTo
+        updater = AppUpdater(owner: Self.owner, repo: Self.repo)
+        tiptoe = Tiptoe()
+        activity = UpdateActivity(tiptoe: tiptoe) { Self.noOptimizationRunning() }
+        justUpdatedVersion = tiptoe.justUpdatedTo
     }
 
     // MARK: - Automatic installs
@@ -124,7 +119,6 @@ final class SilentUpdates {
         // out from under Xcode.
         #if !DEBUG
             guard checkLoop == nil else { return }
-            github.installsAutomatically(autoInstall)
             activity.autoInstall = autoInstall
             checkLoop = Task(name: "Check for updates periodically") { [weak self] in
                 while !Task.isCancelled {
@@ -150,10 +144,9 @@ final class SilentUpdates {
 
     /// Reacts to the Auto-Update toggle. Turning it off keeps the check loop but stops the
     /// quiet-moment watcher; a DMG already downloaded stays downloaded but installs only
-    /// via ``updateNow()``.
+    /// via ``updateNow(version:)``.
     func setAutoInstall(_ enabled: Bool) {
         #if !DEBUG
-            github.installsAutomatically(enabled)
             activity.autoInstall = enabled
             refresh()
             if enabled {
@@ -171,8 +164,7 @@ final class SilentUpdates {
     /// Copies Tiptoe's state into the observable properties. Called when the popover appears,
     /// every ``mirrorInterval``, and after update actions — Tiptoe has no change callback.
     func refresh() {
-        availableVersion = github.availableVersion
-        pendingVersion = github.tiptoe.pending?.version
+        pendingVersion = activity.pendingVersion
     }
 
     // MARK: - Checking
@@ -184,14 +176,14 @@ final class SilentUpdates {
         isChecking = true
         checkedNoInstallableUpdate = false
         defer { isChecking = false }
-        // The adapter shares AppUpdater's metadata request and can prepare the download in the background.
+        // The background check shares AppUpdater's metadata request and can prepare the download.
         Task { await check() }
         do {
             availableVersion = try await updater.check()?.version
         } catch {
             return
         }
-        guard availableVersion == nil, github.tiptoe.pending == nil else { return }
+        guard availableVersion == nil, activity.pendingVersion == nil else { return }
         checkedNoInstallableUpdate = true
         Task(name: "Clear the update check notice") { [weak self] in
             try? await Task.sleep(for: Self.checkNoticeDuration)
@@ -278,7 +270,7 @@ final class SilentUpdates {
                 NSWorkspace.shared.open(Self.releasesPageURL)
             #else
                 WhatsNewWindow.present(version: version, context: .updateAvailable(autoInstall: autoInstall))
-                Task { await updateNow() }
+                Task { await updateNow(version: version) }
             #endif
         case .alertThirdButtonReturn:
             WhatsNewWindow.present(version: version, context: .updateAvailable(autoInstall: autoInstall))
@@ -307,49 +299,73 @@ final class SilentUpdates {
         }
     }
 
-    /// Every adapter check joins the same task, including its background preparation.
+    /// Every background check joins the same task, including its preparation.
     private func check() async {
-        await activity.check { [github] in
-            await github.checkNow()
-            self.lastCheckedAt = .now
-            self.refresh()
+        await activity.check {
+            defer {
+                self.lastCheckedAt = .now
+                self.refresh()
+            }
+            do {
+                if let candidate = try await self.checkCandidate(), self.activity.autoInstall {
+                    try await self.activity.prepare(candidate)
+                }
+                self.consecutiveCheckFailures = 0
+            } catch {
+                guard !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
+                Log.update.debug("update check failed: \(error.localizedDescription, privacy: .public)")
+                self.consecutiveCheckFailures += 1
+                if self.consecutiveCheckFailures == Int(86_400 / Self.checkInterval) {
+                    Log.update.error("update checks have been failing: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+    }
+
+    private func checkCandidate() async throws -> UpdateActivity.Candidate? {
+        let update = try await updater.check()
+        availableVersion = update?.version
+        guard let update else { return nil }
+        return UpdateActivity.Candidate(version: update.version) {
+            let prepared = try await update.prepareInstallation()
+            return UpdateActivity.Download(
+                install: { try await prepared.installAndRelaunch() },
+                discard: { await prepared.discard() },
+            )
         }
     }
 
     // MARK: - Update Now
 
-    /// Download (if needed), verify, and install the newest release right away — the user asked.
+    /// Download (if needed), verify, and install the version shown to the user.
     /// On success the app relaunches and this never returns to its caller in a meaningful way;
     /// still running a few seconds later means the attempt failed and `manualPhase` says so.
-    func updateNow() async {
+    func updateNow(version: String) async {
         guard manualPhase != .working else { return }
         #if DEBUG
             manualPhase = .failed(String(localized: "In-app updates are disabled in development builds."))
         #else
             manualPhase = .working
-            let result = await activity.install {
-                guard await github.updateNow() else {
-                    // A failed check may leave the last known installable version visible.
-                    manualPhase = .failed(
-                        github.availableVersion == nil
-                            ? String(localized: "Couldn't find a download for this update. Get it from the releases page.")
-                            : String(localized: "Couldn't download the update. Check your connection, or get it from the releases page."),
-                    )
-                    return
+            defer { refresh() }
+            do {
+                switch try await activity.install(version: version, findCandidate: checkCandidate) {
+                case .alreadyInstalling:
+                    manualPhase = .idle
+                case .videoWorkInProgress:
+                    manualPhase = .failed(String(localized: "Wait for the current video conversion or optimization to finish, then try again."))
+                case .noMatchingDownload:
+                    manualPhase = .failed(String(localized: "Couldn't find a download for this update. Get it from the releases page."))
+                case .attempted:
+                    if activity.isReplacingApp {
+                        // Give AppUpdater's scheduled termination time to run.
+                        try? await Task.sleep(for: .seconds(4))
+                    }
+                    manualPhase = .failed(String(localized: "The update couldn't be installed. Try again, or get it from the releases page."))
                 }
-                // AppUpdater schedules termination; keep the reservation until it has time to exit.
-                try? await Task.sleep(for: .seconds(4))
-                manualPhase = .failed(String(localized: "The update couldn't be installed. Try again, or get it from the releases page."))
+            } catch {
+                Log.update.error("could not prepare Phosphene \(version, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                manualPhase = .failed(String(localized: "Couldn't download the update. Check your connection, or get it from the releases page."))
             }
-            switch result {
-            case .alreadyInstalling:
-                manualPhase = .idle
-            case .videoWorkInProgress:
-                manualPhase = .failed(String(localized: "Wait for the current video conversion or optimization to finish, then try again."))
-            case .attempted:
-                break
-            }
-            refresh()
         #endif
     }
 
@@ -362,8 +378,8 @@ final class SilentUpdates {
 
     /// The user has seen the post-update notice.
     func acknowledgeUpdate() {
-        if github.tiptoe.justUpdatedTo == justUpdatedVersion {
-            github.tiptoe.acknowledge()
+        if tiptoe.justUpdatedTo == justUpdatedVersion {
+            tiptoe.acknowledge()
         }
         justUpdatedVersion = nil
     }

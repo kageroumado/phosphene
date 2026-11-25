@@ -204,7 +204,7 @@ struct WhatsNewView: View {
                 Button("Later") { onClose() }
                 #if !DEBUG
                     Button {
-                        Task { await installer.updateNow() }
+                        Task { await installer.updateNow(version: version) }
                     } label: {
                         HStack(spacing: 4) {
                             if installer.manualPhase == .working {
