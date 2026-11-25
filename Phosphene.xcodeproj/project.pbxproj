@@ -69,12 +69,15 @@
 				CachedFrame.swift,
 				FileIdentity.swift,
 				HDRMode.swift,
-				LegacyStillProvenance.swift,
 				GeometryVerdict.swift,
+				LegacyStillProvenance.swift,
+				Logging.swift,
+				PairRendition.swift,
 				PlaybackModel.swift,
 				PlaybackPolicy.swift,
 				RampMath.swift,
 				VariantSelection.swift,
+				VideoLibrary.swift,
 				VideoVariant.swift,
 			);
 			target = 7E5700000000000000000A03 /* PhospheneTests */;
