@@ -75,7 +75,9 @@ struct AppearancePairTests {
             try AppearancePair.update(in: library) { $0 = [pending] }
             try fm.removeItem(at: dirs[0])
             #expect(throws: PairIssue.changed) { try pending.edit(in: library, split: true) }
-            try pending.finishDeletion(in: library)
+            let alias = root.appendingPathComponent("alias")
+            try fm.createSymbolicLink(at: alias, withDestinationURL: library)
+            try pending.finishDeletion(in: alias)
         } else {
             try confirmed.remove(in: library)
         }
@@ -83,5 +85,37 @@ struct AppearancePairTests {
         #expect(!fm.fileExists(atPath: dirs[0].path))
         #expect(!fm.fileExists(atPath: dirs[1].path))
         #expect(try Data(contentsOf: files[2]) == Data(contentsOf: source))
+    }
+
+    @Test
+    func `splitting an incomplete pair releases the surviving file`() throws {
+        let fm = FileManager.default
+        let directory = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: directory) }
+        let ids = [UUID().uuidString, UUID().uuidString]
+        let folders = ids.map { directory.appendingPathComponent($0) }
+        for folder in folders {
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        let first = folders[0].appendingPathComponent("Day.mov")
+        let second = folders[1].appendingPathComponent("Night.mov")
+        try Data([1]).write(to: first)
+        try Data([2]).write(to: second)
+        let validation = try AppearancePair.Validation(
+            original: #require(FileIdentity(of: first)),
+            alternate: #require(FileIdentity(of: second)),
+            frameTicks: 1,
+            timescale: 24,
+            frameCount: 1,
+            commonSyncFrames: [0],
+        )
+        let pair = AppearancePair(owner: ids[0], counterpart: ids[1], swapped: false, validation: validation)
+        try pair.merge(in: directory) { (first, second) }
+        try fm.removeItem(at: folders[0])
+        try AppearancePair.withLibraryLock(in: directory) {
+            try pair.splitWhileLocked(in: directory, pairs: AppearancePair.read(in: directory))
+            try AppearancePair.requireSingle(pair.counterpart, in: directory)
+            #expect(FileIdentity(of: second) == validation.alternate)
+        }
     }
 }
