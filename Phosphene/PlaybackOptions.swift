@@ -29,7 +29,8 @@ struct BlendMatchingFramesInfoButton: View {
             .popover(isPresented: $showsInfo) {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text("Blend Matching Frames").font(.headline)
-                    Text("Phosphene blends matching frames from the light and dark videos when appearance changes.")
+                    Text("In Everywhere mode, matching frames can smooth the switch between light and dark as the wallpaper plays. You may still see some ghosting.")
+                    Text("In Lock Screen and Paused modes, the desktop shows a still frame and usually doesn’t need blending.")
                     Text("Both videos decode briefly at once. GPU and memory use can spike, especially with HDR, high frame rates, or multiple displays.")
                 }
                 .font(.callout)

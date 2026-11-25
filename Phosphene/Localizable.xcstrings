@@ -2252,6 +2252,26 @@
         }
       }
     },
+    "In Everywhere mode, matching frames can smooth the switch between light and dark as the wallpaper plays. You may still see some ghosting.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“全部”模式下，混合匹配帧可以让动态墙纸在浅色与深色之间切换得更平滑。过渡时仍可能看到重影。"
+          }
+        }
+      }
+    },
+    "In Lock Screen and Paused modes, the desktop shows a still frame and usually doesn’t need blending.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在“锁定屏幕”或“已暂停”模式下，桌面显示静止画面，通常不需要混合。"
+          }
+        }
+      }
+    },
     "In Use": {
       "localizations": {
         "zh-Hans": {
@@ -3453,16 +3473,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Phosphene 负责把视频添加到资料库；每个显示器和桌面播放哪个视频，由“系统设置”›“墙纸”决定。"
-          }
-        }
-      }
-    },
-    "Phosphene blends matching frames from the light and dark videos when appearance changes.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "切换浅色与深色外观时，Phosphene 会混合两个视频中相匹配的帧。"
           }
         }
       }
