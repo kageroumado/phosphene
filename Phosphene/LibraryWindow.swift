@@ -101,12 +101,27 @@ private struct LibraryRoot: View {
         .sheet(isPresented: $store.isMakeVideosPresented) {
             MakeVideosSheet()
         }
+        .sheet(item: $store.pairSheet) { selection in
+            VideoPairSheet(selection: selection, completed: store.completePairEdit)
+        }
         .quickLookPreview($store.quickLookURL)
-        .alert(store.deleteTitle, isPresented: $store.isConfirmingDelete) {
-            Button("Delete", role: .destructive) { store.confirmDelete() }
+        .alert(store.pendingDelete?.title ?? "", isPresented: $store.isConfirmingDelete) {
+            Button(store.pendingDelete?.isSinglePair == true ? "Delete Pair" : "Delete", role: .destructive) {
+                store.confirmDelete()
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(verbatim: store.deleteMessage)
+            Text(verbatim: store.pendingDelete?.message ?? "")
+        }
+        .alert("Library Error", isPresented: Binding(
+            get: { store.libraryError != nil },
+            set: {
+                if !$0 {
+                    store.libraryError = nil
+                }
+            },
+        ), presenting: store.libraryError) { _ in } message: { message in
+            Text(verbatim: message)
         }
         .alert(manager.optimizationAlertTitle, isPresented: $manager.showOptimizationAlert) {} message: {
             Text(manager.optimizationAlertMessage)
@@ -196,6 +211,8 @@ private struct LibraryDetail: View {
             String(localized: "Workshop")
         case .allVideos:
             String(localized: "All Videos")
+        case .lightDarkPairs:
+            String(localized: "Light/Dark Pairs")
         case .inUse:
             String(localized: "In Use")
         case .workshopAll:
@@ -253,6 +270,10 @@ private struct LibraryContent: View {
     }
 
     private func videoSubtitle(_ rows: [VideoRow]) -> String {
+        if store.section == .lightDarkPairs {
+            let size = ByteCountFormatter.string(fromByteCount: rows.map(\.fileSize).reduce(0, +), countStyle: .file)
+            return rows.count == 1 ? String(localized: "1 pair · \(size)") : String(localized: "\(rows.count) pairs · \(size)")
+        }
         guard !rows.isEmpty else { return String(localized: "\(rows.count) videos") }
         let bytes = rows.map(\.fileSize).reduce(0, +)
         let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
@@ -309,6 +330,14 @@ private struct LibraryToolbar: ToolbarContent {
                 }
             }
         } else if content == .videos {
+            if let pair = store.pairAction(for: store.videoSelection) {
+                ToolbarItem {
+                    Button { store.pairSheet = pair } label: {
+                        Label(pair.actionTitle, image: .lightDarkPair)
+                    }
+                    .help(Text(pair.actionTitle))
+                }
+            }
             ToolbarItem {
                 Button("Add Video", systemImage: "plus") {
                     store.addVideo()
@@ -409,6 +438,14 @@ private struct VideoEmptyState: View {
 
     var body: some View {
         switch store.section {
+        case .lightDarkPairs:
+            ContentUnavailableView {
+                Label("No Light/Dark Pairs", image: .lightDarkPair)
+            } description: {
+                Text("Select two videos in All Videos to create a light/dark pair.")
+            } actions: {
+                Button("All Videos") { store.section = .allVideos }
+            }
         case .inUse:
             ContentUnavailableView {
                 Label("No Wallpaper in Use", systemImage: "play.rectangle")
@@ -501,6 +538,7 @@ private struct WorkshopEmptyState: View {
 /// Every library action in the menu bar, with keyboard shortcuts.
 struct LibraryCommands: Commands {
     @FocusedValue(LibraryStore.self) private var store
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
@@ -510,7 +548,14 @@ struct LibraryCommands: Commands {
             Button("Add Wallpaper Engine Folder…") { store?.addFolder() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
                 .disabled(store == nil)
+            Button("Custom Conversion…") { openWindow(id: "custom-conversion") }
+            Button("Light/Dark Pair Converter…") { openWindow(value: PairConverterRequest.blank) }
             Divider()
+            let pair = store.flatMap { $0.pairAction(for: $0.videoSelection) }
+            Button(pair?.actionTitle ?? "Pair…") {
+                store?.pairSheet = pair
+            }
+            .disabled(pair == nil)
             Button("Make Videos…") { store?.requestMakeVideos() }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
                 .disabled(store?.renderableSelection.isEmpty ?? true)

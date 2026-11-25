@@ -355,6 +355,12 @@ final class WorkshopLibrary {
     /// swap it into the entry made earlier so a wallpaper already chosen in System
     /// Settings keeps playing the new version.
     private func make(_ item: WorkshopItem) async throws {
+        let existing = VideoDeploymentService.workshopRecords()[item.id]?.entryID
+        let library = VideoDeploymentService.videosFolderURL
+        if let existing {
+            try AppearancePair.requireSingle(existing, in: library)
+        }
+
         // One file name per item: the library refuses a second file of the same name.
         let output = FileManager.default.temporaryDirectory
             .appendingPathComponent("wallpaper-engine-\(item.fileStem).\(item.kind == .video ? item.mainFile?.pathExtension ?? "mp4" : "mov")")
@@ -386,13 +392,19 @@ final class WorkshopLibrary {
             )
         }
 
-        let entryID: String? = if let existing = records[item.id]?.entryID,
-                                  await VideoDeploymentService.replaceVideo(entryID: existing, with: output) {
-            existing
+        guard VideoDeploymentService.workshopRecords()[item.id]?.entryID == existing else { throw PairIssue.changed }
+        let entryID: String? = if let existing {
+            await VideoDeploymentService.replaceVideo(entryID: existing, with: output) ? existing : nil
         } else {
             await VideoDeploymentService.deployVideo(url: output, name: item.title.isEmpty ? nil : item.title)
         }
-        guard let entryID else { throw WEError.malformed("the video could not be added to the library") }
+        guard let entryID else {
+            try Task.checkCancellation()
+            if let existing {
+                try AppearancePair.requireSingle(existing, in: library)
+            }
+            throw WEError.malformed("the video could not be added to the library")
+        }
         VideoDeploymentService.writeWorkshopRecord(record, entryID: entryID)
         records = VideoDeploymentService.workshopRecords()
     }
