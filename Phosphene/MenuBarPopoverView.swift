@@ -242,16 +242,26 @@ struct MenuBarPopoverView: View {
     // MARK: - Settings
 
     private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+        @Bindable var prefsService = prefsService
+        return VStack(alignment: .leading, spacing: Theme.Space.sm) {
             SectionLabel(String(localized: "Settings"))
 
             HStack(spacing: Theme.Space.sm) {
-                @Bindable var prefsService = prefsService
                 Toggle("Launch at Login", isOn: $manager.launchAtLogin)
                 Toggle("Pause When Hidden", isOn: $prefsService.pauseWhenOccluded)
                     .help("Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.")
             }
             .toggleStyle(SettingPillToggleStyle())
+
+            DynamicRangePicker(selection: $prefsService.hdrMode)
+                .font(.caption)
+                .padding(.horizontal, Theme.Space.sm)
+                .padding(.vertical, Theme.Space.xs)
+                .glassEffect(.regular, in: Theme.concentricInnerShape)
+
+            Toggle("Blend Matching Frames", isOn: $prefsService.frameMatchedTransitions)
+                .toggleStyle(SettingPillToggleStyle())
+                .help("Switching between light and dark briefly decodes both videos and increases GPU and memory use.")
 
             UsageCountingSettings()
                 .toggleStyle(SettingPillToggleStyle())
