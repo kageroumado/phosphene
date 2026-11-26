@@ -62,8 +62,7 @@ final class VideoRenderer: @unchecked Sendable {
     var wantsDark = false
     var renderingSuspended = false
     var allowsSelectionPlayback = false
-    var firstFrameHoldDeadline: DispatchTime?
-    var pairFeedSuspended = false
+    var feedSuspended = false
     var pairReadersReleased = false
     var needsDeepPauseFrameRefresh = false
     var cutTask: Task<Void, Never>?
@@ -124,7 +123,7 @@ final class VideoRenderer: @unchecked Sendable {
     /// completes we restart once to whatever the latest selected asset is.
     var flushInFlight = false
     enum SourceChange { case selection, reload }
-    var pendingRestart: SourceChange?
+    var pendingRestart = false
 
     /// Diagnostic: number of remaining feed-loop ticks to log after a restart.
     var feedLogBudget = 0
@@ -298,7 +297,7 @@ final class VideoRenderer: @unchecked Sendable {
     ///
     /// A target applied before `start()` (see `PlaybackStore.follow`) takes effect right
     /// after the first frame.
-    func start(handoff: StartHandoff? = nil) async {
+    func start(handoff: StartHandoff? = nil, replacing predecessor: VideoRenderer? = nil) async {
         if let handoff {
             for _ in 0 ..< 2 {
                 guard let prepared = await Self.prepareStartHandoff(handoff) else { break }
@@ -315,9 +314,19 @@ final class VideoRenderer: @unchecked Sendable {
                 }
             }
         }
+        let outgoing = await predecessor?.selectionMotion()
         await withCheckedContinuation { (firstFrame: CheckedContinuation<Void, Never>) in
             queue.async { [self] in
-                beginPlayback { firstFrame.resume() }
+                beginPlayback(outgoing: outgoing) { firstFrame.resume() }
+            }
+        }
+    }
+
+    private func selectionMotion() async -> (rate: Double, ramp: RampPhase?)? {
+        await withCheckedContinuation { reply in
+            queue.async { [self] in
+                let rate = CMTimebaseGetRate(timebase)
+                reply.resume(returning: isRunning && hasStarted && !renderingSuspended && rate > 0 ? (rate, rampDownPhase) : nil)
             }
         }
     }
@@ -342,7 +351,6 @@ final class VideoRenderer: @unchecked Sendable {
         let startRate: Double
         let totalSteps: Int
         let firstTick: DispatchTime
-        let isSelection: Bool
         var index = 0
     }
 
@@ -358,24 +366,15 @@ final class VideoRenderer: @unchecked Sendable {
 
     private enum HandoffResult: Sendable { case installed, retryFrozen, unavailable }
 
-    func finishFirstFrameHold(at deadline: DispatchTime) {
-        guard firstFrameHoldDeadline == deadline else { return }
-        firstFrameHoldDeadline = nil
-        guard isRunning, isPaused, rampTimer == nil else { return }
-        CMTimebaseSetRate(timebase, rate: 0)
-        suspendPairFeed()
-    }
-
     private func startPhase(for request: StartHandoff) async -> StartPhase? {
         await withCheckedContinuation { reply in
-            @Sendable
-            func readPhase(canWait: Bool) {
+            queue.async { [self] in
                 var time = CMTime.invalid
                 var rate = 0.0
                 guard isRunning, hasStarted, isPaused, currentPolicy == .paused, !renderingSuspended, !flushInFlight,
                       let pair = variantSelector?.pair, pair.pair.membershipID == request.pair.pair.membershipID,
                       CMTimebaseGetTimeAndRate(timebase, timeOut: &time, rateOut: &rate) == 0, time.isNumeric,
-                      rate == 0 || (rate > 0 && rate <= 1 && !pairFeedSuspended),
+                      rate == 0 || (rate > 0 && rate <= 1 && !feedSuspended && rampDownPhase != nil),
                       let visible = visibleSources.last(where: { $0.start <= time }),
                       let playback = visible.playback, request.pair.retains(playback),
                       let identity = pair.originals.identity(for: visible.url), visible.identity == identity else {
@@ -387,23 +386,10 @@ final class VideoRenderer: @unchecked Sendable {
                     reply.resume(returning: nil)
                     return
                 }
-                if rate > 0, rampDownPhase == nil {
-                    if canWait, let deadline = firstFrameHoldDeadline {
-                        queue.asyncAfter(deadline: deadline) { [self] in
-                            // Either callback at this deadline can be dequeued first.
-                            finishFirstFrameHold(at: deadline)
-                            readPhase(canWait: false)
-                        }
-                    } else {
-                        reply.resume(returning: nil)
-                    }
-                    return
-                }
                 reply.resume(returning: StartPhase(
                     playback: playback, url: url, loopStart: visible.loopStart, time: time, rate: rate, ramp: rampDownPhase,
                 ))
             }
-            queue.async { readPhase(canWait: true) }
         }
     }
 
@@ -440,7 +426,7 @@ final class VideoRenderer: @unchecked Sendable {
         var rate = 0.0
         guard CMTimebaseGetTimeAndRate(handoff.source.predecessor.timebase, timeOut: &time, rateOut: &rate) == 0,
               time.isNumeric, time >= phase.time, rate >= 0, rate <= phase.rate,
-              rate == 0 || phase.ramp?.isSelection != true || allowsSelectionPlayback else {
+              rate == 0 || allowsSelectionPlayback else {
             handoff.frame.reader.cancelReading()
             return .unavailable
         }
@@ -461,12 +447,8 @@ final class VideoRenderer: @unchecked Sendable {
         CATransaction.flush()
         traceLog("  [start #\(debugID)] inherited pair frame at \(time.seconds), rate=\(rate)")
         if rate > 0, let rampPhase = phase.ramp {
-            pairFeedSuspended = false
-            ramp(to: 0, over: Self.rampDownDuration, continuing: rampPhase) { [self] in
-                suspendPairFeed()
-                scheduleDeepPause()
-                prepareAppearanceCut()
-            }
+            feedSuspended = false
+            rampDown(continuing: rampPhase)
         } else {
             suspendPairFeed()
             scheduleDeepPause()
@@ -478,7 +460,7 @@ final class VideoRenderer: @unchecked Sendable {
     }
 
     /// Runs on `queue`. Calls `firstFrameShown` exactly once.
-    private func beginPlayback(firstFrameShown: () -> Void) {
+    private func beginPlayback(outgoing: (rate: Double, ramp: RampPhase?)?, firstFrameShown: () -> Void) {
         traceLog("  [start #\(debugID)] asset=\(asset.url.lastPathComponent) paused=\(isPaused)")
         guard isRunning else {
             traceLog("  [start #\(debugID)] aborted — already stopped")
@@ -493,43 +475,42 @@ final class VideoRenderer: @unchecked Sendable {
         hasStarted = true
 
         let paired = variantSelector?.pair != nil
-        let holdFirstFrame = shouldHoldFirstFrame
-        if holdFirstFrame {
-            cancelRamp()
-            CMTimebaseSetRate(timebase, rate: 0)
-        }
+        // Only a replacement of a moving desktop can start with selection motion.
+        let selectionMotion = allowsSelectionPlayback ? outgoing : nil
+        let holdsFrame = renderingSuspended || (isPaused && selectionMotion == nil)
+        cancelRamp()
         // Reset the timebase before the first enqueue so the frame isn't seen as late.
+        CMTimebaseSetRate(timebase, rate: 0)
         CMTimebaseSetTime(timebase, time: .zero)
 
         // Enqueue the first frame and flush it to the render server inside an
         // action-free transaction, so the context is displaying video before the
         // acquire reply is released.
-        let first = (paired || holdFirstFrame) ? firstFrame(from: output) : output.copyNextSampleBuffer()
-        if let firstSample = first {
-            if holdFirstFrame {
-                Self.setAttachment(kCMSampleAttachmentKey_DisplayImmediately, on: firstSample)
-            }
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            renderer.enqueue(firstSample)
-            CATransaction.commit()
-            CATransaction.flush()
-        }
-
         currentReader = reader
         currentOutput = output
         ptsOffset = .zero
         lastEnqueuedEnd = .zero
         recordSnapshotSource(at: .zero)
-        if variantSelector?.pair != nil, let first, first.numSamples == 1, first.duration.isNumeric {
-            lastEnqueuedEnd = first.presentationTimeStamp + first.duration
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if holdsFrame {
+            enqueueRestartFrame(firstPresentableFrame(from: output), holding: true)
+        } else if let first = paired ? firstPresentableFrame(from: output) : output.copyNextSampleBuffer() {
+            renderer.enqueue(first)
+            if paired, first.numSamples == 1, first.duration.isNumeric {
+                lastEnqueuedEnd = first.presentationTimeStamp + first.duration
+            }
         }
+        CATransaction.commit()
+        CATransaction.flush()
 
-        if holdFirstFrame {
-            suspendPairFeed()
-            scheduleDeepPause()
+        if holdsFrame {
+            holdStartedFrame()
+        } else if isPaused, let selectionMotion {
+            CMTimebaseSetRate(timebase, rate: selectionMotion.rate)
+            rampDown(continuing: selectionMotion.ramp)
         } else {
-            startSelectionClock()
+            CMTimebaseSetRate(timebase, rate: 1)
         }
         firstFrameShown()
 
@@ -757,8 +738,8 @@ final class VideoRenderer: @unchecked Sendable {
                     return
                 }
                 let playback = pair.playback(for: currentPolicy)
-                if open(pair.url(dark: wantsDark, in: playback), pair: playback, reason: reason)
-                    || (playback != pair.originals && open(pair.url(dark: wantsDark), pair: pair.originals, reason: reason)) {
+                if open(pair.url(dark: wantsDark, in: playback), pair: playback)
+                    || (playback != pair.originals && open(pair.url(dark: wantsDark), pair: pair.originals)) {
                     return
                 }
                 variantSelector = previous
@@ -782,7 +763,7 @@ final class VideoRenderer: @unchecked Sendable {
                     scheduleDeepPause()
                 }
                 if !renderingSuspended, !isPaused {
-                    resumePairFeed()
+                    resumeFeed()
                 }
                 if needsMatchedRecovery {
                     prepareAppearanceCut()
@@ -791,7 +772,7 @@ final class VideoRenderer: @unchecked Sendable {
                 prepareNextReader()
                 return
             }
-            if open(url, pair: nil, reason: reason) {
+            if open(url, pair: nil) {
                 if previous?.pair != nil {
                     discardSpareLayer()
                     removeDecoderObservers()
@@ -804,12 +785,12 @@ final class VideoRenderer: @unchecked Sendable {
         }
     }
 
-    func open(_ url: URL, pair: PairRendition.Playback?, reason: SourceChange) -> Bool {
+    func open(_ url: URL, pair: PairRendition.Playback?) -> Bool {
         guard loadSource(url, pair: pair) else { return false }
         pairReadersReleased = false
-        pairFeedSuspended = false
+        feedSuspended = false
         if hasStarted {
-            restartWithCurrentAsset(reason)
+            restartWithCurrentAsset()
         }
         return true
     }
