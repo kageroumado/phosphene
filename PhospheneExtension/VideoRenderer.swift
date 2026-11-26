@@ -31,7 +31,20 @@ final class VideoRenderer: @unchecked Sendable {
 
     // Pipeline state shared by the renderer extensions is confined to `queue` after initialization.
     var asset: AVURLAsset
-    var videoTrack: AVAssetTrack
+    var videoTrack: AVAssetTrack {
+        didSet {
+            if oldValue !== videoTrack {
+                toneMapTrack = nil
+                refreshExternalToneMap()
+            }
+        }
+    }
+    private let rootLayer: CALayer
+    private var externalToneMap = ExternalWallpaperToneMap()
+    private var externalToneMapMode = HDRMode.automatic
+    private var externalHDRHeadroom: Float?
+    private weak var toneMapTrack: AVAssetTrack?
+    private var toneMapTrackIsHDR = false
     var isRunning = true
     /// `start()` has built the pipeline. Before that a target only sets the logical
     /// state, which `start()` then honors.
@@ -185,6 +198,7 @@ final class VideoRenderer: @unchecked Sendable {
     @MainActor
     private init(root: SendableBox<CALayer>, media: sending InitialMedia) {
         let rootLayer = root.value
+        self.rootLayer = rootLayer
         seededStill = media.stillBuffer != nil
         displayLayer = Self.makeVideoLayer(in: rootLayer)
         renderer = displayLayer.sampleBufferRenderer
@@ -842,6 +856,41 @@ final class VideoRenderer: @unchecked Sendable {
         return result
     }
 
+    func setExternalHDRHeadroom(_ headroom: Float?) {
+        queue.async { [self] in
+            guard isRunning, externalHDRHeadroom != headroom else { return }
+            externalHDRHeadroom = headroom
+            refreshExternalToneMap()
+        }
+    }
+
+    func setExternalToneMapMode(_ mode: HDRMode) {
+        guard externalToneMapMode != mode else { return }
+        externalToneMapMode = mode
+        refreshExternalToneMap()
+    }
+
+    private func refreshExternalToneMap() {
+        if externalToneMapMode != .automatic, externalHDRHeadroom != nil, toneMapTrack !== videoTrack {
+            let track = videoTrack
+            toneMapTrack = track
+            toneMapTrackIsHDR = false
+            Task { [weak self] in
+                let isHDR = await VideoProbe.classify(track) == true
+                self?.queue.async { [weak self] in
+                    guard let self, isRunning, toneMapTrack === track, videoTrack === track else { return }
+                    toneMapTrackIsHDR = isHDR
+                    refreshExternalToneMap()
+                }
+            }
+        }
+
+        externalToneMap.apply(
+            to: rootLayer, mode: externalToneMapMode, headroom: externalHDRHeadroom,
+            isHDR: toneMapTrack === videoTrack && toneMapTrackIsHDR,
+        )
+    }
+
     /// Stop playback for good. Synchronous with the renderer queue, so no callback is
     /// mid-flight when the readers are cancelled. Must not be called on that queue.
     func stop() {
@@ -849,6 +898,7 @@ final class VideoRenderer: @unchecked Sendable {
         queue.sync {
             extensionLog("  [stop #\(debugID)] stopping renderer for \(asset.url.lastPathComponent)")
             isRunning = false
+            setExternalToneMapMode(.automatic)
             cancelPairRefill()
             cancelAppearanceCut()
             appearanceTransition.cancel()

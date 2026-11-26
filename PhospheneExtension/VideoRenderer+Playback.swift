@@ -21,6 +21,7 @@ extension VideoRenderer {
                 refreshDeepPausedFrame()
             }
         }
+        setExternalToneMapMode(target.hdrMode)
         let blendModeChanged = frameMatchedTransitions != target.frameMatchedTransitions
         frameMatchedTransitions = target.frameMatchedTransitions
         let paired = variantSelector?.pair != nil

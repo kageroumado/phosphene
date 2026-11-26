@@ -65,8 +65,12 @@ final class PlaybackStore {
         traceLog("[Store] \(event)")
         guard next != state else { return }
         let shuffleChanged = next.shufflePick != state.shufflePick
+        let hdrModeChanged = next.prefs.hdrMode != state.prefs.hdrMode
         state = next
         Self.mirror.withLock { $0 = next }
+        if hdrModeChanged {
+            DisplayReconfiguration.refreshHDRHeadroom()
+        }
         republishTargets(shuffleChanged: shuffleChanged)
     }
 
@@ -99,6 +103,9 @@ final class PlaybackStore {
             extensionLog("[Store] follow: no surface \(key) — renderer #\(renderer.debugID) held paused")
             renderer.apply(.paused)
             return
+        }
+        if let surface = SurfaceRegistry.shared.surface(for: key) {
+            DisplayReconfiguration.refreshHDRHeadroom(for: surface)
         }
         renderer.apply(cell.target)
         renderer.setFollowTask(Task(name: "Follow \(key)") {
