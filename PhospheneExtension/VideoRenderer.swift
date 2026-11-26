@@ -61,7 +61,8 @@ final class VideoRenderer: @unchecked Sendable {
     var activePair: PairRendition.Playback?
     var wantsDark = false
     var renderingSuspended = false
-    var settlesAfterSelection = false
+    var allowsSelectionPlayback = false
+    var firstFrameHoldDeadline: DispatchTime?
     var pairFeedSuspended = false
     var pairReadersReleased = false
     var needsDeepPauseFrameRefresh = false
@@ -356,15 +357,24 @@ final class VideoRenderer: @unchecked Sendable {
 
     private enum HandoffResult: Sendable { case installed, retryFrozen, unavailable }
 
+    func finishFirstFrameHold(at deadline: DispatchTime) {
+        guard firstFrameHoldDeadline == deadline else { return }
+        firstFrameHoldDeadline = nil
+        guard isRunning, isPaused, rampTimer == nil else { return }
+        CMTimebaseSetRate(timebase, rate: 0)
+        suspendPairFeed()
+    }
+
     private func startPhase(for request: StartHandoff) async -> StartPhase? {
         await withCheckedContinuation { reply in
-            queue.async { [self] in
+            @Sendable
+            func readPhase(canWait: Bool) {
                 var time = CMTime.invalid
                 var rate = 0.0
                 guard isRunning, hasStarted, isPaused, currentPolicy == .paused, !renderingSuspended, !flushInFlight,
                       let pair = variantSelector?.pair, pair.pair.membershipID == request.pair.pair.membershipID,
                       CMTimebaseGetTimeAndRate(timebase, timeOut: &time, rateOut: &rate) == 0, time.isNumeric,
-                      rate == 0 || (rate > 0 && rate <= 1 && rampDownPhase != nil && !pairFeedSuspended),
+                      rate == 0 || (rate > 0 && rate <= 1 && !pairFeedSuspended),
                       let visible = visibleSources.last(where: { $0.start <= time }),
                       let playback = visible.playback, request.pair.retains(playback),
                       let identity = pair.originals.identity(for: visible.url), visible.identity == identity else {
@@ -372,14 +382,27 @@ final class VideoRenderer: @unchecked Sendable {
                     return
                 }
                 let url = visible.url == pair.originals.alternate ? playback.alternate : playback.original
-                guard url != request.pair.url(dark: request.wantsDark, in: playback) else {
+                guard url != request.pair.url(dark: request.wantsDark, in: playback), request.isCurrent() else {
                     reply.resume(returning: nil)
+                    return
+                }
+                if rate > 0, rampDownPhase == nil {
+                    if canWait, let deadline = firstFrameHoldDeadline {
+                        queue.asyncAfter(deadline: deadline) { [self] in
+                            // Either callback at this deadline can be dequeued first.
+                            finishFirstFrameHold(at: deadline)
+                            readPhase(canWait: false)
+                        }
+                    } else {
+                        reply.resume(returning: nil)
+                    }
                     return
                 }
                 reply.resume(returning: StartPhase(
                     playback: playback, url: url, loopStart: visible.loopStart, time: time, rate: rate, ramp: rampDownPhase,
                 ))
             }
+            queue.async { readPhase(canWait: true) }
         }
     }
 
@@ -468,8 +491,7 @@ final class VideoRenderer: @unchecked Sendable {
         hasStarted = true
 
         let paired = variantSelector?.pair != nil
-        let shouldSettle = paired && isPaused && settlesAfterSelection && !renderingSuspended
-        let holdFirstFrame = renderingSuspended || (paired && isPaused && !shouldSettle)
+        let holdFirstFrame = renderingSuspended || (paired && isPaused && !allowsSelectionPlayback)
         if holdFirstFrame {
             cancelRamp()
             CMTimebaseSetRate(timebase, rate: 0)
@@ -501,19 +523,13 @@ final class VideoRenderer: @unchecked Sendable {
             lastEnqueuedEnd = first.presentationTimeStamp + first.duration
         }
 
-        if shouldSettle {
-            settleSelection()
-        } else if holdFirstFrame {
+        if holdFirstFrame {
             suspendPairFeed()
             scheduleDeepPause()
         } else {
-            CMTimebaseSetRate(timebase, rate: 1)
+            startSelectionClock()
         }
         firstFrameShown()
-        if !holdFirstFrame, !paired, isPaused {
-            holdAfterFirstFrame()
-            scheduleDeepPause()
-        }
 
         prepareNextReader()
         prepareAppearanceCut()

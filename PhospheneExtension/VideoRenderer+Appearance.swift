@@ -81,29 +81,32 @@ extension VideoRenderer {
         }
     }
 
-    func prepareAppearanceCut() {
+    func prepareAppearanceCut(afterTransitionAt boundary: CMTime? = nil) {
         guard hasStarted, isRunning, !flushInFlight,
               !renderingSuspended, cutTask == nil, pendingCut == nil, movingAppearance == nil, matchedDissolve == nil else { return }
+        let now = CMTimebaseGetTime(timebase)
         if needsMatchedRecovery || pairReadersReleased {
-            prepareHeldAppearance(for: variantSelector?.pair)
+            prepareHeldAppearance(for: variantSelector?.pair, at: now)
             return
         }
         guard let pair = variantSelector?.pair, let activePair else { return }
-        let now = CMTimebaseGetTime(timebase)
         if CMTimebaseGetRate(timebase) == 0 {
             if isPaused {
-                prepareHeldAppearance(for: pair)
+                prepareHeldAppearance(for: pair, at: now)
             }
             return
         }
         let wanted = pair.url(dark: wantsDark, in: activePair)
-        guard wanted != asset.url, let openedFile, activePair.identity(for: asset.url) == openedFile,
-              let identity = activePair.identity(for: wanted), identity != failedSource, activePair.filesMatch else { return }
-        let preferred = nextAppearancePlayback(for: pair, retaining: activePair)
-        if preferred != activePair, preferred.identity(for: pair.url(dark: wantsDark, in: preferred)) != failedSource {
-            prepareHeldAppearance(for: pair, switchingTo: preferred)
+        if wanted == asset.url {
+            guard let boundary else { return }
+            let preferred = nextAppearancePlayback(for: pair, retaining: activePair)
+            if preferred != activePair, preferred.identity(for: pair.url(dark: wantsDark, in: preferred)) != failedSource {
+                prepareHeldAppearance(for: pair, at: CMTimeMaximum(now, boundary), switchingTo: preferred)
+            }
             return
         }
+        guard let openedFile, activePair.identity(for: asset.url) == openedFile,
+              let identity = activePair.identity(for: wanted), identity != failedSource, activePair.filesMatch else { return }
         if frameMatchedTransitions, !useKeyframeCut {
             if AppearanceTransition.reduceMotion {
                 useKeyframeCut = true
@@ -315,7 +318,7 @@ extension VideoRenderer {
         recordSnapshotSource(at: pts)
         traceLog("[Appearance #\(debugID)] Resumed compressed playback at \(pts.seconds)s")
         prepareNextReader()
-        prepareAppearanceCut()
+        prepareAppearanceCut(afterTransitionAt: pts)
     }
 
     private func prepareMovingAppearance(playback: PairRendition.Playback, url: URL, at time: CMTime, origin: CMTime) {
@@ -394,6 +397,7 @@ extension VideoRenderer {
             guard let self, let leg, movingAppearance === leg, dissolveGeneration == generation else { return }
             guard towardIncoming else {
                 cancelAppearanceCut()
+                prepareAppearanceCut(afterTransitionAt: CMTimebaseGetTime(timebase))
                 return
             }
             guard let spareLayer, let activePair, let handoff = leg.promote() else {
@@ -422,6 +426,7 @@ extension VideoRenderer {
             retireSpareLayer()
             prepareNextReader()
             feedFromCurrentReader()
+            prepareAppearanceCut(afterTransitionAt: now)
         }
     }
 
@@ -430,8 +435,7 @@ extension VideoRenderer {
     }
 
     /// Rebuild decoder references from a sync frame at the visible phase, even when the readers are gone.
-    private func prepareHeldAppearance(for pair: PairRendition?, switchingTo preferred: PairRendition.Playback? = nil) {
-        let time = CMTimebaseGetTime(timebase)
+    private func prepareHeldAppearance(for pair: PairRendition?, at time: CMTime, switchingTo preferred: PairRendition.Playback? = nil) {
         guard let selector = variantSelector else { return }
         let waking = pairReadersReleased && !isPaused
         guard let visible = visibleSources.last(where: { $0.start <= time }),
@@ -450,11 +454,14 @@ extension VideoRenderer {
         }
         let wanted = pair?.url(dark: wantsDark, in: playback) ?? selector.fallback
         let changesImage = visible.url != (pair?.url(dark: wantsDark) ?? wanted)
-        guard waking || needsMatchedRecovery || changesImage || activePair.map({ asset.url != pair?.url(dark: wantsDark, in: $0) }) == true else { return }
+        guard preferred != nil || waking || needsMatchedRecovery || changesImage || activePair.map({ asset.url != pair?.url(dark: wantsDark, in: $0) }) == true else { return }
         let restoredPair = pair == nil ? nil : playback
         let generation = cutGeneration
         cutTask = Task { [weak self] in
             let prepared = await PreparedPausedAppearance.prepare(playback: playback, url: wanted, at: time, loopStart: visible.loopStart)
+            if prepared != nil, preferred != nil, let self {
+                await waitForTierBoundary(time)
+            }
             guard !Task.isCancelled, let self else {
                 prepared?.reader.cancelReading()
                 return
@@ -474,13 +481,13 @@ extension VideoRenderer {
                         _ = open(pair?.url(dark: wantsDark) ?? selector.fallback, pair: pair?.originals, reason: .reload)
                     } else if preferred != nil {
                         failedSource = playback.identity(for: wanted)
-                        prepareAppearanceCut()
+                        prepareAppearanceCut(afterTransitionAt: time)
                     }
                     return
                 }
                 // A policy update can supersede a running retier while its frame is loading.
                 if let pair, preferred != nil, preferred != nextAppearancePlayback(for: pair, retaining: visiblePlayback) {
-                    prepareAppearanceCut()
+                    prepareAppearanceCut(afterTransitionAt: time)
                     return
                 }
                 let now = CMTimebaseGetTime(timebase)
@@ -511,6 +518,16 @@ extension VideoRenderer {
                     feedFromCurrentReader()
                 }
             }
+        }
+    }
+
+    /// Let the last queued blend frame reach the display before flushing for a tier change.
+    private func waitForTierBoundary(_ time: CMTime) async {
+        while !Task.isCancelled {
+            let remaining = (time - CMTimebaseGetTime(timebase)).seconds
+            let rate = CMTimebaseGetRate(timebase)
+            guard remaining > 0, rate > 0 else { return }
+            try? await Task.sleep(for: .seconds(min(0.25, remaining / rate)))
         }
     }
 
@@ -590,6 +607,7 @@ extension VideoRenderer {
         videoTrack = cut.output.track
         recordSnapshotSource(at: time)
         prepareNextReader()
+        prepareAppearanceCut(afterTransitionAt: time)
         traceLog("[Appearance] Switched to \(next.url.lastPathComponent) at \(time.seconds)")
         return cut.first
     }

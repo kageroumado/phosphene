@@ -188,8 +188,8 @@ nonisolated struct SurfaceTarget: Equatable, Sendable {
 
     var wantsDark = false
     var renderingSuspended = false
-    /// A visible desktop paused solely by lock-screen-only playback can coast after a selection.
-    var settlesAfterSelection = false
+    /// A visible desktop paused solely by lock-screen-only playback can briefly play a new selection.
+    var allowsSelectionPlayback = false
 
     static let paused = SurfaceTarget(policy: .paused, ramps: false)
 }
@@ -275,7 +275,7 @@ nonisolated enum PlaybackReducer {
         return SurfaceTarget(
             policy: lockOnlyDesktop ? .paused : policy, ramps: surface.ramps, hdrMode: prefs.hdrMode,
             frameMatchedTransitions: prefs.frameMatchedTransitions, wantsDark: wantsDark,
-            settlesAfterSelection: lockOnlyDesktop && policy != .paused && surface.role == .desktop && surface.activity == .active,
+            allowsSelectionPlayback: lockOnlyDesktop && policy != .paused && surface.role == .desktop && surface.activity == .active,
         )
     }
 
