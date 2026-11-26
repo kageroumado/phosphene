@@ -15,6 +15,19 @@ struct LibraryInspector: View {
             if selected.count == 1, let entry = selected.first {
                 VideoInspector(entry: entry)
                     .id(entry.id)
+            } else if selected.count == 2, let pair = store.pairAction(for: store.videoSelection) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: InspectorMetrics.sectionSpacing) {
+                        PairComparisonView(selection: pair, swapped: false)
+                            .aspectRatio(16 / 9, contentMode: .fit)
+                            .clipShape(.rect(cornerRadius: InspectorMetrics.previewRadius))
+                        PairMemberNames(pair: pair, swapped: false)
+                        InspectorSection(title: "Paired Wallpaper Actions") {
+                            VideoPairActionButtons(pair: pair, store: store)
+                        }
+                    }
+                    .inspectorPadding()
+                }
             } else if selected.count > 1 {
                 SelectionSummary(count: selected.count, detail: nil)
             } else {
@@ -140,6 +153,24 @@ private struct InfoRows: View {
 
 // MARK: - Video
 
+private struct PairMemberNames: View {
+    let pair: VideoPairSelection
+    let swapped: Bool
+
+    var body: some View {
+        let light = pair.entry(light: true, swapped: swapped)?.name ?? String(localized: "File unavailable")
+        let dark = pair.entry(light: false, swapped: swapped)?.name ?? String(localized: "File unavailable")
+        VStack(alignment: .leading, spacing: 3) {
+            Label(light, systemImage: "sun.max")
+                .accessibilityLabel(Text("Light — \(light)"))
+            Label(dark, systemImage: "moon")
+                .accessibilityLabel(Text("Dark — \(dark)"))
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+    }
+}
+
 /// The video track's codec, and whether this Mac decodes it in hardware.
 nonisolated struct VideoCodec: Equatable {
     let label: String
@@ -262,6 +293,11 @@ struct VideoInspector: View {
                 Section("Appearance") {
                     memberField("Light", member: pair.entry(light: true, swapped: record.swapped))
                     memberField("Dark", member: pair.entry(light: false, swapped: record.swapped))
+                }
+            }
+            if let editablePair = store.pairAction(for: [entry.id]) {
+                Section("Paired Wallpaper Actions") {
+                    VideoPairActionButtons(pair: editablePair, store: store)
                 }
             }
             if isConvertingThis || inspected?.codec?.isHardwareDecoded == false {

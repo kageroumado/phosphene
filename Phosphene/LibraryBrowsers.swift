@@ -582,12 +582,10 @@ struct LibraryTile: View {
                 image = await ThumbnailCache.image(at: model.image)
             }
         }
-        .task(id: isHovered) {
-            guard isHovered, let video = model.video else {
-                preview?.stop()
-                preview = nil
-                return
-            }
+        .task(id: isHovered ? model.video : nil) {
+            preview?.stop()
+            preview = nil
+            guard isHovered, let video = model.video else { return }
             try? await Task.sleep(for: Metrics.hoverDelay)
             guard !Task.isCancelled else { return }
             preview = LoopingPlayer(url: video)
@@ -645,7 +643,7 @@ struct LibraryTile: View {
                     .font(.title2)
                     .foregroundStyle(.tertiary)
             }
-            if let preview {
+            if !model.isPair, let preview {
                 PlayerLayerView(player: preview.player)
             }
         }
@@ -829,9 +827,8 @@ struct LibraryItemMenu: View {
         }
         actions.quickLook
         if actions.pair != nil {
-            actions.editPair
+            actions.pairActions
         }
-        actions.swapAppearances
         actions.optimization
         Divider()
         actions.showInFinder

@@ -1442,6 +1442,16 @@
         }
       }
     },
+    "Create Pair…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建配对…"
+          }
+        }
+      }
+    },
     "Create Variants": {
       "localizations": {
         "zh-Hans": {
@@ -3344,22 +3354,22 @@
         }
       }
     },
+    "Paired Wallpaper Actions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对墙纸操作"
+          }
+        }
+      }
+    },
     "Pairing Requirements": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "配对要求"
-          }
-        }
-      }
-    },
-    "Pair…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "配对…"
           }
         }
       }

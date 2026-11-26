@@ -23,24 +23,13 @@ struct LibraryVideoActions {
             .help("Phosphene wallpapers are selected in System Settings → Wallpaper")
     }
 
-    var editPair: some View {
-        let pair = self.pair
-        let title = pair?.actionTitle ?? "Pair…"
-        return Button {
-            store.pairSheet = pair
-        } label: {
-            Label(title, image: .lightDarkPair)
-        }
-        .help(Text(title))
-        .disabled(pair == nil)
-    }
-
     @ViewBuilder
-    var swapAppearances: some View {
-        if let pair, pair.saved != nil, pair.members.count == 2 {
-            Button("Swap Light and Dark", systemImage: "arrow.left.arrow.right") {
-                store.swapAppearances(pair)
-            }
+    var pairActions: some View {
+        if let pair {
+            VideoPairActionButtons(pair: pair, store: store)
+        } else {
+            Button("Create Pair…") {}
+                .disabled(true)
         }
     }
 

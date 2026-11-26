@@ -104,7 +104,7 @@ private struct LibraryRoot: View {
         .sheet(item: $store.pairSheet) { selection in
             VideoPairSheet(selection: selection, completed: store.completePairEdit)
         }
-        .quickLookPreview($store.quickLookURL)
+        .quickLookPreview($store.quickLookURL, in: store.quickLookURLs)
         .alert(store.pendingDelete?.title ?? "", isPresented: $store.isConfirmingDelete) {
             Button(store.pendingDelete?.isSinglePair == true ? "Delete Pair" : "Delete", role: .destructive) {
                 store.confirmDelete()
@@ -369,9 +369,6 @@ private struct LibraryToolbar: ToolbarContent {
                 if actions.hasSingleSelection {
                     ToolbarItem { actions.useAsWallpaper }
                 }
-                if actions.pair != nil {
-                    ToolbarItem { actions.editPair }
-                }
                 if actions.optimizationTarget != nil {
                     ToolbarItem { actions.optimization }
                 }
@@ -379,7 +376,6 @@ private struct LibraryToolbar: ToolbarContent {
                 ToolbarItem {
                     Menu("Selection Actions", systemImage: "ellipsis.circle") {
                         actions.quickLook
-                        actions.swapAppearances
                         actions.delete
                     }
                     .help("More actions for the selected videos")
@@ -596,8 +592,7 @@ struct LibraryCommands: Commands {
                 let actions = LibraryVideoActions(store: store, ids: store.videoSelection)
                 actions.useAsWallpaper
                     .disabled(!actions.hasSingleSelection)
-                actions.editPair
-                actions.swapAppearances
+                actions.pairActions
                 actions.optimization
                 Divider()
                 actions.quickLook
@@ -610,7 +605,7 @@ struct LibraryCommands: Commands {
                     .keyboardShortcut(.delete)
                     .disabled(!actions.hasSelection)
             } else {
-                Button("Pair…") {}
+                Button("Create Pair…") {}
                     .disabled(true)
                 Button("Make Videos…") { store?.requestMakeVideos() }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
