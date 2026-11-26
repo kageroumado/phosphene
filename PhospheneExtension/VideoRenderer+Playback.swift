@@ -130,13 +130,9 @@ extension VideoRenderer {
     func startSelectionClock() {
         CMTimebaseSetRate(timebase, rate: 1)
         guard isPaused else { return }
-        firstFrameHoldGeneration &+= 1
-        let generation = firstFrameHoldGeneration
-        queue.asyncAfter(deadline: .now() + 0.25) { [self] in
-            guard isRunning, isPaused, rampTimer == nil, firstFrameHoldGeneration == generation else { return }
-            CMTimebaseSetRate(timebase, rate: 0)
-            suspendPairFeed()
-        }
+        let deadline = DispatchTime.now() + 0.25
+        firstFrameHoldDeadline = deadline
+        queue.asyncAfter(deadline: deadline) { [self] in finishFirstFrameHold(at: deadline) }
         scheduleDeepPause()
     }
 
@@ -244,6 +240,7 @@ extension VideoRenderer {
     }
 
     func cancelRamp() {
+        firstFrameHoldDeadline = nil
         rampTimer?.cancel()
         rampTimer = nil
         rampDownPhase = nil
@@ -383,8 +380,12 @@ extension VideoRenderer {
         // `asset` is by then (the latest pick) — so rapid switching coalesces to one
         // reset per settle, never two overlapping flushes.
         traceLog("  [restart #\(debugID)] ENTER flushInFlight=\(flushInFlight) pending=\(pendingRestart != nil) asset=\(asset.url.lastPathComponent)")
+        firstFrameHoldDeadline = nil
         if flushInFlight {
-            pendingRestart = reason
+            // A library refresh still belongs to the selection whose flush is pending.
+            if pendingRestart != .selection {
+                pendingRestart = reason
+            }
             traceLog("  [restart #\(debugID)] flush in flight → coalescing to latest (\(asset.url.lastPathComponent))")
             return
         }
@@ -420,7 +421,7 @@ extension VideoRenderer {
         if let pendingRestart {
             self.pendingRestart = nil
             traceLog("  [restart #\(debugID)] coalesced → restarting to \(asset.url.lastPathComponent)")
-            restartWithCurrentAsset(pendingRestart)
+            restartWithCurrentAsset(reason == .selection ? .selection : pendingRestart)
             return
         }
         guard let (reader, output) = startSelectedReader() else {
@@ -460,6 +461,9 @@ extension VideoRenderer {
                 "rendererStatus=\(renderer.status.rawValue) requiresFlush=\(renderer.requiresFlushToResumeDecoding) " +
                 "readerStatus=\(reader.status.rawValue) err=\(renderer.error?.localizedDescription ?? "-")",
         )
+        if CMTimebaseGetRate(timebase) > 0, !renderingSuspended {
+            pairFeedSuspended = false
+        }
         prepareAppearanceCut()
         feedLogBudget = 4
         prepareNextReader()
