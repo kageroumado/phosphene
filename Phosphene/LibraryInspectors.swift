@@ -295,11 +295,6 @@ struct VideoInspector: View {
                     memberField("Dark", member: pair.entry(light: false, swapped: record.swapped))
                 }
             }
-            if let editablePair = store.pairAction(for: [entry.id]) {
-                Section("Paired Wallpaper Actions") {
-                    VideoPairActionButtons(pair: editablePair, store: store)
-                }
-            }
             if isConvertingThis || inspected?.codec?.isHardwareDecoded == false {
                 Section {
                     softwareDecodeNotice(inspected?.codec?.label)
@@ -318,6 +313,11 @@ struct VideoInspector: View {
                     } label: {
                         Text(verbatim: row.label)
                     }
+                }
+            }
+            if let editablePair = store.pairAction(for: [entry.id]) {
+                Section("Paired Wallpaper Actions") {
+                    VideoPairActionButtons(pair: editablePair, store: store)
                 }
             }
             Section("Optimization") {
