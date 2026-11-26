@@ -116,6 +116,44 @@ struct RowThumbnail: View {
     }
 }
 
+/// The same split poster and delayed, synchronized preview for grid tiles and table rows.
+private struct LibraryPairThumbnail: View {
+    let pair: VideoPairSelection
+    let revision: Int
+
+    @Environment(\.appearsActive) private var appearsActive
+    @State private var isHovered = false
+    @State private var isPlaying = false
+
+    var body: some View {
+        VideoPairPreview(selection: pair, swapped: pair.saved?.swapped == true, contentMode: .fill, isPlaying: isPlaying)
+            .id(revision)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 && appearsActive }
+            .onScrollVisibilityChange(threshold: 0.01) { visible in
+                if !visible {
+                    isHovered = false
+                }
+            }
+            .onChange(of: appearsActive) {
+                if !appearsActive {
+                    isHovered = false
+                }
+            }
+            .task(id: isHovered) {
+                isPlaying = false
+                guard isHovered else { return }
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled else { return }
+                isPlaying = true
+            }
+            .onDisappear {
+                isHovered = false
+                isPlaying = false
+            }
+    }
+}
+
 // MARK: - Videos
 
 /// The library's videos as a sortable table or a grid of thumbnails.
@@ -135,7 +173,8 @@ struct VideoBrowser: View {
     private var tiles: [LibraryTileModel] {
         let working = manager.isOptimizing ? manager.optimizingEntryID : nil
         return rows.map { row in
-            let badge: LibraryTileModel.Badge? = if row.id == working {
+            let pair = store.pairs[row.id]
+            let badge: LibraryTileModel.Badge? = if (pair?.id ?? row.id) == working {
                 .working(
                     label: manager.isConverting ? String(localized: "Converting") : String(localized: "Optimizing"),
                     progress: manager.optimizationProgress,
@@ -147,10 +186,10 @@ struct VideoBrowser: View {
             }
             return LibraryTileModel(
                 id: row.id, title: row.name,
-                image: VideoDeploymentService.thumbnailURL(for: row.id), imageFit: .fill,
-                video: VideoDeploymentService.videoURL(for: row.entry),
+                image: row.isPair ? nil : VideoDeploymentService.thumbnailURL(for: row.id), imageFit: .fill,
+                video: row.isPair ? nil : VideoDeploymentService.videoURL(for: row.entry),
                 placeholderSymbol: "film", isDimmed: false, badge: badge,
-                help: row.isInUse ? String(localized: "In use as wallpaper") : "",
+                help: row.isInUse ? String(localized: "In use as wallpaper") : "", isPair: row.isPair,
             )
         }
     }
@@ -160,13 +199,25 @@ struct VideoBrowser: View {
         return Table(rows, selection: $store.videoSelection, sortOrder: $store.videoSort) {
             TableColumn("Name", value: \.name) { row in
                 HStack(spacing: 8) {
-                    RowThumbnail(
-                        url: VideoDeploymentService.thumbnailURL(for: row.id), placeholder: "film",
-                        revision: store.revision,
-                    )
+                    if let pair = store.pairs[row.id] {
+                        LibraryPairThumbnail(pair: pair, revision: store.revision)
+                            .frame(width: 48, height: 27)
+                            .clipShape(.rect(cornerRadius: 4))
+                            .accessibilityHidden(true)
+                    } else {
+                        RowThumbnail(
+                            url: VideoDeploymentService.thumbnailURL(for: row.id), placeholder: "film",
+                            revision: store.revision,
+                        )
+                    }
                     Text(row.name)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if row.isPair {
+                        Image(.lightDarkPair)
+                            .help("Light/Dark Pair")
+                            .accessibilityLabel("Light/Dark Pair")
+                    }
                     if row.isInUse {
                         Spacer(minLength: 4)
                         Image(systemName: "checkmark.circle.fill")
@@ -554,6 +605,7 @@ struct LibraryTile: View {
         .help(model.help)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(model.title)
+        .accessibilityValue(model.isPair ? Text("Light/Dark Pair") : Text(""))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { store.click(model.id) }
         .task(id: ThumbnailKey(url: model.image, revision: revision)) {
@@ -562,12 +614,10 @@ struct LibraryTile: View {
                 image = await ThumbnailCache.image(at: model.image)
             }
         }
-        .task(id: isHovered) {
-            guard isHovered, let video = model.video else {
-                preview?.stop()
-                preview = nil
-                return
-            }
+        .task(id: isHovered ? model.video : nil) {
+            preview?.stop()
+            preview = nil
+            guard isHovered, let video = model.video else { return }
             try? await Task.sleep(for: Metrics.hoverDelay)
             guard !Task.isCancelled else { return }
             preview = LoopingPlayer(url: video)
@@ -595,7 +645,9 @@ struct LibraryTile: View {
 
     private var thumbnail: some View {
         ZStack {
-            if let image {
+            if model.isPair, let pair = store.pairs[model.id] {
+                LibraryPairThumbnail(pair: pair, revision: revision)
+            } else if let image {
                 switch model.imageFit {
                 case .fill:
                     Image(nsImage: image)
@@ -623,7 +675,7 @@ struct LibraryTile: View {
                     .font(.title2)
                     .foregroundStyle(.tertiary)
             }
-            if let preview {
+            if !model.isPair, let preview {
                 PlayerLayerView(player: preview.player)
             }
         }
@@ -635,6 +687,11 @@ struct LibraryTile: View {
                 .strokeBorder(.separator, lineWidth: 0.5)
         }
         .overlay(alignment: .bottomTrailing) { badge }
+        .overlay(alignment: .topTrailing) {
+            if model.isPair {
+                pill { Image(.lightDarkPair) }
+            }
+        }
         .overlay {
             if isSelected {
                 RoundedRectangle(cornerRadius: Metrics.cornerRadius + Metrics.ringOutset, style: .continuous)
@@ -760,10 +817,18 @@ struct LibraryItemMenu: View {
     private func videoItems(_ ids: Set<String>) -> some View {
         Button("Quick Look") { store.toggleQuickLook(ids.first) }
         Button("Open Wallpaper Settings…") { store.openWallpaperSettings() }
+        if let pair = store.pairAction(for: ids) {
+            VideoPairActionButtons(pair: pair, store: store)
+        }
         Divider()
         Button("Show in Finder") { store.showInFinder(ids) }
         Divider()
-        Button(ids.count == 1 ? "Delete…" : "Delete \(ids.count) Videos…", role: .destructive) {
+        let title: LocalizedStringKey = if ids.count == 1, let id = ids.first, store.pairs[id] != nil {
+            "Delete Pair…"
+        } else {
+            ids.count == 1 ? "Delete…" : "Delete \(ids.count) Videos…"
+        }
+        Button(title, role: .destructive) {
             store.requestDelete(ids)
         }
     }

@@ -14,6 +14,9 @@ struct LibrarySidebar: View {
         List(selection: $store.sidebarSelection) {
             Section("Library") {
                 row(Text("All Videos"), symbol: "film.stack", count: counts.all, tag: .allVideos)
+                Label("Light/Dark Pairs", image: .lightDarkPair)
+                    .badge(counts.pairs)
+                    .tag(LibrarySection.lightDarkPairs)
                 row(Text("In Use"), symbol: "play.rectangle", count: counts.inUse, tag: .inUse)
             }
 
