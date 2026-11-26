@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import QuartzCore
@@ -80,6 +81,28 @@ enum DisplayReconfiguration {
         if error != .success {
             extensionLog("[Geometry] CGDisplayRegisterReconfigurationCallback failed: \(error.rawValue)")
         }
+        // AppKit also posts this when current EDR headroom changes without a mode change.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main,
+        ) { _ in
+            MainActor.assumeIsolated { refreshHDRHeadroom() }
+        }
+    }
+
+    @MainActor
+    static func refreshHDRHeadroom(for surface: HostedSurface) {
+        guard !surface.isPreview, let renderer = surface.renderer else { return }
+        renderer.setExternalHDRHeadroom(ExternalWallpaperToneMap.headroom(for: surface.displayID))
+    }
+
+    @MainActor
+    static func refreshHDRHeadroom() {
+        let registry = SurfaceRegistry.shared
+        for key in registry.surfaceKeys {
+            if let surface = registry.surface(for: key) {
+                refreshHDRHeadroom(for: surface)
+            }
+        }
     }
 
     private static func schedule(displayID: CGDirectDisplayID, flags: CGDisplayChangeSummaryFlags) {
@@ -88,6 +111,7 @@ enum DisplayReconfiguration {
             for key in SurfaceRegistry.shared.surfaceKeys {
                 reconcileSurfaceGeometry(for: key, because: "display reconfigured")
             }
+            DispatchQueue.main.async { refreshHDRHeadroom() }
         }
         Lifecycle.queue.async {
             pendingPass?.cancel()
