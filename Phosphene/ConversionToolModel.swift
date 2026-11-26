@@ -10,7 +10,6 @@ nonisolated enum PairConverterRequest: Codable, Hashable {
 
 @MainActor @Observable
 final class ConversionToolModel {
-    private(set) static var runningJobCount = 0
     let mode: ConversionMode
     private(set) var light: ConversionSource?
     private(set) var dark: ConversionSource?
@@ -237,19 +236,19 @@ final class ConversionToolModel {
             destination = url
         }
         let output = destination.map { (url: $0, priorIdentity: FileIdentity(of: $0)) }
+        guard !isRunning, VideoWorkGate.shared.beginWork() else { return }
         let id = UUID()
         jobID = id
         progress = 0
         isRunning = true
-        Self.runningJobCount += 1
         errorMessage = nil
         completed = nil
         job = Task {
             defer {
-                Self.runningJobCount -= 1
                 isRunning = false
                 job = nil
                 jobID = nil
+                VideoWorkGate.shared.endWork()
             }
             do {
                 let message = try await runConversion(request, to: output, id: id)
