@@ -330,14 +330,6 @@ private struct LibraryToolbar: ToolbarContent {
                 }
             }
         } else if content == .videos {
-            if let pair = store.pairAction(for: store.videoSelection) {
-                ToolbarItem {
-                    Button { store.pairSheet = pair } label: {
-                        Label(pair.actionTitle, image: .lightDarkPair)
-                    }
-                    .help(Text(pair.actionTitle))
-                }
-            }
             ToolbarItem {
                 Button("Add Video", systemImage: "plus") {
                     store.addVideo()
@@ -552,7 +544,7 @@ struct LibraryCommands: Commands {
             Button("Light/Dark Pair Converter…") { openWindow(value: PairConverterRequest.blank) }
             Divider()
             let pair = store.flatMap { $0.pairAction(for: $0.videoSelection) }
-            Button(pair?.actionTitle ?? "Pair…") {
+            Button(pair?.actionTitle ?? "Create Pair…") {
                 store?.pairSheet = pair
             }
             .disabled(pair == nil)

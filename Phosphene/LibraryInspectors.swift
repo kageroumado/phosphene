@@ -13,6 +13,19 @@ struct LibraryInspector: View {
             let selected = store.selectedVideos
             if selected.count == 1, let entry = selected.first {
                 VideoInspector(entry: entry)
+            } else if selected.count == 2, let pair = store.pairAction(for: store.videoSelection) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: InspectorMetrics.sectionSpacing) {
+                        PairComparisonView(selection: pair, swapped: false)
+                            .aspectRatio(16 / 9, contentMode: .fit)
+                            .clipShape(.rect(cornerRadius: InspectorMetrics.previewRadius))
+                        PairMemberNames(pair: pair, swapped: false)
+                        InspectorSection(title: "Paired Wallpaper Actions") {
+                            VideoPairActionButtons(pair: pair, store: store)
+                        }
+                    }
+                    .inspectorPadding()
+                }
             } else if selected.count > 1 {
                 SelectionSummary(count: selected.count, detail: nil)
             } else {
@@ -138,6 +151,24 @@ private struct InfoRows: View {
 
 // MARK: - Video
 
+private struct PairMemberNames: View {
+    let pair: VideoPairSelection
+    let swapped: Bool
+
+    var body: some View {
+        let light = pair.entry(light: true, swapped: swapped)?.name ?? String(localized: "File unavailable")
+        let dark = pair.entry(light: false, swapped: swapped)?.name ?? String(localized: "File unavailable")
+        VStack(alignment: .leading, spacing: 3) {
+            Label(light, systemImage: "sun.max")
+                .accessibilityLabel(Text("Light — \(light)"))
+            Label(dark, systemImage: "moon")
+                .accessibilityLabel(Text("Dark — \(dark)"))
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+    }
+}
+
 /// The video track's codec, and whether this Mac decodes it in hardware.
 nonisolated struct VideoCodec: Equatable {
     let label: String
@@ -229,6 +260,11 @@ struct VideoInspector: View {
                     )
                 }
                 header
+                if let editablePair = store.pairAction(for: [entry.id]) {
+                    InspectorSection(title: "Paired Wallpaper Actions") {
+                        VideoPairActionButtons(pair: editablePair, store: store)
+                    }
+                }
                 if let codec, !codec.isHardwareDecoded {
                     softwareDecodeNotice(codec.label)
                 }
@@ -257,16 +293,7 @@ struct VideoInspector: View {
             VStack(alignment: .leading, spacing: 3) {
                 InspectorNameField(entryID: entry.id, name: entry.name)
                 if let pair, let record = pair.saved {
-                    let light = pair.entry(light: true, swapped: record.swapped)?.name ?? String(localized: "File unavailable")
-                    let dark = pair.entry(light: false, swapped: record.swapped)?.name ?? String(localized: "File unavailable")
-                    Label(light, systemImage: "sun.max")
-                        .accessibilityLabel(Text("Light — \(light)"))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Label(dark, systemImage: "moon")
-                        .accessibilityLabel(Text("Dark — \(dark)"))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    PairMemberNames(pair: pair, swapped: record.swapped)
                 }
                 let usedOn = usedOn
                 if !usedOn.isEmpty {
