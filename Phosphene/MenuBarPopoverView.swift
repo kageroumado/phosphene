@@ -347,8 +347,8 @@ struct MenuBarPopoverView: View {
                 Text("Checking…")
             }
             .modifier(RestingChip())
-        } else if updates.checkedNoInstallableUpdate {
-            Label("No installable update found", systemImage: "info.circle")
+        } else if updates.checkedUpToDate {
+            Label("Phosphene is up to date", systemImage: "checkmark")
                 .modifier(RestingChip())
         } else {
             restingChip

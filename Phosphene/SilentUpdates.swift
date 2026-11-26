@@ -80,7 +80,7 @@ final class SilentUpdates {
     private(set) var isChecking = false
 
     /// True briefly after a successful explicit check found no installable update.
-    private(set) var checkedNoInstallableUpdate = false
+    private(set) var checkedUpToDate = false
 
     /// The updater: check loop, plus the quiet-moment install when auto-update is on.
     /// Created up front so its `Tiptoe` reconciles the recorded wait and the post-update notice
@@ -164,7 +164,7 @@ final class SilentUpdates {
     func checkForUpdates() async {
         guard !isChecking else { return }
         isChecking = true
-        checkedNoInstallableUpdate = false
+        checkedUpToDate = false
         defer { isChecking = false }
         // The background check shares AppUpdater's metadata request and can prepare the download.
         Task { await check() }
@@ -174,10 +174,10 @@ final class SilentUpdates {
             return
         }
         guard availableVersion == nil, activity.pendingVersion == nil else { return }
-        checkedNoInstallableUpdate = true
+        checkedUpToDate = true
         Task(name: "Clear the update check notice") { [weak self] in
             try? await Task.sleep(for: Self.checkNoticeDuration)
-            self?.checkedNoInstallableUpdate = false
+            self?.checkedUpToDate = false
         }
     }
 
@@ -217,7 +217,7 @@ final class SilentUpdates {
                 showAvailableUpdate(version: version, autoInstall: autoInstall)
             case .success(nil):
                 let notice = NSAlert()
-                notice.messageText = String(localized: "No installable update found")
+                notice.messageText = String(localized: "Phosphene is up to date")
                 notice.addButton(withTitle: String(localized: "Done"))
                 notice.addButton(withTitle: String(localized: "View on GitHub"))
                 if notice.runModal() == .alertSecondButtonReturn {

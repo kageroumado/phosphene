@@ -1814,12 +1814,12 @@
         }
       }
     },
-    "No installable update found": {
+    "Phosphene is up to date": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有找到可安装的更新"
+            "value": "Phosphene 已是最新版本"
           }
         }
       }
