@@ -10,10 +10,8 @@ struct UpdateActivityTests {
         let (finishPreparation, resumePreparation) = AsyncStream<Void>.makeStream()
         let (manualRequested, requested) = AsyncStream<Void>.makeStream()
         let tiptoe = makeTiptoe()
-        let activity = UpdateActivity(tiptoe: tiptoe) {
-            requested.yield()
-            return true
-        }
+        let videoWork = VideoWorkGate()
+        let activity = UpdateActivity(tiptoe: tiptoe, videoWork: videoWork)
         var completedPreparation = false
         var installed = false
         let background = Task {
@@ -25,6 +23,7 @@ struct UpdateActivityTests {
                 await stage(candidate("2.0.0") {
                     #expect(completedPreparation)
                     #expect(activity.isReplacingApp)
+                    #expect(!videoWork.beginWork())
                     await activity.check {
                         Issue.record("A background check started during the swap.")
                     }
@@ -37,7 +36,8 @@ struct UpdateActivityTests {
             break
         }
         let manual = Task {
-            try await activity.install(version: "2.0.0") {
+            requested.yield()
+            return try await activity.install(version: "2.0.0") {
                 Issue.record("The offered version was already prepared.")
                 return nil
             }
@@ -56,7 +56,10 @@ struct UpdateActivityTests {
 
     @Test
     func `running video work blocks manual installation before checking for a candidate`() async throws {
-        let activity = UpdateActivity(tiptoe: makeTiptoe(), videoIsIdle: { false })
+        let videoWork = VideoWorkGate()
+        try #require(videoWork.beginWork())
+        defer { videoWork.endWork() }
+        let activity = UpdateActivity(tiptoe: makeTiptoe(), videoWork: videoWork)
         let result = try await activity.install(version: "2.0.0") {
             Issue.record("The updater started while video work was active.")
             return nil
@@ -69,11 +72,8 @@ struct UpdateActivityTests {
         let (preparing, started) = AsyncStream<Void>.makeStream()
         let (finishPreparation, resumePreparation) = AsyncStream<Void>.makeStream()
         let (manualRequested, requested) = AsyncStream<Void>.makeStream()
-        let video = VideoWork()
-        let activity = UpdateActivity(tiptoe: makeTiptoe()) {
-            requested.yield()
-            return video.isIdle
-        }
+        let videoWork = VideoWorkGate()
+        let activity = UpdateActivity(tiptoe: makeTiptoe(), videoWork: videoWork)
         let background = Task {
             await activity.check {
                 started.yield()
@@ -86,7 +86,8 @@ struct UpdateActivityTests {
             break
         }
         let manual = Task {
-            try await activity.install(version: "2.0.0") {
+            requested.yield()
+            return try await activity.install(version: "2.0.0") {
                 Issue.record("The updater started after video work began.")
                 return nil
             }
@@ -94,8 +95,8 @@ struct UpdateActivityTests {
         for await _ in manualRequested {
             break
         }
-        video.isIdle = false
-        activity.videoWorkChanged()
+        try #require(videoWork.beginWork())
+        defer { videoWork.endWork() }
         resumePreparation.yield()
         await background.value
         #expect(try await manual.value == .videoWorkInProgress)
@@ -103,13 +104,14 @@ struct UpdateActivityTests {
     }
 
     @Test
-    func `quiet swap remains reserved when another Tiptoe clears the notice`() async {
+    func `quiet swap resumes once video work finishes and keeps its reservation`() async throws {
         let defaults = updateDefaults()
         let tiptoe = makeTiptoe(defaults: defaults)
-        let video = VideoWork()
-        let activity = UpdateActivity(tiptoe: tiptoe) { video.isIdle }
+        let videoWork = VideoWorkGate()
+        let activity = UpdateActivity(tiptoe: tiptoe, videoWork: videoWork)
         let (installing, started) = AsyncStream<Void>.makeStream()
-        video.isIdle = false
+        try #require(videoWork.beginWork())
+        try #require(videoWork.beginWork())
         activity.autoInstall = true
         await activity.check {
             await stage(candidate("2.0.0") {
@@ -117,13 +119,19 @@ struct UpdateActivityTests {
                 _ = makeTiptoe(defaults: defaults)
                 #expect(tiptoe.justUpdatedTo == nil)
                 #expect(activity.isReplacingApp)
+                #expect(!videoWork.beginWork())
                 started.yield()
             }, in: activity)
         }
         #expect(tiptoe.pending?.version == "2.0.0")
         #expect(tiptoe.justUpdatedTo == nil)
-        video.isIdle = true
-        activity.videoWorkChanged()
+        // An explicit Tiptoe attempt bypasses its quiet checks. The swap still has to decline.
+        await tiptoe.installNow().value
+        #expect(!activity.isReplacingApp)
+        #expect(activity.pendingVersion == "2.0.0")
+        videoWork.endWork()
+        #expect(tiptoe.pending == nil)
+        videoWork.endWork()
         for await _ in installing {
             break
         }
@@ -132,10 +140,11 @@ struct UpdateActivityTests {
     }
 
     @Test
-    func `a quiet swap keeps its reservation until its failed operation returns`() async {
+    func `a quiet swap keeps its reservation until its failed operation returns`() async throws {
         let defaults = updateDefaults()
         let tiptoe = makeTiptoe(defaults: defaults, secondsSinceInput: 0)
-        let activity = UpdateActivity(tiptoe: tiptoe, videoIsIdle: { true })
+        let videoWork = VideoWorkGate()
+        let activity = UpdateActivity(tiptoe: tiptoe, videoWork: videoWork)
         activity.autoInstall = true
         await activity.check {
             await stage(candidate("2.0.0") {
@@ -150,12 +159,14 @@ struct UpdateActivityTests {
         await tiptoe.installNow().value
         #expect(!activity.isReplacingApp)
         #expect(tiptoe.justUpdatedTo == nil)
+        try #require(videoWork.beginWork())
+        videoWork.endWork()
     }
 
     @Test
     func `Update Now offline leaves an older held download untouched`() async throws {
         let tiptoe = makeTiptoe()
-        let activity = UpdateActivity(tiptoe: tiptoe, videoIsIdle: { true })
+        let activity = UpdateActivity(tiptoe: tiptoe, videoWork: VideoWorkGate())
         var installs = 0
         await activity.check {
             await stage(candidate("2.0.0") { installs += 1 }, in: activity)
@@ -179,7 +190,7 @@ struct UpdateActivityTests {
     @Test(arguments: [false, true])
     func `a held download is discarded only after its replacement is ready`(replacementSucceeds: Bool) async throws {
         let tiptoe = makeTiptoe()
-        let activity = UpdateActivity(tiptoe: tiptoe, videoIsIdle: { true })
+        let activity = UpdateActivity(tiptoe: tiptoe, videoWork: VideoWorkGate())
         var discarded = false
         var installedVersion: String?
         try await activity.prepare(.init(version: "2.0.0") {
@@ -212,7 +223,7 @@ struct UpdateActivityTests {
 
     @Test(arguments: ["2.0.0", "4.0.0"])
     func `a different online candidate cannot replace the advertised version`(version: String) async throws {
-        let activity = UpdateActivity(tiptoe: makeTiptoe(), videoIsIdle: { true })
+        let activity = UpdateActivity(tiptoe: makeTiptoe(), videoWork: VideoWorkGate())
         let result = try await activity.install(version: "3.0.0") {
             .init(version: version) {
                 Issue.record("A different version was prepared for the swap.")
@@ -249,9 +260,5 @@ struct UpdateActivityTests {
             ),
             defaults: defaults ?? updateDefaults(),
         )
-    }
-
-    private final class VideoWork {
-        var isIdle = true
     }
 }

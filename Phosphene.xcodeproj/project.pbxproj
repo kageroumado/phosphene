@@ -82,6 +82,7 @@
 				WallpaperEngine/WETexture.swift,
 				WallpaperEngine/WorkshopCatalog.swift,
 				WallpaperEngine/WorkshopDiscovery.swift,
+				VideoWorkGate.swift,
 				WallpaperStoreParser.swift,
 			);
 			target = 7E5700000000000000000A03 /* PhospheneTests */;

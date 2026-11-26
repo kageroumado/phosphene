@@ -82,10 +82,6 @@ final class SilentUpdates {
     /// True briefly after a successful explicit check found no installable update.
     private(set) var checkedNoInstallableUpdate = false
 
-    var isReplacingApp: Bool {
-        activity.isReplacingApp
-    }
-
     /// The updater: check loop, plus the quiet-moment install when auto-update is on.
     /// Created up front so its `Tiptoe` reconciles the recorded wait and the post-update notice
     /// against the running bundle (a notice that outlived its version is dropped) before the
@@ -107,7 +103,7 @@ final class SilentUpdates {
     private init() {
         updater = AppUpdater(owner: Self.owner, repo: Self.repo)
         tiptoe = Tiptoe()
-        activity = UpdateActivity(tiptoe: tiptoe) { Self.noOptimizationRunning() }
+        activity = UpdateActivity(tiptoe: tiptoe, videoWork: .shared)
         justUpdatedVersion = tiptoe.justUpdatedTo
     }
 
@@ -152,12 +148,6 @@ final class SilentUpdates {
             if enabled {
                 Task { await check() }
             }
-        #endif
-    }
-
-    func videoWorkChanged() {
-        #if !DEBUG
-            activity.videoWorkChanged()
         #endif
     }
 
@@ -387,16 +377,6 @@ final class SilentUpdates {
             tiptoe.acknowledge()
         }
         justUpdatedVersion = nil
-    }
-
-    // MARK: - The gate
-
-    /// Restarting the app mid-optimization would kill the transcode; everything else the app
-    /// does survives a restart (the wallpaper extension is its own process). A missing manager
-    /// answers "not safe" — an update is never so urgent that it is worth guessing.
-    private static func noOptimizationRunning() -> Bool {
-        guard let manager = PhospheneManager.shared else { return false }
-        return !manager.isOptimizing
     }
 }
 

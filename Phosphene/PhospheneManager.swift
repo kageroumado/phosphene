@@ -12,9 +12,7 @@ final class PhospheneManager {
 
     // MARK: - Optimization State
 
-    private(set) var isOptimizing = false {
-        didSet { SilentUpdates.shared.videoWorkChanged() }
-    }
+    private(set) var isOptimizing = false
     private(set) var optimizationProgress: Double = 0
     private(set) var optimizationTierLabel = ""
     private(set) var optimizingEntryID: String?
@@ -141,17 +139,13 @@ final class PhospheneManager {
     }
 
     func optimizeVideo(entryID: String, preset: OptimizationPreset) {
-        guard !isOptimizing, !SilentUpdates.shared.isReplacingApp else { return }
+        guard !isOptimizing,
+              let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID }),
+              VideoWorkGate.shared.beginWork()
+        else { return }
         isOptimizing = true
         optimizingEntryID = entryID
         optimizationProgress = 0
-
-        let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID })
-        guard let entry else {
-            isOptimizing = false
-            optimizingEntryID = nil
-            return
-        }
 
         let sourceURL = VideoDeploymentService.videoURL(for: entry)
         let target = preset.targetResolution(source: entry.resolution)
@@ -189,8 +183,9 @@ final class PhospheneManager {
     /// selections that use it. Shares the optimization state, so one conversion or
     /// optimization runs at a time and app updates wait for it.
     func convertToHEVC(entryID: String) {
-        guard !isOptimizing, !SilentUpdates.shared.isReplacingApp,
-              let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID })
+        guard !isOptimizing,
+              let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID }),
+              VideoWorkGate.shared.beginWork()
         else { return }
         isOptimizing = true
         isConverting = true
@@ -225,6 +220,7 @@ final class PhospheneManager {
         isOptimizing = false
         isConverting = false
         optimizingEntryID = nil
+        VideoWorkGate.shared.endWork()
     }
 
     // MARK: - Private
