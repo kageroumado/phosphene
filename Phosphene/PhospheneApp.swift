@@ -89,6 +89,14 @@ struct PhospheneApp: App {
                     ])
                     NSApp.activate()
                 }
+                Button("Check for Updates…") {
+                    SilentUpdates.shared.checkForUpdates(autoInstall: manager.autoUpdate)
+                }
+                if let version = SilentUpdates.shared.justUpdatedVersion {
+                    Button("What's New") {
+                        WhatsNewWindow.present(version: version, context: .justUpdated)
+                    }
+                }
             }
         }
     }

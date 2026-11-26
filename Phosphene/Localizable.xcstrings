@@ -610,12 +610,32 @@
         }
       }
     },
+    "Check for Updates…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查更新…"
+          }
+        }
+      }
+    },
     "Check your internet connection, or open the Workshop in Steam.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "请检查网络连接，或在 Steam 中打开创意工坊。"
+          }
+        }
+      }
+    },
+    "Checking for updates…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查更新…"
           }
         }
       }
@@ -778,6 +798,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法优化视频。"
+          }
+        }
+      }
+    },
+    "Couldn’t check for updates": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法检查更新"
           }
         }
       }
@@ -1268,6 +1298,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已在资料库中"
+          }
+        }
+      }
+    },
+    "In-app updates are disabled in development builds.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开发版本不支持在应用内安装更新。"
           }
         }
       }
@@ -2057,6 +2097,16 @@
     "Phosphene": {
       "shouldTranslate": false
     },
+    "Phosphene %@ is available": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene %@ 可供更新"
+          }
+        }
+      }
+    },
     "Phosphene adds videos to your library. System Settings › Wallpaper chooses which one plays on each display and desktop.": {
       "localizations": {
         "zh-Hans": {
@@ -2113,6 +2163,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Phosphene 通过 Sevoflurane 获取壁纸，Sevoflurane 可在 Mac 上运行 Windows 版 Steam。"
+          }
+        }
+      }
+    },
+    "Phosphene is up to date": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 已是最新版本"
           }
         }
       }
@@ -2247,6 +2307,16 @@
         }
       }
     },
+    "Release Notes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "版本说明"
+          }
+        }
+      }
+    },
     "Remove": {
       "localizations": {
         "zh-Hans": {
@@ -2283,6 +2353,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在渲染"
+          }
+        }
+      }
+    },
+    "Reporting is paused because its settings could not be saved.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置未能保存，数据发送已暂停。"
           }
         }
       }
@@ -2903,12 +2983,12 @@
         }
       }
     },
-    "Turning this off deletes everything this Mac sent.": {
+    "Turning this off requests deletion of what this Mac sent.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "关闭后会删除这台 Mac 发送过的所有内容。"
+            "value": "关闭后会请求删除这台 Mac 发送过的数据。"
           }
         }
       }
@@ -3099,6 +3179,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 GitHub 上查看"
+          }
+        }
+      }
+    },
+    "Wait for the current video conversion or optimization to finish, then try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请等当前视频转换或优化完成后再试。"
           }
         }
       }
@@ -3367,6 +3457,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "为列表"
+          }
+        }
+      }
+    },
+    "Software Update": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "软件更新"
           }
         }
       }

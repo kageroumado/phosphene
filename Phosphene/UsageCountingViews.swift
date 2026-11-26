@@ -7,11 +7,11 @@ import SwiftUI
 /// Digoxin's question: whether this Mac is counted among Phosphene's users. Asked once,
 /// at the top of the popover; the settings section holds the choice from then on.
 struct UsageQuestionCard: View {
-    @State private var isAsking = UsageCounting.tier == nil
+    private let reporting = UsageCounting.shared
     @State private var activeMacs: Int?
 
     var body: some View {
-        if isAsking {
+        if reporting.tier == nil, !reporting.storageError {
             HStack(alignment: .top, spacing: Theme.Space.md) {
                 Image(systemName: "person.2")
                     .font(.system(size: 26))
@@ -48,14 +48,13 @@ struct UsageQuestionCard: View {
             .padding(Theme.Space.md)
             .glassCard()
             .accessibilityElement(children: .contain)
-            .task { activeMacs = await UsageCounting.activeMacs() }
+            .task { activeMacs = await reporting.activeMacs() }
             .transition(OpacityTransition().combined(with: ScaleTransition(0.98, anchor: .top)))
         }
     }
 
     private func answer(_ tier: ConsentTier) {
-        UsageCounting.choose(tier)
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isAsking = false }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { reporting.choose(tier) }
     }
 }
 
@@ -77,8 +76,10 @@ private struct ActiveMacsLine: View {
 /// The "Count this Mac" choice among the popover's settings: the tier as a menu pill, one
 /// line on what the tier sends, and the full list behind a disclosure.
 struct UsageCountingSettings: View {
-    @State private var tier = UsageCounting.tier ?? .off
-    @State private var status: DigoxinStatus = .off
+    private let reporting = UsageCounting.shared
+    private var tier: ConsentTier {
+        reporting.tier ?? .off
+    }
     @State private var activeMacs: Int?
     @State private var showsDetails = false
 
@@ -107,15 +108,13 @@ struct UsageCountingSettings: View {
             .padding(.horizontal, Theme.Space.xs)
         }
         .task {
-            tier = UsageCounting.tier ?? .off
-            await refreshStatus()
-            activeMacs = await UsageCounting.activeMacs()
+            activeMacs = await reporting.activeMacs()
         }
     }
 
     private var tierMenu: some View {
         Menu {
-            Picker("Count this Mac", selection: $tier) {
+            Picker("Count this Mac", selection: Binding(get: { tier }, set: reporting.choose)) {
                 ForEach(ConsentTier.allCases, id: \.self) { tier in
                     Text(Self.title(of: tier)).tag(tier)
                 }
@@ -147,12 +146,6 @@ struct UsageCountingSettings: View {
             tier == .off ? .regular : .regular.tint(Color.accentColor.opacity(0.35)),
             in: Theme.concentricInnerShape,
         )
-        .onChange(of: tier) { _, tier in
-            // The read in `task` lands here too.
-            guard UsageCounting.tier != tier else { return }
-            UsageCounting.choose(tier)
-            Task { await refreshStatus() }
-        }
     }
 
     private var detailsToggle: some View {
@@ -184,7 +177,7 @@ struct UsageCountingSettings: View {
             """)
             Text("It never includes which videos you use, and nothing in it names you.")
             Text("Crash reports adds a report when Phosphene itself crashes, with your name, your Mac\u{2019}s name and folder paths removed.")
-            Text("Turning this off deletes everything this Mac sent.")
+            Text("Turning this off requests deletion of what this Mac sent.")
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -201,7 +194,10 @@ struct UsageCountingSettings: View {
     }
 
     private var statusLine: String? {
-        switch status {
+        if reporting.storageError {
+            return String(localized: "Reporting is paused because its settings could not be saved.")
+        }
+        return switch reporting.status {
         case .deletionPending: String(localized: "Deleting what this Mac sent\u{2026}")
         case .secureEnclaveUnavailable: String(localized: "This Mac has no Secure Enclave, so nothing is sent.")
         case let .failing(reason): String(localized: "Not sent yet: \(reason)")
@@ -215,9 +211,5 @@ struct UsageCountingSettings: View {
         case .counting: String(localized: "Counting")
         case .crashReports: String(localized: "Counting and crash reports")
         }
-    }
-
-    private func refreshStatus() async {
-        status = await UsageCounting.client.status
     }
 }

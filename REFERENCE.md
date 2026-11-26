@@ -39,6 +39,12 @@
 
 **`VideoRenderer`** owns the decode pipeline. Instead of `AVPlayerLayer` — which silently fails inside a remote `CAContext` — it drives `AVSampleBufferDisplayLayer` manually: one `AVAssetReader` for the current loop, a preloaded one for the next, and a PTS offset that grows across loops to keep the timeline monotonically increasing. Result is glitch-free looping without flushing the renderer.
 
+## Reporting
+
+Release keeps the `usageCounting` preference and its existing identity in `Application Support/Phosphene/Digoxin`. The counting and crash-report tiers both use the registered `phosphene` app ID. The crash-report tier adds scrubbed app crash reports to the daily check-in.
+
+Debug uses `usageCountingDebug` and stores its reporting data under `Application Support/Phosphene/Debug`. Its endpoint defaults to `http://127.0.0.1:9130/api/digoxin` and can be set with `PHOSPHENE_DIGOXIN_URL`.
+
 ## Quirks worth knowing
 
 - **`WallpaperSnapshotXPC` swizzle.** The system's snapshot encoder checks `type(of: coder) == NSXPCCoder.self`, but the real coder is a subclass. Without the runtime swizzle in `PhospheneExtension.swift`, snapshots silently encode to nothing and you get a grey lock screen during transitions.

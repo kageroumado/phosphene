@@ -101,7 +101,7 @@ final class PhospheneManager {
         occlusionMonitor.startMonitoring()
 
         SilentUpdates.shared.start(autoInstall: autoUpdate)
-        UsageCounting.start()
+        UsageCounting.shared.noteUse()
     }
 
     // MARK: - Library Actions
@@ -139,17 +139,13 @@ final class PhospheneManager {
     }
 
     func optimizeVideo(entryID: String, preset: OptimizationPreset) {
-        guard !isOptimizing else { return }
+        guard !isOptimizing,
+              let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID }),
+              VideoWorkGate.shared.beginWork()
+        else { return }
         isOptimizing = true
         optimizingEntryID = entryID
         optimizationProgress = 0
-
-        let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID })
-        guard let entry else {
-            isOptimizing = false
-            optimizingEntryID = nil
-            return
-        }
 
         let sourceURL = VideoDeploymentService.videoURL(for: entry)
         let target = preset.targetResolution(source: entry.resolution)
@@ -178,8 +174,7 @@ final class PhospheneManager {
             }
 
             await MainActor.run {
-                self.isOptimizing = false
-                self.optimizingEntryID = nil
+                self.finishVideoWork()
             }
         }
     }
@@ -189,7 +184,8 @@ final class PhospheneManager {
     /// optimization runs at a time and app updates wait for it.
     func convertToHEVC(entryID: String) {
         guard !isOptimizing,
-              let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID })
+              let entry = VideoDeploymentService.listEntries().first(where: { $0.id == entryID }),
+              VideoWorkGate.shared.beginWork()
         else { return }
         isOptimizing = true
         isConverting = true
@@ -197,19 +193,16 @@ final class PhospheneManager {
         optimizationProgress = 0
 
         optimizationTask = Task(name: "Convert to HEVC") {
+            defer { finishVideoWork() }
             do {
                 try await VideoDeploymentService.convertToHEVC(entry: entry) { self.optimizationProgress = $0 }
             } catch {
-                // `cancelOptimization()` has already reset the state of a cancelled conversion.
                 guard !Task.isCancelled else { return }
                 Log.video.error("HEVC conversion of \(entryID) failed: \(error.localizedDescription)")
                 self.optimizationAlertTitle = String(localized: "Couldn't convert the video to HEVC.")
                 self.optimizationAlertMessage = error.localizedDescription
                 self.showOptimizationAlert = true
             }
-            self.isOptimizing = false
-            self.isConverting = false
-            self.optimizingEntryID = nil
         }
     }
 
@@ -218,11 +211,16 @@ final class PhospheneManager {
     }
 
     func cancelOptimization() {
+        // Keep the update gate closed until the cancelled task finishes its cleanup.
         optimizationTask?.cancel()
+    }
+
+    private func finishVideoWork() {
         optimizationTask = nil
         isOptimizing = false
         isConverting = false
         optimizingEntryID = nil
+        VideoWorkGate.shared.endWork()
     }
 
     // MARK: - Private

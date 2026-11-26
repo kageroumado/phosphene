@@ -48,7 +48,7 @@ struct MenuBarPopoverView: View {
         .onAppear {
             SilentUpdates.shared.refresh()
             SilentUpdates.shared.checkIfStale()
-            UsageCounting.noteUse()
+            UsageCounting.shared.noteUse()
         }
         .onChange(of: prefsService.selections.count) {
             selectedIndex = min(selectedIndex, max(0, prefsService.selections.count - 1))
@@ -321,7 +321,6 @@ struct MenuBarPopoverView: View {
         if let justUpdated = updates.justUpdatedVersion {
             Button {
                 WhatsNewWindow.present(version: justUpdated, context: .justUpdated)
-                updates.acknowledgeUpdate()
             } label: {
                 Label("v\(justUpdated)", systemImage: "checkmark")
                     .foregroundStyle(Theme.onAccent)
@@ -348,7 +347,7 @@ struct MenuBarPopoverView: View {
             }
             .modifier(RestingChip())
         } else if updates.checkedUpToDate {
-            Label("Up to date", systemImage: "checkmark")
+            Label("Phosphene is up to date", systemImage: "checkmark")
                 .modifier(RestingChip())
         } else {
             restingChip
