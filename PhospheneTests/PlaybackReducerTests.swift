@@ -156,6 +156,23 @@ struct PlaybackReducerTests {
         #expect(PlaybackReducer.targets(asleep)[desktop]?.allowsSelectionPlayback == false)
     }
 
+    @Test
+    func `selection deceleration follows each desktop's pause conditions`() {
+        let state = run([acquire(desktop), acquire(otherDisplay), prefs {
+            $0.alwaysPauseDesktop = true
+            $0.pausedDisplays = [1]
+        }])
+        #expect(PlaybackReducer.targets(state)[desktop]?.allowsSelectionPlayback == false)
+        #expect(PlaybackReducer.targets(state)[otherDisplay]?.allowsSelectionPlayback == true)
+
+        let covered = run([prefs {
+            $0.alwaysPauseDesktop = true
+            $0.fullscreenDisplays = [2]
+        }], from: state)
+        #expect(PlaybackReducer.targets(covered)[desktop]?.allowsSelectionPlayback == true)
+        #expect(PlaybackReducer.targets(covered)[otherDisplay]?.allowsSelectionPlayback == false)
+    }
+
     /// loginwindow reports the lock before the agent updates any surface; playback
     /// starts on the notification, with a ramp.
     @Test
