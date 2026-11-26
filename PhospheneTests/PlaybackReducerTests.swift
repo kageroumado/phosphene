@@ -145,15 +145,15 @@ struct PlaybackReducerTests {
     // MARK: - Lock screen
 
     @Test
-    func `only an awake lock-only desktop coasts after selection`() {
+    func `only an active lock-only desktop permits selection playback`() {
         let state = run([prefs { $0.alwaysPauseDesktop = true }, acquire(desktop), acquire(preview, role: .preview)])
         let targets = PlaybackReducer.targets(state)
-        #expect(targets[desktop]?.settlesAfterSelection == true)
-        #expect(targets[preview]?.settlesAfterSelection == false)
+        #expect(targets[desktop]?.allowsSelectionPlayback == true)
+        #expect(targets[preview]?.allowsSelectionPlayback == false)
         let paused = run([prefs { $0.alwaysPauseDesktop = true; $0.userPaused = true }], from: state)
-        #expect(PlaybackReducer.targets(paused)[desktop]?.settlesAfterSelection == false)
+        #expect(PlaybackReducer.targets(paused)[desktop]?.allowsSelectionPlayback == false)
         let asleep = run([.displaysAsleepChanged(true)], from: state)
-        #expect(PlaybackReducer.targets(asleep)[desktop]?.settlesAfterSelection == false)
+        #expect(PlaybackReducer.targets(asleep)[desktop]?.allowsSelectionPlayback == false)
     }
 
     /// loginwindow reports the lock before the agent updates any surface; playback

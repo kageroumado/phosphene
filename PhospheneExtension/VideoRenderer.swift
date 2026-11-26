@@ -61,7 +61,8 @@ final class VideoRenderer: @unchecked Sendable {
     var activePair: PairRendition.Playback?
     var wantsDark = false
     var renderingSuspended = false
-    var settlesAfterSelection = false
+    var allowsSelectionPlayback = false
+    var firstFrameHoldGeneration = 0
     var pairFeedSuspended = false
     var pairReadersReleased = false
     var needsDeepPauseFrameRefresh = false
@@ -468,8 +469,7 @@ final class VideoRenderer: @unchecked Sendable {
         hasStarted = true
 
         let paired = variantSelector?.pair != nil
-        let shouldSettle = paired && isPaused && settlesAfterSelection && !renderingSuspended
-        let holdFirstFrame = renderingSuspended || (paired && isPaused && !shouldSettle)
+        let holdFirstFrame = renderingSuspended || (paired && isPaused && !allowsSelectionPlayback)
         if holdFirstFrame {
             cancelRamp()
             CMTimebaseSetRate(timebase, rate: 0)
@@ -501,19 +501,13 @@ final class VideoRenderer: @unchecked Sendable {
             lastEnqueuedEnd = first.presentationTimeStamp + first.duration
         }
 
-        if shouldSettle {
-            settleSelection()
-        } else if holdFirstFrame {
+        if holdFirstFrame {
             suspendPairFeed()
             scheduleDeepPause()
         } else {
-            CMTimebaseSetRate(timebase, rate: 1)
+            startSelectionClock()
         }
         firstFrameShown()
-        if !holdFirstFrame, !paired, isPaused {
-            holdAfterFirstFrame()
-            scheduleDeepPause()
-        }
 
         prepareNextReader()
         prepareAppearanceCut()
