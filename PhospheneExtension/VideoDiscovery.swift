@@ -44,6 +44,7 @@ func findVideoURL() -> URL? {
 func generateThumbnail(from videoURL: URL) async -> URL? {
     let asset = AVURLAsset(url: videoURL)
     let generator = AVAssetImageGenerator(asset: asset)
+    generator.dynamicRangePolicy = .forceSDR
     generator.appliesPreferredTrackTransform = true
     generator.maximumSize = CGSize(width: 480, height: 270)
 
