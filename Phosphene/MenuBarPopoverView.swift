@@ -254,7 +254,6 @@ struct MenuBarPopoverView: View {
             .toggleStyle(SettingPillToggleStyle())
 
             UsageCountingSettings()
-                .toggleStyle(SettingPillToggleStyle())
         }
     }
 

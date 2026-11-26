@@ -872,16 +872,6 @@
         }
       }
     },
-    "Counts this Mac once per day of use. Each check-in includes the date, app and macOS versions, chip, memory, language, display count, days active in the past week, and whether you imported videos.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "每天使用仅统计一次。统计内容包含日期、App 与 macOS 版本、芯片、内存、语言、显示器数量、过去一周的活跃天数，以及是否导入过视频。"
-          }
-        }
-      }
-    },
     "Crash reports adds a report when Phosphene itself crashes, with your name, your Mac’s name and folder paths removed.": {
       "localizations": {
         "zh-Hans": {
@@ -892,32 +882,12 @@
         }
       }
     },
-    "Crash reports sent by older versions may share the usage registration. Turn off Count this Mac to request deletion of that data.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "旧版本发送的崩溃报告可能与使用统计共用一个注册记录。关闭“统计这台 Mac”即可请求删除这些数据。"
-          }
-        }
-      }
-    },
     "Create Variants": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "创建优化版本"
-          }
-        }
-      }
-    },
-    "Debug builds skip macOS crash log discovery.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "调试版本不会查找 macOS 崩溃日志。"
           }
         }
       }
@@ -1002,26 +972,6 @@
         }
       }
     },
-    "Deletion is pending until the service can be reached.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "暂时无法连接服务，恢复连接后将完成删除。"
-          }
-        }
-      }
-    },
-    "Deletion was queued. Signed requests expire after 30 days.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "删除请求已加入队列。签名请求的有效期为 30 天。"
-          }
-        }
-      }
-    },
     "Display": {
       "localizations": {
         "zh-Hans": {
@@ -1098,16 +1048,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "每张壁纸都会变成资料库里的一个循环视频。一个场景大约需要一分钟。"
-          }
-        }
-      }
-    },
-    "Earlier crash reports: %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "早期的崩溃报告：%@"
           }
         }
       }
@@ -1814,16 +1754,6 @@
         }
       }
     },
-    "Phosphene is up to date": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Phosphene 已是最新版本"
-          }
-        }
-      }
-    },
     "Not Made": {
       "localizations": {
         "zh-Hans": {
@@ -2177,16 +2107,6 @@
         }
       }
     },
-    "Phosphene %@ is currently the newest version available.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Phosphene %@ 是目前可用的最新版本。"
-          }
-        }
-      }
-    },
     "Phosphene adds videos to your library. System Settings › Wallpaper chooses which one plays on each display and desktop.": {
       "localizations": {
         "zh-Hans": {
@@ -2247,6 +2167,16 @@
         }
       }
     },
+    "Phosphene is up to date": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphene 已是最新版本"
+          }
+        }
+      }
+    },
     "Phosphene updated itself at a quiet moment — here's what changed.": {
       "localizations": {
         "zh-Hans": {
@@ -2303,16 +2233,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在锁定屏幕上播放"
-          }
-        }
-      }
-    },
-    "Preparing a deletion request…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在准备删除请求…"
           }
         }
       }
@@ -2603,26 +2523,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "已选择"
-          }
-        }
-      }
-    },
-    "Send crash reports": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "发送崩溃报告"
-          }
-        }
-      }
-    },
-    "Server deletion could not be confirmed.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未能确认服务器是否已删除数据。"
           }
         }
       }
@@ -3083,12 +2983,12 @@
         }
       }
     },
-    "Turning this off deletes everything this Mac sent.": {
+    "Turning this off requests deletion of what this Mac sent.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "关闭后会删除这台 Mac 发送过的所有内容。"
+            "value": "关闭后会请求删除这台 Mac 发送过的数据。"
           }
         }
       }
@@ -3443,16 +3343,6 @@
         }
       }
     },
-    "When Phosphene crashes, it sends the crash log, app and macOS versions, hardware details, and language. Your account name, Mac name, and home folder path are redacted.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Phosphene 崩溃时会发送崩溃日志、App 与 macOS 版本、硬件信息和语言。发送前会隐去账户名称、Mac 名称和个人文件夹路径。"
-          }
-        }
-      }
-    },
     "Where Each Video Plays": {
       "localizations": {
         "zh-Hans": {
@@ -3623,16 +3513,6 @@
     },
     "v%@": {
       "shouldTranslate": false
-    },
-    "You’re up to date!": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已是最新版本"
-          }
-        }
-      }
     },
     "—": {
       "localizations": {

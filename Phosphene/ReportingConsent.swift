@@ -1,62 +1,10 @@
 import CryptoKit
 import Darwin
+import Digoxin
 import Foundation
 import notify
 
-nonisolated struct ReportingConsent: Codable, Equatable {
-    var crashReports = false
-    var usageStatistics = false
-
-    var storedValue: String {
-        switch (crashReports, usageStatistics) {
-        case (false, false): "off"
-        case (false, true): "counting"
-        case (true, false): "crashesOnly"
-        case (true, true): "crashReports"
-        }
-    }
-}
-
-extension ReportingConsent {
-    /// Existing preference values keep their meaning during migration.
-    nonisolated init?(storedValue: String?) {
-        switch storedValue {
-        case "off": self.init()
-        case "counting": self.init(usageStatistics: true)
-        case "crashesOnly": self.init(crashReports: true)
-        case "crashReports": self.init(crashReports: true, usageStatistics: true)
-        default: return nil
-        }
-    }
-}
-
-nonisolated enum ReportingStream: String, Codable {
-    case statistics
-    case crashes
-    case previousCrashes
-    case legacyStatistics
-}
-
-nonisolated enum LegacyStatisticsChoice: String, Codable {
-    case undecided
-    case keepRequested
-    case keepUnavailable
-    case startNew
-    case deletionRequested
-
-    var pausesCounting: Bool {
-        self == .undecided || self == .keepRequested || self == .keepUnavailable
-    }
-}
-
-nonisolated enum ReportingDeletion {
-    case requested
-    case pending
-    case unconfirmed
-}
-
 nonisolated struct ReportingCrashScan: Codable, Equatable {
-    let app: String
     var checkedThrough: Date
     var releaseSlices: Set<UUID> = []
     private var claimed: Set<String>?
@@ -83,27 +31,15 @@ nonisolated struct ReportingCrashScan: Codable, Equatable {
 }
 
 nonisolated struct ReportingState: Codable, Equatable {
-    var consent: ReportingConsent?
-    var requiredRevocations: Set<ReportingStream> = []
-    var unconfirmedDeletions: Set<ReportingStream> = []
+    enum Reduction: String, Codable {
+        case none
+        case crashes
+        case identity
+    }
+
+    var tier: ConsentTier?
+    var reduction: Reduction = .none
     var crashScan: ReportingCrashScan?
-    var legacyStatistics: LegacyStatisticsChoice?
-    private var blockedRevocations: Set<ReportingStream>?
-
-    func isBlocked(_ stream: ReportingStream) -> Bool {
-        blockedRevocations?.contains(stream) == true
-    }
-
-    mutating func block(_ stream: ReportingStream) {
-        requiredRevocations.insert(stream)
-        unconfirmedDeletions.insert(stream)
-        blockedRevocations = (blockedRevocations ?? []).union([stream])
-    }
-
-    mutating func finishRevocation(_ stream: ReportingStream) {
-        requiredRevocations.remove(stream)
-        blockedRevocations?.remove(stream)
-    }
 
     static func load(from url: URL) throws -> Self? {
         do {
@@ -114,8 +50,78 @@ nonisolated struct ReportingState: Codable, Equatable {
     }
 
     func save(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(self).write(to: url, options: .atomic)
+    }
+}
+
+nonisolated enum ReportingBuild {
+    case debug
+    case release
+
+    var preferenceKey: String {
+        self == .debug ? "usageCountingDebug" : "usageCounting"
+    }
+
+    func supportFolder(in folder: URL) -> URL {
+        self == .debug ? folder.appending(path: "Debug", directoryHint: .isDirectory) : folder
+    }
+
+    func initialState(
+        preferenceForKey: (String) -> String?, upstreamCutoff: Date? = nil, previewURL: URL,
+    ) -> ReportingState {
+        let preference = preferenceForKey(preferenceKey).flatMap(ConsentTier.init(rawValue:))
+        let preview = (try? Data(contentsOf: previewURL)).flatMap { try? JSONDecoder().decode(Preview.self, from: $0) }
+        let tier = preference ?? preview?.consent?.tier
+        var scan: ReportingCrashScan?
+        if tier == .crashReports {
+            if preview?.consent?.tier == .crashReports {
+                scan = preview?.crashScan
+            }
+            if self == .release, preference == .crashReports, let upstreamCutoff {
+                if let existing = scan {
+                    scan?.checkedThrough = max(existing.checkedThrough, upstreamCutoff)
+                } else {
+                    scan = ReportingCrashScan(checkedThrough: upstreamCutoff)
+                }
+            }
+        }
+        // Preview revocations addressed different stores. Only the original preference can retire this one.
+        return ReportingState(tier: tier, reduction: preference == .off ? .identity : .none, crashScan: scan)
+    }
+
+    private struct Preview: Decodable {
+        struct Consent: Decodable {
+            let crashReports: Bool
+            let usageStatistics: Bool
+
+            var tier: ConsentTier? {
+                switch (usageStatistics, crashReports) {
+                case (false, false): ConsentTier.off
+                case (true, false): .counting
+                case (true, true): .crashReports
+                case (false, true): nil
+                }
+            }
+        }
+
+        let consent: Consent?
+        let crashScan: ReportingCrashScan?
+    }
+
+    static func hasStrandedData(in folder: URL, deletionPending: Bool) -> Bool {
+        let root = folder.appending(path: "Digoxin", directoryHint: .isDirectory)
+        do {
+            let items = try FileManager.default.contentsOfDirectory(atPath: root.path)
+            if items.contains(where: { $0 != "pending-deletions" }) {
+                return true
+            }
+            guard items.contains("pending-deletions"), !deletionPending else { return false }
+            return try !FileManager.default.contentsOfDirectory(atPath: root.appending(path: "pending-deletions").path).isEmpty
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return false
+        } catch {
+            return true
+        }
     }
 }
 
@@ -123,66 +129,18 @@ nonisolated struct ReportingState: Codable, Equatable {
 /// stays held for the reporting controller's process lifetime.
 nonisolated struct ReportingStore {
     let url: URL
-    static let notification = "glass.kagerou.phosphene.reportingChanged"
+
+    var notification: String {
+        let scope = SHA256.hash(data: Data(url.standardizedFileURL.path.utf8))
+        return "glass.kagerou.phosphene.reportingChanged.\(Data(scope).base64EncodedString())"
+    }
 
     var useNotification: String {
-        let scope = SHA256.hash(data: Data(url.standardizedFileURL.path.utf8))
-        return "glass.kagerou.phosphene.reportingUsed.\(Data(scope).base64EncodedString())"
+        notification + ".used"
     }
 
     func notifyUse() {
         _ = unsafe notify_post(useNotification)
-    }
-
-    func initialize(
-        initial: () -> ReportingState,
-        retireLegacy: (() -> Void)?,
-        recoveringConsent: Bool = false,
-        configure: (inout ReportingState) -> Void,
-    ) throws -> ReportingState {
-        let result = try withJournalLock {
-            let retired = sibling("Reporting.migrated")
-            let alreadyMigrated: Bool
-            do {
-                _ = try FileManager.default.attributesOfItem(atPath: retired.path)
-                alreadyMigrated = true
-                retireLegacy?()
-            } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
-                alreadyMigrated = false
-            }
-
-            let existing: ReportingState?
-            var malformed = false
-            do {
-                existing = try ReportingState.load(from: url)
-            } catch is DecodingError where recoveringConsent {
-                existing = nil
-                malformed = true
-            }
-            var state: ReportingState
-            if let existing {
-                state = existing
-            } else if alreadyMigrated || malformed {
-                guard recoveringConsent else { throw CocoaError(.fileReadNoSuchFile) }
-                state = ReportingState()
-            } else {
-                state = initial()
-            }
-            configure(&state)
-            let changed = existing != state
-            if changed {
-                try state.save(to: url)
-            }
-            if !alreadyMigrated {
-                try Data().write(to: retired, options: .atomic)
-                retireLegacy?()
-            }
-            return (state, changed)
-        }
-        if result.1 {
-            _ = unsafe notify_post(Self.notification)
-        }
-        return result.0
     }
 
     func read() throws -> ReportingState {
@@ -190,21 +148,54 @@ nonisolated struct ReportingStore {
         return state
     }
 
-    func edit(_ change: (inout ReportingState) -> Void) throws -> ReportingState {
-        let result = try withJournalLock {
-            let existing = try read()
-            var state = existing
+    func edit(
+        initial: (() -> ReportingState)? = nil,
+        recovering: ReportingState? = nil,
+        didSave: (() -> Void)? = nil,
+        _ change: (inout ReportingState) -> Void,
+    ) throws -> ReportingState {
+        let (state, changed) = try withJournalLock {
+            let existing: ReportingState?
+            do {
+                existing = try ReportingState.load(from: url)
+            } catch is DecodingError where recovering != nil {
+                existing = nil
+            }
+
+            let marker = sibling("UsageCounting.initialized")
+            let initialized: Bool
+            do {
+                _ = try FileManager.default.attributesOfItem(atPath: marker.path)
+                initialized = true
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+                initialized = false
+            }
+
+            var state: ReportingState
+            if let existing {
+                state = existing
+            } else if let recovering {
+                state = recovering
+            } else if !initialized, let initial {
+                state = initial()
+            } else {
+                throw CocoaError(.fileReadNoSuchFile)
+            }
             change(&state)
             let changed = existing != state
             if changed {
                 try state.save(to: url)
             }
+            if !initialized {
+                try Data().write(to: marker, options: .atomic)
+            }
+            didSave?()
             return (state, changed)
         }
-        if result.1 {
-            _ = unsafe notify_post(Self.notification)
+        if changed {
+            _ = unsafe notify_post(notification)
         }
-        return result.0
+        return state
     }
 
     func tryOwn() throws -> FileHandle? {
@@ -244,7 +235,7 @@ nonisolated struct ReportingStore {
 final nonisolated class ReportingStoreObserver {
     private let token: Int32
 
-    init?(name: String = ReportingStore.notification, handler: @escaping @Sendable () -> Void) {
+    init?(name: String, handler: @escaping @Sendable () -> Void) {
         var token: Int32 = 0
         let status = unsafe notify_register_dispatch(name, &token, .main) { _ in handler() }
         guard status == UInt32(NOTIFY_STATUS_OK) else { return nil }

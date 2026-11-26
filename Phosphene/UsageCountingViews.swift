@@ -11,7 +11,7 @@ struct UsageQuestionCard: View {
     @State private var activeMacs: Int?
 
     var body: some View {
-        if reporting.shouldAsk {
+        if reporting.tier == nil, !reporting.storageError {
             HStack(alignment: .top, spacing: Theme.Space.md) {
                 Image(systemName: "person.2")
                     .font(.system(size: 26))
@@ -34,10 +34,10 @@ struct UsageQuestionCard: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityAddTraits(.isHeader)
                     HStack(spacing: Theme.Space.sm) {
-                        Button("Count Me In") { answer(countThisMac: true) }
+                        Button("Count Me In") { answer(.counting) }
                             .buttonStyle(.glassProminent)
                             .foregroundStyle(Theme.onAccent)
-                        Button("Not Now") { answer(countThisMac: false) }
+                        Button("Not Now") { answer(.off) }
                             .buttonStyle(.glass)
                     }
                     .controlSize(.small)
@@ -53,10 +53,8 @@ struct UsageQuestionCard: View {
         }
     }
 
-    private func answer(countThisMac: Bool) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            reporting.choose(countThisMac, for: \.usageStatistics)
-        }
+    private func answer(_ tier: ConsentTier) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { reporting.choose(tier) }
     }
 }
 
@@ -75,28 +73,31 @@ private struct ActiveMacsLine: View {
 
 // MARK: - The setting
 
-/// Usage and crash reporting controls in the popover's settings.
+/// The "Count this Mac" choice among the popover's settings: the tier as a menu pill, one
+/// line on what the tier sends, and the full list behind a disclosure.
 struct UsageCountingSettings: View {
     private let reporting = UsageCounting.shared
+    private var tier: ConsentTier {
+        reporting.tier ?? .off
+    }
     @State private var activeMacs: Int?
     @State private var showsDetails = false
-    @State private var showsLegacyChoices = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            HStack(alignment: .top, spacing: Theme.Space.sm) {
-                reportingToggle("Count this Mac", isOn: permission(\.usageStatistics), stream: .statistics)
-                reportingToggle("Send crash reports", isOn: permission(\.crashReports), stream: .crashes)
-            }
-
+            tierMenu
             VStack(alignment: .leading, spacing: 2) {
-                if reporting.storageError {
-                    Text("Reporting is paused because its settings could not be saved.")
+                Text(summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let statusLine {
+                    Text(statusLine)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                legacyStatistics
-                if reporting.consent.usageStatistics, let activeMacs {
+                if let activeMacs {
                     ActiveMacsLine(count: activeMacs)
                 }
                 if showsDetails {
@@ -106,101 +107,45 @@ struct UsageCountingSettings: View {
             }
             .padding(.horizontal, Theme.Space.xs)
         }
-        .task(id: reporting.consent.usageStatistics) {
-            activeMacs = nil
-            guard reporting.consent.usageStatistics else { return }
-            let count = await reporting.activeMacs()
-            if !Task.isCancelled {
-                activeMacs = count
-            }
+        .task {
+            activeMacs = await reporting.activeMacs()
         }
     }
 
-    private func permission(_ keyPath: WritableKeyPath<ReportingConsent, Bool>) -> Binding<Bool> {
-        Binding(get: { reporting.consent[keyPath: keyPath] }, set: { value in
-            reporting.choose(value, for: keyPath)
-            if keyPath == \.usageStatistics, !value,
-               let legacy = reporting.legacyStatistics, legacy != .deletionRequested, legacy != .keepRequested {
-                showsLegacyChoices = true
-            }
-        })
-    }
-
-    @ViewBuilder
-    private var legacyStatistics: some View {
-        if let choice = reporting.legacyStatistics {
-            VStack(alignment: .leading, spacing: 2) {
-                if choice == .keepRequested {
-                    Text("Checking the older registration…", tableName: "Reporting")
-                } else if choice == .deletionRequested {
-                    Text("Older Counting Registration", tableName: "Reporting")
-                    if let status = reporting.deletionStatus(for: .legacyStatistics) {
-                        Text(deletionLine(status))
-                    }
-                } else {
-                    if choice == .undecided, reporting.consent.usageStatistics {
-                        Text("Counting is paused until you choose what to do with the older registration.", tableName: "Reporting")
-                    }
-                    if choice == .keepUnavailable {
-                        Text("The older registration could not be reused. It may still have queued data.", tableName: "Reporting")
-                    }
-                    Button {
-                        showsLegacyChoices = true
-                    } label: {
-                        Text("Older Counting Registration", tableName: "Reporting")
-                    }
-                    .confirmationDialog(
-                        Text("Older Counting Registration", tableName: "Reporting"),
-                        isPresented: $showsLegacyChoices,
-                        titleVisibility: .visible,
-                    ) {
-                        if choice.pausesCounting {
-                            if reporting.consent.usageStatistics {
-                                Button { reporting.chooseLegacy(.keepRequested) } label: {
-                                    Text("Keep the Older Release Registration", tableName: "Reporting")
-                                }
-                            }
-                            Button { reporting.chooseLegacy(.startNew) } label: {
-                                Text("Use a New Counting Registration", tableName: "Reporting")
-                            }
-                        }
-                        Button(role: .destructive) { reporting.chooseLegacy(.deletionRequested) } label: {
-                            Text("Turn Off Counting and Request Older Data Deletion", tableName: "Reporting")
-                        }
-                    } message: {
-                        Text("""
-                        Keep the older registration only if you know it was used exclusively by Release. A new registration may be counted as a reinstall. \
-                        Requesting deletion sends signed requests for the older registration to the Release service.
-                        """, tableName: "Reporting")
-                    }
+    private var tierMenu: some View {
+        Menu {
+            Picker("Count this Mac", selection: Binding(get: { tier }, set: reporting.choose)) {
+                ForEach(ConsentTier.allCases, id: \.self) { tier in
+                    Text(Self.title(of: tier)).tag(tier)
                 }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            HStack(spacing: 6) {
+                Text("Count this Mac")
+                    .font(.caption)
+                    .foregroundStyle(tier == .off ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                    .lineLimit(1)
+                Spacer(minLength: Theme.Space.sm)
+                Text(Self.title(of: tier))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(Theme.Space.sm)
+            .contentShape(Theme.concentricInnerShape)
         }
-    }
-
-    private func reportingToggle(_ title: LocalizedStringKey, isOn: Binding<Bool>, stream: ReportingStream) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Toggle(title, isOn: isOn)
-            Group {
-                if let statusLine = statusLine(reporting.status(for: stream)) {
-                    Text(statusLine)
-                }
-                if let deletion = reporting.deletionStatus(for: stream) {
-                    Text(deletionLine(deletion))
-                }
-                if stream == .crashes, let deletion = reporting.deletionStatus(for: .previousCrashes) {
-                    Text("Earlier crash reports: \(Text(deletionLine(deletion)))")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, Theme.Space.xs)
-        }
-        .accessibilityElement(children: .contain)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .glassEffect(
+            tier == .off ? .regular : .regular.tint(Color.accentColor.opacity(0.35)),
+            in: Theme.concentricInnerShape,
+        )
     }
 
     private var detailsToggle: some View {
@@ -221,18 +166,18 @@ struct UsageCountingSettings: View {
     }
 
     private var details: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("On each day you use Phosphene, one anonymous check-in is sent:")
             Text("""
-            Counts this Mac once per day of use. Each check-in includes the date, app and macOS versions, chip, \
-            memory, language, display count, days active in the past week, and whether you imported videos.
+            • Phosphene and macOS versions
+            • chip family and memory size
+            • language and the date
+            • how many of the last 7 days you used it
+            • whether you have your own videos, and how many displays
             """)
-            Text("""
-            When Phosphene crashes, it sends the crash log, app and macOS versions, hardware details, and \
-            language. Your account name, Mac name, and home folder path are redacted.
-            """)
-            #if DEBUG
-                Text("Debug builds skip macOS crash log discovery.")
-            #endif
+            Text("It never includes which videos you use, and nothing in it names you.")
+            Text("Crash reports adds a report when Phosphene itself crashes, with your name, your Mac\u{2019}s name and folder paths removed.")
+            Text("Turning this off requests deletion of what this Mac sent.")
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -240,19 +185,31 @@ struct UsageCountingSettings: View {
         .padding(.top, 2)
     }
 
-    private func statusLine(_ status: DigoxinStatus) -> String? {
-        switch status {
-        case .secureEnclaveUnavailable: String(localized: "This Mac has no Secure Enclave, so nothing is sent.")
-        case let .failing(reason): String(localized: "Not sent yet: \(reason)")
-        case .off, .waiting, .registered, .deletionPending: nil
+    private var summary: String {
+        switch tier {
+        case .off: String(localized: "Nothing is sent.")
+        case .counting: String(localized: "One anonymous check-in on each day you use Phosphene.")
+        case .crashReports: String(localized: "One anonymous check-in a day, and a report when Phosphene crashes.")
         }
     }
 
-    private func deletionLine(_ deletion: ReportingDeletion) -> LocalizedStringKey {
-        switch deletion {
-        case .requested: "Preparing a deletion request…"
-        case .pending: "Deletion was queued. Signed requests expire after 30 days."
-        case .unconfirmed: "Server deletion could not be confirmed."
+    private var statusLine: String? {
+        if reporting.storageError {
+            return String(localized: "Reporting is paused because its settings could not be saved.")
+        }
+        return switch reporting.status {
+        case .deletionPending: String(localized: "Deleting what this Mac sent\u{2026}")
+        case .secureEnclaveUnavailable: String(localized: "This Mac has no Secure Enclave, so nothing is sent.")
+        case let .failing(reason): String(localized: "Not sent yet: \(reason)")
+        case .off, .waiting, .registered: nil
+        }
+    }
+
+    private static func title(of tier: ConsentTier) -> String {
+        switch tier {
+        case .off: String(localized: "Off")
+        case .counting: String(localized: "Counting")
+        case .crashReports: String(localized: "Counting and crash reports")
         }
     }
 }
