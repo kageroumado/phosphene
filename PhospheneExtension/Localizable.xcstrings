@@ -11,6 +11,16 @@
         }
       }
     },
+    "Align independent keyframes at the start and at least every half second. Use closed GOPs in both exports.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "首帧必须是独立关键帧，且两段视频的对齐关键帧间隔不能超过半秒。导出时请使用封闭式 GOP。"
+          }
+        }
+      }
+    },
     "Animated video wallpaper": {
       "localizations": {
         "zh-Hans": {
@@ -21,12 +31,32 @@
         }
       }
     },
+    "Automatic": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动"
+          }
+        }
+      }
+    },
     "Change Video": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "更换视频"
+          }
+        }
+      }
+    },
+    "Dark": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深色"
           }
         }
       }
@@ -81,12 +111,62 @@
         }
       }
     },
+    "Export both videos with an explicit SDR, HLG, or PQ color profile.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出两个视频时，请明确指定 SDR、HLG 或 PQ 色彩配置。"
+          }
+        }
+      }
+    },
+    "Export both videos with the same constant frame rate, frame count, and loop duration.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出两个视频时，请保持恒定帧率、总帧数和循环时长一致。"
+          }
+        }
+      }
+    },
+    "Export both videos without frame reordering (B-frames).": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在导出两个视频时关闭帧重排（B 帧）。"
+          }
+        }
+      }
+    },
+    "Light": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浅色"
+          }
+        }
+      }
+    },
     "Manage Library…": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "管理资料库…"
+          }
+        }
+      }
+    },
+    "Match the dimensions, orientation, codec settings, and color profile of both exports.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请确保两个视频的尺寸、方向、编码设置和色彩配置一致。"
           }
         }
       }
@@ -147,6 +227,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "随机播放全部"
+          }
+        }
+      }
+    },
+    "Split the existing pair before changing either video.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先拆分配对，再更换其中的视频。"
+          }
+        }
+      }
+    },
+    "The selection changed. Close this sheet and select the videos again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选内容已更改，请关闭此窗口后重新选择。"
+          }
+        }
+      }
+    },
+    "Use one video track per file, with a full-length, untrimmed timeline.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个文件只能包含一条视频轨道，且时间线须完整、未经裁剪。"
           }
         }
       }
