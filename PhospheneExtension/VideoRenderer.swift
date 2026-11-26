@@ -493,7 +493,7 @@ final class VideoRenderer: @unchecked Sendable {
         hasStarted = true
 
         let paired = variantSelector?.pair != nil
-        let holdFirstFrame = renderingSuspended || (paired && isPaused && !allowsSelectionPlayback)
+        let holdFirstFrame = shouldHoldFirstFrame
         if holdFirstFrame {
             cancelRamp()
             CMTimebaseSetRate(timebase, rate: 0)
@@ -504,7 +504,7 @@ final class VideoRenderer: @unchecked Sendable {
         // Enqueue the first frame and flush it to the render server inside an
         // action-free transaction, so the context is displaying video before the
         // acquire reply is released.
-        let first = paired ? firstFrame(from: output) : output.copyNextSampleBuffer()
+        let first = (paired || holdFirstFrame) ? firstFrame(from: output) : output.copyNextSampleBuffer()
         if let firstSample = first {
             if holdFirstFrame {
                 Self.setAttachment(kCMSampleAttachmentKey_DisplayImmediately, on: firstSample)

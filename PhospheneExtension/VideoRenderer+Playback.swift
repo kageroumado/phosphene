@@ -123,6 +123,10 @@ extension VideoRenderer {
     static let rampDownDuration: TimeInterval = 6.0
     private static let rampStepInterval: TimeInterval = 1.0 / 120.0
 
+    var shouldHoldFirstFrame: Bool {
+        renderingSuspended || (isPaused && !allowsSelectionPlayback)
+    }
+
     /// Ease an eligible selection to a stop; other paused starts only present the first frame.
     func startSelectionClock(_ reason: SourceChange = .selection) {
         CMTimebaseSetRate(timebase, rate: 1)
@@ -460,11 +464,11 @@ extension VideoRenderer {
         // blank-free swap that doesn't depend on the timebase (important since a
         // switch can land while paused, rate=0).
         let paired = variantSelector?.pair != nil
-        enqueueRestartFrame(paired ? firstFrame(from: output) : output.copyNextSampleBuffer())
+        enqueueRestartFrame((paired || shouldHoldFirstFrame) ? firstFrame(from: output) : output.copyNextSampleBuffer())
 
         if let reloadRate {
             CMTimebaseSetRate(timebase, rate: reloadRate)
-        } else if !reloadPaused, !renderingSuspended, !paired || (reason == .selection && allowsSelectionPlayback) {
+        } else if !reloadPaused, !shouldHoldFirstFrame, !paired || (reason == .selection && allowsSelectionPlayback) {
             startSelectionClock(reason)
         } else if rampTimer == nil {
             CMTimebaseSetRate(timebase, rate: isPaused || renderingSuspended ? 0.0 : 1.0)
