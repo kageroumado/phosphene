@@ -260,15 +260,15 @@ struct VideoInspector: View {
                     )
                 }
                 header
+                if let codec, !codec.isHardwareDecoded {
+                    softwareDecodeNotice(codec.label)
+                }
+                InfoRows(rows: facts)
                 if let editablePair = store.pairAction(for: [entry.id]) {
                     InspectorSection(title: "Paired Wallpaper Actions") {
                         VideoPairActionButtons(pair: editablePair, store: store)
                     }
                 }
-                if let codec, !codec.isHardwareDecoded {
-                    softwareDecodeNotice(codec.label)
-                }
-                InfoRows(rows: facts)
                 InspectorSection(title: "Optimization") {
                     optimization
                 }
