@@ -367,7 +367,8 @@ final class VideoRenderer: @unchecked Sendable {
 
     private func startPhase(for request: StartHandoff) async -> StartPhase? {
         await withCheckedContinuation { reply in
-            @Sendable func readPhase(canWait: Bool) {
+            @Sendable
+            func readPhase(canWait: Bool) {
                 var time = CMTime.invalid
                 var rate = 0.0
                 guard isRunning, hasStarted, isPaused, currentPolicy == .paused, !renderingSuspended, !flushInFlight,
