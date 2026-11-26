@@ -18,7 +18,7 @@ struct LibraryInspector: View {
             } else if selected.count == 2, let pair = store.pairAction(for: store.videoSelection) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: InspectorMetrics.sectionSpacing) {
-                        PairComparisonView(selection: pair, swapped: false)
+                        PairComparisonView(selection: pair, swapped: false, contentMode: .fill)
                             .aspectRatio(16 / 9, contentMode: .fit)
                             .clipShape(.rect(cornerRadius: InspectorMetrics.previewRadius))
                         PairMemberNames(pair: pair, swapped: false)
@@ -267,7 +267,7 @@ struct VideoInspector: View {
                         InspectorDisplayStrip(selections: displaySelections)
                     }
                     if let pair, let record = pair.saved {
-                        PairComparisonView(selection: pair, swapped: record.swapped)
+                        PairComparisonView(selection: pair, swapped: record.swapped, contentMode: .fill)
                             .aspectRatio(16 / 9, contentMode: .fit)
                             .clipShape(.rect(cornerRadius: InspectorMetrics.previewRadius))
                             .id(store.revision)

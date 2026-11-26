@@ -4,6 +4,7 @@ import SwiftUI
 struct PairComparisonView: View {
     let selection: VideoPairSelection
     let swapped: Bool
+    var contentMode: ContentMode = .fit
     @State private var preferredFraction: CGFloat = 0.5
     @State private var playingSources: VideoPairSelection.PreviewSources?
     @Environment(\.appearsActive) private var appearsActive
@@ -16,7 +17,7 @@ struct PairComparisonView: View {
             let size = geometry.size
             let fraction = Self.dividerFraction(preferredFraction, width: size.width)
             ZStack {
-                VideoPairPreview(selection: selection, swapped: swapped, fraction: fraction, isPlaying: isPlaying) {
+                VideoPairPreview(selection: selection, swapped: swapped, contentMode: contentMode, fraction: fraction, isPlaying: isPlaying) {
                     playingSources = nil
                 }
                 Image(systemName: "chevron.left.chevron.right")

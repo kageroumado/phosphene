@@ -736,7 +736,7 @@ private struct LibraryPairThumbnail: View {
     @State private var isPlaying = false
 
     var body: some View {
-        VideoPairPreview(selection: pair, swapped: pair.saved?.swapped == true, isPlaying: isPlaying)
+        VideoPairPreview(selection: pair, swapped: pair.saved?.swapped == true, contentMode: .fill, isPlaying: isPlaying)
             .id(revision)
             .contentShape(Rectangle())
             .onHover { isHovered = $0 && appearsActive }

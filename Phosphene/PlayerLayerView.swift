@@ -57,6 +57,7 @@ struct PairPlayerLayerView: NSViewRepresentable {
     let playback: PairPlayback
     let swapped: Bool
     let fraction: CGFloat
+    let contentMode: ContentMode
     var hdrMode: HDRMode = WallpaperPrefsService.shared.hdrMode
 
     func makeNSView(context _: Context) -> Surface {
@@ -64,7 +65,13 @@ struct PairPlayerLayerView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: Surface, context _: Context) {
-        view.update(playback: playback, swapped: swapped, fraction: fraction, hdrMode: hdrMode)
+        view.update(
+            playback: playback,
+            swapped: swapped,
+            fraction: fraction,
+            hdrMode: hdrMode,
+            gravity: contentMode == .fill ? .resizeAspectFill : .resizeAspect,
+        )
     }
 
     static func dismantleNSView(_ view: Surface, coordinator _: ()) {
@@ -83,8 +90,6 @@ struct PairPlayerLayerView: NSViewRepresentable {
             super.init(frame: .zero)
             wantsLayer = true
             layer?.masksToBounds = true
-            first.videoGravity = .resizeAspect
-            second.videoGravity = .resizeAspect
             clip.masksToBounds = true
             clip.anchorPoint = .zero
             layer?.addSublayer(first)
@@ -98,7 +103,11 @@ struct PairPlayerLayerView: NSViewRepresentable {
             fatalError()
         }
 
-        func update(playback: PairPlayback, swapped: Bool, fraction: CGFloat, hdrMode: HDRMode) {
+        func update(playback: PairPlayback, swapped: Bool, fraction: CGFloat, hdrMode: HDRMode, gravity: AVLayerVideoGravity) {
+            if first.videoGravity != gravity {
+                first.videoGravity = gravity
+                second.videoGravity = gravity
+            }
             if first.player !== playback.first {
                 first.player = playback.first
             }
