@@ -80,6 +80,7 @@ final class LibraryStore {
 
     /// The file Quick Look is showing.
     var quickLookURL: URL?
+    private(set) var quickLookURLs: [URL] = []
 
     /// Bumped on every library reload; thumbnails reload when it changes.
     private(set) var revision = 0
@@ -379,15 +380,25 @@ final class LibraryStore {
         }
         switch section.content {
         case .videos:
-            let entry = id.flatMap { id in entries.first { $0.id == id } }
+            let target = id.flatMap { id in entries.first { $0.id == id } }
                 ?? videoRows.first { videoSelection.contains($0.id) }?.entry
-            quickLookURL = entry.map(VideoDeploymentService.videoURL(for:))
+            guard let entry = target else { return }
+            if let pair = pairs[entry.id], let saved = pair.saved {
+                quickLookURLs = [
+                    pair.entry(light: true, swapped: saved.swapped),
+                    pair.entry(light: false, swapped: saved.swapped),
+                ].compactMap(\.self).map(VideoDeploymentService.videoURL(for:))
+            } else {
+                quickLookURLs = [VideoDeploymentService.videoURL(for: entry)]
+            }
         case .downloads:
             let item = id.flatMap(workshop.item) ?? workshopRows.first { workshop.staged.contains($0.id) }?.item
-            quickLookURL = item.flatMap(quickLookURL(for:))
+            guard let url = item.flatMap(quickLookURL(for:)) else { return }
+            quickLookURLs = [url]
         case .catalog:
-            break
+            return
         }
+        quickLookURL = quickLookURLs.first
     }
 
     // MARK: - Intents

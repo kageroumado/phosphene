@@ -104,7 +104,7 @@ private struct LibraryRoot: View {
         .sheet(item: $store.pairSheet) { selection in
             VideoPairSheet(selection: selection, completed: store.completePairEdit)
         }
-        .quickLookPreview($store.quickLookURL)
+        .quickLookPreview($store.quickLookURL, in: store.quickLookURLs)
         .alert(store.pendingDelete?.title ?? "", isPresented: $store.isConfirmingDelete) {
             Button(store.pendingDelete?.isSinglePair == true ? "Delete Pair" : "Delete", role: .destructive) {
                 store.confirmDelete()
