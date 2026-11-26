@@ -116,6 +116,44 @@ struct RowThumbnail: View {
     }
 }
 
+/// The same split poster and delayed, synchronized preview for grid tiles and table rows.
+private struct LibraryPairThumbnail: View {
+    let pair: VideoPairSelection
+    let revision: Int
+
+    @Environment(\.appearsActive) private var appearsActive
+    @State private var isHovered = false
+    @State private var isPlaying = false
+
+    var body: some View {
+        VideoPairPreview(selection: pair, swapped: pair.saved?.swapped == true, isPlaying: isPlaying)
+            .id(revision)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 && appearsActive }
+            .onScrollVisibilityChange(threshold: 0.01) { visible in
+                if !visible {
+                    isHovered = false
+                }
+            }
+            .onChange(of: appearsActive) {
+                if !appearsActive {
+                    isHovered = false
+                }
+            }
+            .task(id: isHovered) {
+                isPlaying = false
+                guard isHovered else { return }
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled else { return }
+                isPlaying = true
+            }
+            .onDisappear {
+                isHovered = false
+                isPlaying = false
+            }
+    }
+}
+
 // MARK: - Videos
 
 /// The library's videos as a sortable table or a grid of thumbnails.
@@ -148,7 +186,7 @@ struct VideoBrowser: View {
             }
             return LibraryTileModel(
                 id: row.id, title: row.name,
-                image: VideoDeploymentService.thumbnailURL(for: row.id), imageFit: .fill,
+                image: row.isPair ? nil : VideoDeploymentService.thumbnailURL(for: row.id), imageFit: .fill,
                 video: row.isPair ? nil : VideoDeploymentService.videoURL(for: row.entry),
                 placeholderSymbol: "film", isDimmed: false, badge: badge,
                 help: row.isInUse ? String(localized: "In use as wallpaper") : "", isPair: row.isPair,
@@ -161,10 +199,17 @@ struct VideoBrowser: View {
         return Table(rows, selection: $store.videoSelection, sortOrder: $store.videoSort) {
             TableColumn("Name", value: \.name) { row in
                 HStack(spacing: 8) {
-                    RowThumbnail(
-                        url: VideoDeploymentService.thumbnailURL(for: row.id), placeholder: "film",
-                        revision: store.revision,
-                    )
+                    if let pair = store.pairs[row.id] {
+                        LibraryPairThumbnail(pair: pair, revision: store.revision)
+                            .frame(width: 48, height: 27)
+                            .clipShape(.rect(cornerRadius: 4))
+                            .accessibilityHidden(true)
+                    } else {
+                        RowThumbnail(
+                            url: VideoDeploymentService.thumbnailURL(for: row.id), placeholder: "film",
+                            revision: store.revision,
+                        )
+                    }
                     Text(row.name)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -569,12 +614,10 @@ struct LibraryTile: View {
                 image = await ThumbnailCache.image(at: model.image)
             }
         }
-        .task(id: isHovered) {
-            guard isHovered, let video = model.video else {
-                preview?.stop()
-                preview = nil
-                return
-            }
+        .task(id: isHovered ? model.video : nil) {
+            preview?.stop()
+            preview = nil
+            guard isHovered, let video = model.video else { return }
             try? await Task.sleep(for: Metrics.hoverDelay)
             guard !Task.isCancelled else { return }
             preview = LoopingPlayer(url: video)
@@ -602,7 +645,9 @@ struct LibraryTile: View {
 
     private var thumbnail: some View {
         ZStack {
-            if let image {
+            if model.isPair, let pair = store.pairs[model.id] {
+                LibraryPairThumbnail(pair: pair, revision: revision)
+            } else if let image {
                 switch model.imageFit {
                 case .fill:
                     Image(nsImage: image)
@@ -630,7 +675,7 @@ struct LibraryTile: View {
                     .font(.title2)
                     .foregroundStyle(.tertiary)
             }
-            if let preview {
+            if !model.isPair, let preview {
                 PlayerLayerView(player: preview.player)
             }
         }
