@@ -872,13 +872,13 @@ final class VideoRenderer: @unchecked Sendable {
 
     private func refreshExternalToneMap() {
         if externalToneMapMode != .automatic, externalHDRHeadroom != nil, toneMapTrack !== videoTrack {
-            let track = videoTrack
-            toneMapTrack = track
+            toneMapTrack = videoTrack
             toneMapTrackIsHDR = false
+            let track = SendableBox(value: videoTrack)
             Task { [weak self] in
-                let isHDR = await VideoProbe.classify(track) == true
+                let isHDR = await VideoProbe.classify(track.value) == true
                 self?.queue.async { [weak self] in
-                    guard let self, isRunning, toneMapTrack === track, videoTrack === track else { return }
+                    guard let self, isRunning, toneMapTrack === track.value, videoTrack === track.value else { return }
                     toneMapTrackIsHDR = isHDR
                     refreshExternalToneMap()
                 }
