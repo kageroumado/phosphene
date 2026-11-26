@@ -1,11 +1,3 @@
-import Foundation
-
-struct VideoVariant: Codable, Equatable {
-    let filename: String
-    let fps: Int
-    let resolution: CGSize
-}
-
 /// Picks the variant to play for a playback policy — the pure half of
 /// `VideoLibrary.bestVariantURL`, separated so it can be tested.
 enum VariantSelection {
@@ -19,20 +11,24 @@ enum VariantSelection {
     /// variant list resolve to the original.
     static func variant(
         for policy: PlaybackPolicy,
+        sourceIsHDR: Bool?,
         sourceFPS: Int,
         variants: [VideoVariant],
     ) -> VideoVariant? {
-        guard !variants.isEmpty else { return nil }
-        let sorted = variants.sorted { $0.fps > $1.fps }
+        tier(for: policy, sourceFPS: sourceFPS, tiers: variants.filter { $0.supports(sourceIsHDR: sourceIsHDR) }, fps: \.fps)
+    }
+
+    static func tier<T>(for policy: PlaybackPolicy, sourceFPS: Int, tiers: [T], fps: KeyPath<T, Int>) -> T? {
+        let sorted = tiers.filter { $0[keyPath: fps] > 0 }.sorted { $0[keyPath: fps] > $1[keyPath: fps] }
 
         switch policy {
         case .paused:
             return nil
         case .full:
-            guard let top = sorted.first, top.fps >= sourceFPS else { return nil }
+            guard let top = sorted.first, top[keyPath: fps] >= sourceFPS else { return nil }
             return top
         case .reduced:
-            return sorted.first { $0.fps < sourceFPS } ?? sorted.last
+            return sorted.first { $0[keyPath: fps] < sourceFPS } ?? sorted.last
         case .minimal:
             return sorted.last
         }

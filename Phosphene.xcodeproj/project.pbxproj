@@ -51,14 +51,35 @@
 			);
 			target = 0B3364822F4FCB4B00060732 /* PhospheneExtension */;
 		};
+		7E5700000000000000000AA3 /* Shared media types in Phosphene */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AppearancePair.swift,
+				FileIdentity.swift,
+				HDRMode.swift,
+				LegacyStillProvenance.swift,
+				VideoVariant.swift,
+			);
+			target = AA9B91C82E900B9E008812A9 /* Phosphene */;
+		};
 		7E5700000000000000000AA1 /* Exceptions for "PhospheneExtension" folder in "PhospheneTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				AppearancePair.swift,
+				CachedFrame.swift,
+				ExternalWallpaperToneMap.swift,
+				FileIdentity.swift,
+				HDRMode.swift,
 				GeometryVerdict.swift,
+				LegacyStillProvenance.swift,
+				Logging.swift,
+				PairRendition.swift,
 				PlaybackModel.swift,
 				PlaybackPolicy.swift,
 				RampMath.swift,
 				VariantSelection.swift,
+				VideoLibrary.swift,
+				VideoVariant.swift,
 			);
 			target = 7E5700000000000000000A03 /* PhospheneTests */;
 		};
@@ -66,6 +87,8 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				LibraryGridMetrics.swift,
+				VideoProbe.swift,
+				PairEligibility.swift,
 				OcclusionMath.swift,
 				PathSafety.swift,
 				ReportingConsent.swift,
@@ -86,12 +109,20 @@
 			);
 			target = 7E5700000000000000000A03 /* PhospheneTests */;
 		};
+		7E5700000000000000000AA4 /* Shared media probe in PhospheneExtension */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				VideoProbe.swift,
+			);
+			target = 0B3364822F4FCB4B00060732 /* PhospheneExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		0B3364842F4FCB4B00060732 /* PhospheneExtension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				7E5700000000000000000AA3 /* Shared media types in Phosphene */,
 				0B33648E2F4FCB4B00060732 /* Exceptions for "PhospheneExtension" folder in "PhospheneExtension" target */,
 				7E5700000000000000000AA1 /* Exceptions for "PhospheneExtension" folder in "PhospheneTests" target */,
 			);
@@ -107,6 +138,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				7E5700000000000000000AA2 /* Exceptions for "Phosphene" folder in "PhospheneTests" target */,
+				7E5700000000000000000AA4 /* Shared media probe in PhospheneExtension */,
 			);
 			path = Phosphene;
 			sourceTree = "<group>";

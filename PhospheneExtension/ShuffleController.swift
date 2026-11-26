@@ -12,7 +12,7 @@ import os
 final class ShuffleController: @unchecked Sendable {
     static let shared = ShuffleController()
 
-    private let queue = DispatchQueue(label: "glass.kagerou.phosphene.shuffle")
+    private let queue = Lifecycle.queue
     private let lock = OSAllocatedUnfairLock(initialState: State())
     private var timer: (any DispatchSourceTimer)?
 
@@ -176,19 +176,21 @@ final class ShuffleController: @unchecked Sendable {
         if let existing, library.contains(existing) {
             return existing
         }
-        guard let fresh = library.randomElement() else { return nil }
+        let fresh = library.randomElement()
+        guard fresh != existing else { return fresh }
         setPick(fresh)
         return fresh
     }
 
-    private func setPick(_ pick: String) {
+    private func setPick(_ pick: String?) {
+        let date = pick == nil ? nil : Date.now
         lock.withLock { state in
             state.pick = pick
-            state.lastAdvance = Date()
+            state.lastAdvance = date
         }
         let defaults = UserDefaults.standard
         defaults.set(pick, forKey: Keys.pick)
-        defaults.set(Date(), forKey: Keys.lastAdvance)
+        defaults.set(date, forKey: Keys.lastAdvance)
     }
 
     private func armTimerIfNeeded() {
@@ -243,7 +245,7 @@ final class ShuffleController: @unchecked Sendable {
 
         let renderers = SurfaceRegistry.shared.renderers(showing: shuffleChoiceID)
         for renderer in renderers {
-            renderer.switchVideo(to: url, selector: makeVariantSelector(choice: next, fallback: url))
+            renderer.switchVideo(to: url, selector: VideoSourceSelection(choice: next, fallback: url))
         }
         PlaybackStore.post(.shufflePicked(next))
         extensionLog("[Shuffle] advanced to \(next) on \(renderers.count) renderer(s) (\(reason))")
