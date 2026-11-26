@@ -68,6 +68,7 @@
 			membershipExceptions = (
 				AppearancePair.swift,
 				CachedFrame.swift,
+				ExternalWallpaperToneMap.swift,
 				FileIdentity.swift,
 				HDRMode.swift,
 				GeometryVerdict.swift,
@@ -110,6 +111,13 @@
 			);
 			target = 7E5700000000000000000A03 /* PhospheneTests */;
 		};
+		7E5700000000000000000AA4 /* Shared media probe in PhospheneExtension */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				VideoProbe.swift,
+			);
+			target = 0B3364822F4FCB4B00060732 /* PhospheneExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -132,6 +140,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				7E5700000000000000000AA2 /* Exceptions for "Phosphene" folder in "PhospheneTests" target */,
+				7E5700000000000000000AA4 /* Shared media probe in PhospheneExtension */,
 			);
 			path = Phosphene;
 			sourceTree = "<group>";
