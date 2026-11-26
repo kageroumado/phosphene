@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 import notify
@@ -128,6 +129,15 @@ nonisolated struct ReportingStore {
     let url: URL
     static let notification = "glass.kagerou.phosphene.reportingChanged"
 
+    var useNotification: String {
+        let scope = SHA256.hash(data: Data(url.standardizedFileURL.path.utf8))
+        return "glass.kagerou.phosphene.reportingUsed.\(Data(scope).base64EncodedString())"
+    }
+
+    func notifyUse() {
+        _ = unsafe notify_post(useNotification)
+    }
+
     func initialize(
         initial: () -> ReportingState,
         retireLegacy: (() -> Void)?,
@@ -136,7 +146,7 @@ nonisolated struct ReportingStore {
         try withJournalLock {
             let retired = sibling("Reporting.migrated")
             let alreadyMigrated = FileManager.default.fileExists(atPath: retired.path)
-            let existing = try load()
+            let existing = try ReportingState.load(from: url)
             var state = existing ?? (alreadyMigrated ? .recovery : initial())
             configure(&state)
             if existing != state {
@@ -153,13 +163,14 @@ nonisolated struct ReportingStore {
     }
 
     func read() throws -> ReportingState {
-        try load() ?? .recovery
+        guard let state = try ReportingState.load(from: url) else { throw CocoaError(.fileReadNoSuchFile) }
+        return state
     }
 
     func edit(_ change: (inout ReportingState) -> Void) throws -> ReportingState {
         let result = try withJournalLock {
-            let existing = try load()
-            var state = existing ?? .recovery
+            let existing = try read()
+            var state = existing
             change(&state)
             let changed = existing != state
             if changed {
@@ -182,14 +193,6 @@ nonisolated struct ReportingStore {
             return nil
         }
         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-    }
-
-    private func load() throws -> ReportingState? {
-        do {
-            return try ReportingState.load(from: url)
-        } catch is DecodingError {
-            return .recovery
-        }
     }
 
     private func withJournalLock<T>(_ work: () throws -> T) throws -> T {
@@ -218,9 +221,9 @@ nonisolated struct ReportingStore {
 final nonisolated class ReportingStoreObserver {
     private let token: Int32
 
-    init?(handler: @escaping @Sendable () -> Void) {
+    init?(name: String = ReportingStore.notification, handler: @escaping @Sendable () -> Void) {
         var token: Int32 = 0
-        let status = unsafe notify_register_dispatch(ReportingStore.notification, &token, .main) { _ in handler() }
+        let status = unsafe notify_register_dispatch(name, &token, .main) { _ in handler() }
         guard status == UInt32(NOTIFY_STATUS_OK) else { return nil }
         self.token = token
     }

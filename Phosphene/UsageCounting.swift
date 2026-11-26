@@ -21,7 +21,9 @@ final class UsageCounting {
     @ObservationIgnored private var clients: [ReportingStream: any ReportingClient] = [:]
     @ObservationIgnored private(set) var legacyTask: Task<Void, Never>?
     @ObservationIgnored private var observer: ReportingStoreObserver?
+    @ObservationIgnored private var useObserver: ReportingStoreObserver?
     @ObservationIgnored private var monitor: Task<Void, Never>?
+    @ObservationIgnored private var choiceWriteFailed = false
     @ObservationIgnored private(set) var transitions: [ReportingStream: Task<Void, Never>] = [:]
     @ObservationIgnored private(set) var activity: [ReportingStream: Task<Void, Never>] = [:]
     private(set) var storageError = false
@@ -68,7 +70,7 @@ final class UsageCounting {
     }
 
     private func changeConsent(_ change: (inout ReportingConsent) -> Void) {
-        editState { state in
+        saveChoice { state in
             let previous = state.consent ?? ReportingConsent()
             var choice = previous
             change(&choice)
@@ -82,7 +84,6 @@ final class UsageCounting {
             }
             configureScan(&state)
         }
-        noteUse()
     }
 
     var legacyStatistics: LegacyStatisticsChoice? {
@@ -90,7 +91,7 @@ final class UsageCounting {
     }
 
     func chooseLegacy(_ choice: LegacyStatisticsChoice) {
-        editState { state in
+        saveChoice { state in
             guard let previous = state.legacyStatistics, previous != .keepRequested, previous != .deletionRequested else { return }
             switch choice {
             case .keepRequested:
@@ -106,7 +107,6 @@ final class UsageCounting {
             }
             state.legacyStatistics = choice
         }
-        noteUse()
     }
 
     func status(for stream: ReportingStream) -> DigoxinStatus {
@@ -130,28 +130,38 @@ final class UsageCounting {
     }
 
     func noteUse() {
-        if monitor == nil {
+        if observer == nil {
             observer = ReportingStoreObserver { [weak self] in
                 Task { @MainActor in self?.synchronize() }
             }
-            monitor = Task { [weak self] in
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(2))
-                    guard let self else { return }
-                    self.synchronize()
-                    if self.ownership != nil, self.observer != nil {
-                        return
-                    }
+        }
+        startMonitor()
+        synchronize(force: true)
+        if ownership == nil, !storageError {
+            store.notifyUse()
+        }
+    }
+
+    private func startMonitor() {
+        guard monitor == nil else { return }
+        monitor = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                self.synchronize(force: self.useObserver == nil)
+                if self.ownership != nil, self.observer != nil, self.useObserver != nil, !self.storageError {
+                    self.monitor = nil
+                    return
                 }
             }
         }
-        synchronize(force: true)
     }
 
     private func synchronize(force: Bool = false) {
-        refreshState()
+        let recovering = storageError
+        guard refreshState() else { return }
         var acquired = false
-        if ownership == nil, !storageError {
+        if ownership == nil {
             do {
                 ownership = try store.tryOwn()
                 if ownership != nil {
@@ -166,8 +176,13 @@ final class UsageCounting {
             }
         }
         guard ownership != nil else { return }
-        let newClients = !storageError && configureClients()
-        let changed = force || acquired || newClients || state.consent != scheduledConsent || storageError
+        if useObserver == nil {
+            useObserver = ReportingStoreObserver(name: store.useNotification) { [weak self] in
+                Task { @MainActor in self?.synchronize(force: true) }
+            }
+        }
+        let newClients = configureClients()
+        let changed = force || acquired || newClients || state.consent != scheduledConsent || recovering
         scheduledConsent = state.consent
         for (stream, client) in clients where transitions[stream] == nil {
             let revoke = state.requiredRevocations.contains(stream) && !state.isBlocked(stream)
@@ -195,9 +210,11 @@ final class UsageCounting {
         }
         if legacyStatistics == .keepRequested, legacyTask == nil {
             legacyTask = Task {
-                defer { legacyTask = nil }
                 await continueLegacyStatistics()
-                synchronize()
+                legacyTask = nil
+                if !storageError {
+                    synchronize()
+                }
             }
         }
         let missing = streams.filter { clients[$0] == nil }
@@ -217,14 +234,23 @@ final class UsageCounting {
                 registered = true
             }
         }
+        // Persist the cleared revocation while the destination is still empty.
+        if registered, state.requiredRevocations.contains(.statistics) {
+            guard editState({ state in
+                if state.legacyStatistics == .keepRequested, state.consent?.usageStatistics == true, legacyStore.canMove {
+                    state.finishRevocation(.statistics)
+                }
+            }) else { return }
+        }
         editState { state in
             guard state.legacyStatistics == .keepRequested else { return }
             if legacyStore.wasMoved {
                 state.legacyStatistics = nil
             } else if state.consent?.usageStatistics != true {
                 state.legacyStatistics = .undecided
-            } else if registered, (try? legacyStore.move()) != nil {
-                state.legacyStatistics = nil
+            } else if registered, legacyStore.canMove, legacyStore.hasMatchingRegistration {
+                guard !state.requiredRevocations.contains(.statistics) else { return }
+                state.legacyStatistics = (try? legacyStore.move()) != nil ? nil : .keepUnavailable
             } else {
                 state.legacyStatistics = .keepUnavailable
             }
@@ -244,12 +270,7 @@ final class UsageCounting {
         while true {
             let current = await client.tier
             let status = await client.status
-            guard refreshState() else {
-                if current != .off {
-                    await client.setTier(.off)
-                }
-                return
-            }
+            guard refreshState() else { return }
             updateStatus(status, for: stream)
             if current == .off, hasStrandedData(stream, status) {
                 editState { $0.block(stream) }
@@ -260,10 +281,10 @@ final class UsageCounting {
                 let previousActivity = activity[stream]
                 previousActivity?.cancel()
                 if current != .off {
-                    editState {
+                    guard editState({
                         $0.requiredRevocations.insert(stream)
                         $0.unconfirmedDeletions.insert(stream)
-                    }
+                    }) else { return }
                 }
                 // Invalidate Digoxin's generation before waiting for a canceled upload.
                 await client.setTier(.off)
@@ -277,6 +298,9 @@ final class UsageCounting {
                 continue
             }
             if current == target {
+                if let previousActivity = activity[stream], previousActivity.isCancelled {
+                    await previousActivity.value
+                }
                 startActivity(for: stream, tier: target, client: client)
                 return
             }
@@ -379,28 +403,39 @@ final class UsageCounting {
     private func refreshState() -> Bool {
         do {
             try adopt(store.read())
+            storageError = choiceWriteFailed
         } catch {
             failClosed()
         }
         return !storageError
+    }
+
+    private func saveChoice(_ change: (inout ReportingState) -> Void) {
+        choiceWriteFailed = !editState(change)
+        if !choiceWriteFailed {
+            noteUse()
+        }
     }
 
     @discardableResult
     private func editState(_ change: (inout ReportingState) -> Void) -> Bool {
         do {
             try adopt(store.edit(change))
-            storageError = false
+            storageError = choiceWriteFailed
+            return true
         } catch {
             failClosed()
         }
-        return !storageError
+        return false
     }
 
     private func failClosed() {
         storageError = true
+        scheduledConsent = nil
         for task in activity.values {
             task.cancel()
         }
+        startMonitor()
     }
 }
 
@@ -419,6 +454,9 @@ extension Digoxin: ReportingClient {}
 nonisolated struct LegacyStatisticsStore {
     let old: URL
     let new: URL
+    var loadPublicKey: @Sendable (Data) -> Data? = { blob in
+        try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: blob).publicKey.derRepresentation
+    }
 
     var hasData: Bool {
         ReportingBuild.hasStrandedData(in: old.deletingLastPathComponent(), deletionPending: false)
@@ -429,7 +467,7 @@ nonisolated struct LegacyStatisticsStore {
     }
 
     var canMove: Bool {
-        guard !FileManager.default.fileExists(atPath: new.path),
+        guard destinationIsMissing,
               let entries = try? FileManager.default.contentsOfDirectory(atPath: old.path),
               Set(entries).isSubset(of: ["state.json", "identity.key", "heartbeats.json", "crashes", "pending-deletions"]),
               entries.contains("identity.key"), entries.contains("state.json")
@@ -445,6 +483,39 @@ nonisolated struct LegacyStatisticsStore {
             else { return false }
         }
         return true
+    }
+
+    private var destinationIsMissing: Bool {
+        do {
+            _ = try FileManager.default.attributesOfItem(atPath: new.path)
+            return false
+        } catch let error as CocoaError {
+            return error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile
+        } catch {
+            return false
+        }
+    }
+
+    var hasMatchingRegistration: Bool {
+        struct Registration: Decodable {
+            let registered: String
+        }
+        guard let state = try? Data(contentsOf: old.appending(path: "state.json")),
+              let registration = try? JSONDecoder().decode(Registration.self, from: state),
+              let blob = try? Data(contentsOf: old.appending(path: "identity.key")),
+              let publicKey = loadPublicKey(blob)
+        else { return false }
+
+        // Digoxin identifies an install by the first 26 base32 characters of SHA-256(SPKI).
+        let digest = Array(SHA256.hash(data: publicKey))
+        let alphabet = Array("abcdefghijklmnopqrstuvwxyz234567")
+        let installID = String((0 ..< 26).map { digit in
+            let bit = digit * 5
+            let byte = bit / 8
+            let window = (UInt16(digest[byte]) << 8) | UInt16(digest[byte + 1])
+            return alphabet[Int((window >> (11 - bit % 8)) & 31)]
+        })
+        return installID == registration.registered
     }
 
     func move() throws {

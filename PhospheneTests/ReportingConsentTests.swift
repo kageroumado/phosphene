@@ -151,23 +151,37 @@ struct ReportingLifecycleTests {
         #expect(ReportingBuild.release.initialState { "off" }.consent == ReportingConsent())
     }
 
-    @Test(arguments: [false, true])
-    func `known Release identity moves intact only with empty queues`(queued: Bool) async throws {
+    @Test(arguments: [
+        (false, true, true, false),
+        (false, true, true, true),
+        (true, true, true, false),
+        (false, false, true, false),
+        (false, true, false, false),
+    ])
+    func `Keep requires empty queues and the original usable key`(
+        queued: Bool, keyOpens: Bool, keyMatches: Bool, revoked: Bool,
+    ) async throws {
         let fixture = try ReportingFixture(statistics: RecordingClient(tier: .counting))
         defer { fixture.remove() }
         let legacy = RecordingClient(tier: .counting, status: .registered(trust: "device"))
-        let migration = fixture.legacyStore
+        var migration = fixture.legacyStore
         let key = Data("synthetic old key".utf8)
-        let state = Data("synthetic state and sequence 13".utf8)
+        let installID = keyMatches ? "esew3vuvwn7qgddcd5kqyqvwd3" : "another-install"
+        let state = Data(#"{"registered":"\#(installID)","seq":13}"#.utf8)
+        if keyOpens {
+            migration.loadPublicKey = { $0 }
+        }
         try FileManager.default.createDirectory(at: migration.old, withIntermediateDirectories: true)
         try key.write(to: migration.old.appending(path: "identity.key"))
         try state.write(to: migration.old.appending(path: "state.json"))
         try Data((queued ? "[{}]" : "[]").utf8).write(to: migration.old.appending(path: "heartbeats.json"))
-        let reporting = fixture.controller(
-            initial: ReportingState(consent: ReportingConsent(usageStatistics: true)),
-            legacyStore: migration,
-            legacyClient: legacy,
-        )
+        let reporting = fixture.controller(legacyStore: migration, legacyClient: legacy)
+        reporting.choose(true, for: \.usageStatistics)
+        if revoked {
+            reporting.choose(false, for: \.usageStatistics)
+            reporting.choose(true, for: \.usageStatistics)
+            #expect(try ReportingState.load(from: fixture.stateURL)?.requiredRevocations == [.statistics])
+        }
         reporting.noteUse()
         await finish(reporting)
         #expect(await fixture.statistics.useCount == 0)
@@ -176,7 +190,7 @@ struct ReportingLifecycleTests {
         await finish(reporting)
         #expect(await legacy.tierChanges.isEmpty)
         #expect(await legacy.flushTiers.isEmpty)
-        if queued {
+        if queued || !keyOpens || !keyMatches {
             #expect(reporting.legacyStatistics == .keepUnavailable)
             #expect(await fixture.statistics.useCount == 0)
             #expect(try Data(contentsOf: migration.old.appending(path: "identity.key")) == key)
@@ -184,10 +198,43 @@ struct ReportingLifecycleTests {
             #expect(reporting.legacyStatistics == nil)
             #expect(await fixture.statistics.useCount == 1)
             #expect(await fixture.statistics.tierChanges.isEmpty)
+            #expect(try ReportingState.load(from: fixture.stateURL)?.requiredRevocations.isEmpty == true)
             #expect(try Data(contentsOf: migration.new.appending(path: "identity.key")) == key)
             #expect(try Data(contentsOf: migration.new.appending(path: "state.json")) == state)
             #expect(!FileManager.default.fileExists(atPath: migration.old.path))
         }
+    }
+
+    @Test(arguments: ["missing", "unreadable", "malformed"])
+    func `a journal read failure preserves the reporting identity and recovers`(failure: String) async throws {
+        let fixture = try ReportingFixture()
+        defer { fixture.remove() }
+        let reporting = fixture.controller()
+        reporting.choose(true, for: \.usageStatistics)
+        await finish(reporting)
+
+        let backup = fixture.root.appending(path: "backup.json")
+        try FileManager.default.moveItem(at: fixture.stateURL, to: backup)
+        if failure == "unreadable" {
+            try FileManager.default.createDirectory(at: fixture.stateURL, withIntermediateDirectories: false)
+        } else if failure == "malformed" {
+            try Data("{invalid".utf8).write(to: fixture.stateURL)
+        }
+        reporting.noteUse()
+        await finish(reporting)
+        #expect(reporting.storageError)
+        #expect(await fixture.statistics.tierChanges == [.counting])
+        #expect(await fixture.statistics.useCount == 1)
+
+        if failure != "missing" {
+            try FileManager.default.removeItem(at: fixture.stateURL)
+        }
+        try FileManager.default.moveItem(at: backup, to: fixture.stateURL)
+        reporting.noteUse()
+        await finish(reporting)
+        #expect(!reporting.storageError)
+        #expect(await fixture.statistics.tierChanges == [.counting])
+        #expect(await fixture.statistics.useCount == 2)
     }
 
     @Test
@@ -281,6 +328,27 @@ struct ReportingLifecycleTests {
         await finish(peer)
         #expect(await secondary.statistics.useCount == 0)
         #expect(await secondary.crashes.tierChanges == [.crashReports])
+    }
+
+    @Test
+    func `a second controller forwards usage to the owner of the same journal`() async throws {
+        let primary = try ReportingFixture()
+        defer { primary.remove() }
+        let secondary = try ReportingFixture(root: primary.root)
+        let owner = primary.controller()
+        owner.choose(true, for: \.usageStatistics)
+        await finish(owner)
+        #expect(await primary.statistics.useCount == 1)
+
+        let peer = secondary.controller()
+        peer.noteUse()
+        for _ in 0 ..< 100 {
+            if await primary.statistics.useCount > 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        await finish(owner)
+        #expect(await primary.statistics.useCount == 2)
+        #expect(await secondary.statistics.useCount == 0)
     }
 
     @Test
