@@ -17,7 +17,7 @@ nonisolated struct VideoPairSelection: Identifiable, Sendable {
     }
 
     var actionTitle: LocalizedStringKey {
-        saved == nil ? "Pair…" : "Split Pair…"
+        saved == nil ? "Create Pair…" : "Split Pair…"
     }
 
     func entry(light: Bool, swapped: Bool) -> Entry? {
@@ -138,6 +138,22 @@ private struct PairPoster: View {
                 guard !Task.isCancelled else { return }
                 image = await ThumbnailCache.image(at: poster)
             }
+    }
+}
+
+struct VideoPairActionButtons: View {
+    let pair: VideoPairSelection
+    let store: LibraryStore
+
+    var body: some View {
+        Button { store.pairSheet = pair } label: {
+            Label(pair.actionTitle, image: .lightDarkPair)
+        }
+        if pair.saved != nil, pair.members.count == 2 {
+            Button("Swap Light and Dark", systemImage: "arrow.left.arrow.right") {
+                store.swapAppearances(pair)
+            }
+        }
     }
 }
 

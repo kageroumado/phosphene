@@ -818,12 +818,7 @@ struct LibraryItemMenu: View {
         Button("Quick Look") { store.toggleQuickLook(ids.first) }
         Button("Open Wallpaper Settings…") { store.openWallpaperSettings() }
         if let pair = store.pairAction(for: ids) {
-            Button { store.pairSheet = pair } label: {
-                Label(pair.actionTitle, image: .lightDarkPair)
-            }
-            if pair.saved != nil, pair.members.count == 2 {
-                Button("Swap Light and Dark", systemImage: "arrow.left.arrow.right") { store.swapAppearances(pair) }
-            }
+            VideoPairActionButtons(pair: pair, store: store)
         }
         Divider()
         Button("Show in Finder") { store.showInFinder(ids) }
