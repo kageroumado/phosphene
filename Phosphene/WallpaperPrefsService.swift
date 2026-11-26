@@ -25,6 +25,14 @@ final class WallpaperPrefsService {
 
     // MARK: - Prefs (app → extension)
 
+    var hdrMode: HDRMode = .automatic {
+        didSet { guard hdrMode != oldValue else { return }; savePrefs() }
+    }
+
+    var frameMatchedTransitions = false {
+        didSet { guard frameMatchedTransitions != oldValue else { return }; savePrefs() }
+    }
+
     var userPaused = false {
         didSet { guard userPaused != oldValue else { return }; savePrefs() }
     }
@@ -117,6 +125,8 @@ final class WallpaperPrefsService {
     }
 
     private struct PrefsFile: Codable {
+        var hdrMode: String?
+        var frameMatchedTransitions: Bool?
         var userPaused: Bool
         var alwaysPauseDesktop: Bool
         var pauseWhenOccluded: Bool
@@ -125,17 +135,6 @@ final class WallpaperPrefsService {
         var fullscreenDisplays: Set<UInt32>?
         var pausedDisplays: Set<UInt32>?
         var screenSaverIsOurs: Bool?
-
-        init(userPaused: Bool, alwaysPauseDesktop: Bool, pauseWhenOccluded: Bool = false, desktopOccluded: Bool = false, occludedDisplays: Set<UInt32>? = nil, fullscreenDisplays: Set<UInt32>? = nil, pausedDisplays: Set<UInt32>? = nil, screenSaverIsOurs: Bool? = nil) {
-            self.userPaused = userPaused
-            self.alwaysPauseDesktop = alwaysPauseDesktop
-            self.pauseWhenOccluded = pauseWhenOccluded
-            self.desktopOccluded = desktopOccluded
-            self.occludedDisplays = occludedDisplays
-            self.fullscreenDisplays = fullscreenDisplays
-            self.pausedDisplays = pausedDisplays
-            self.screenSaverIsOurs = screenSaverIsOurs
-        }
     }
 
     private struct ContextState: Codable {
@@ -159,6 +158,9 @@ final class WallpaperPrefsService {
         checkSystemWallpaper()
         observeStateChanges()
         observeWallpaperStore()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(refreshSelectionMetadata(_:)), name: VideoDeploymentService.libraryChangedNotification, object: nil,
+        )
         observeDisplayChanges()
         observeSpaceChanges()
         observeAgentStuck()
@@ -249,7 +251,11 @@ final class WallpaperPrefsService {
 
     // MARK: - Prefs Persistence
 
+    @ObservationIgnored private var loadingPrefs = false
+
     private func loadPrefs() {
+        loadingPrefs = true
+        defer { loadingPrefs = false }
         let data: Data
         do {
             data = try Data(contentsOf: Self.prefsURL)
@@ -258,6 +264,8 @@ final class WallpaperPrefsService {
         }
         do {
             let prefs = try JSONDecoder().decode(PrefsFile.self, from: data)
+            hdrMode = prefs.hdrMode.flatMap(HDRMode.init(rawValue:)) ?? .automatic
+            frameMatchedTransitions = prefs.frameMatchedTransitions ?? false
             userPaused = prefs.userPaused
             alwaysPauseDesktop = prefs.alwaysPauseDesktop
             pauseWhenOccluded = prefs.pauseWhenOccluded
@@ -271,7 +279,10 @@ final class WallpaperPrefsService {
     }
 
     private func savePrefs() {
+        guard !loadingPrefs else { return }
         let prefs = PrefsFile(
+            hdrMode: hdrMode.rawValue,
+            frameMatchedTransitions: frameMatchedTransitions,
             userPaused: userPaused,
             alwaysPauseDesktop: alwaysPauseDesktop,
             pauseWhenOccluded: pauseWhenOccluded,
@@ -352,7 +363,6 @@ final class WallpaperPrefsService {
         let displayMap = resolveDisplayMap().mapValues {
             WallpaperStoreParser.DisplayInfo(displayID: $0.displayID, name: $0.name)
         }
-        let entries = VideoDeploymentService.listEntries()
         let parsed = WallpaperStoreParser.parseSelections(
             plist: plist,
             displayMap: displayMap,
@@ -362,9 +372,8 @@ final class WallpaperPrefsService {
 
         // Layer the library video's display name and on-disk URL onto each parsed
         // selection; the parser resolves everything the store itself knows.
-        selections = parsed.map { sel in
-            let entry = entries.first { $0.id == sel.videoID }
-            return WallpaperSelection(
+        selections = resolvingMetadata(for: parsed.map { sel in
+            WallpaperSelection(
                 id: sel.id,
                 videoID: sel.videoID,
                 displayUUID: sel.displayUUID,
@@ -372,9 +381,25 @@ final class WallpaperPrefsService {
                 displayID: sel.displayID,
                 spaceUUID: sel.spaceUUID,
                 spaceName: sel.spaceName,
-                videoName: entry?.name,
-                videoURL: entry.map { VideoDeploymentService.videoURL(for: $0) },
             )
+        })
+    }
+
+    @objc
+    private func refreshSelectionMetadata(_: Notification) {
+        selections = resolvingMetadata(for: selections)
+    }
+
+    private func resolvingMetadata(for selections: [WallpaperSelection]) -> [WallpaperSelection] {
+        guard !selections.isEmpty else { return [] }
+        let entries = VideoDeploymentService.listEntries()
+        let pairs = (try? AppearancePair.read(in: VideoDeploymentService.videosFolderURL)) ?? []
+        return selections.map { selection in
+            let entry = entries.first { $0.id == selection.videoID }
+            var result = selection
+            result.videoName = pairs.first { $0.contains(selection.videoID) }?.name ?? entry?.name
+            result.videoURL = entry.map(VideoDeploymentService.videoURL(for:))
+            return result
         }
     }
 
@@ -404,7 +429,9 @@ final class WallpaperPrefsService {
             }
         }
 
-        return map
+        guard map.values.contains(where: { SidecarDisplay.isIPad($0.displayID, name: $0.name) }) else { return map }
+        let deviceNames = SidecarDisplay.connectedNames()
+        return map.mapValues { ($0.displayID, deviceNames[$0.displayID] ?? $0.name) }
     }
 
     // MARK: - Space Resolution
@@ -471,7 +498,7 @@ final class WallpaperPrefsService {
 
     // MARK: - Display Change Observer
 
-    @ObservationIgnored private var displayReconfigToken: (any NSObjectProtocol)?
+    @ObservationIgnored private var displayReconfigTokens: [any NSObjectProtocol] = []
     @ObservationIgnored private var knownDisplayIDs: Set<UInt32> = WallpaperPrefsService.connectedDisplayIDs()
     @ObservationIgnored private var displaySetRestart: DispatchWorkItem?
 
@@ -482,14 +509,14 @@ final class WallpaperPrefsService {
     }
 
     private func observeDisplayChanges() {
-        displayReconfigToken = NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil,
-            queue: .main,
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.checkSystemWallpaper()
-                self?.restartAgentIfDisplaySetChanged()
+        displayReconfigTokens = [NSApplication.didChangeScreenParametersNotification, SidecarDisplay.connectedDevicesChanged].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.checkSystemWallpaper()
+                    if name == NSApplication.didChangeScreenParametersNotification {
+                        self?.restartAgentIfDisplaySetChanged()
+                    }
+                }
             }
         }
     }
