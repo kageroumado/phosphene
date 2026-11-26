@@ -25,9 +25,9 @@ extension VideoRenderer {
         let blendModeChanged = frameMatchedTransitions != target.frameMatchedTransitions
         frameMatchedTransitions = target.frameMatchedTransitions
         let paired = variantSelector?.pair != nil
-        let mustStopSettling = paired && settlesAfterSelection && !target.settlesAfterSelection && target.policy == .paused
+        let mustHoldSelection = paired && allowsSelectionPlayback && !target.allowsSelectionPlayback && target.policy == .paused
         let waking = renderingSuspended && !target.renderingSuspended
-        settlesAfterSelection = target.settlesAfterSelection
+        allowsSelectionPlayback = target.allowsSelectionPlayback
         renderingSuspended = target.renderingSuspended
         let appearanceChanged = wantsDark != target.wantsDark
         wantsDark = target.wantsDark
@@ -35,13 +35,13 @@ extension VideoRenderer {
         let pauseChanged = (target.policy == .paused) != (currentPolicy == .paused)
         let retargetTier = paired && policyChanged && target.policy != .paused
         let retargetAppearance = appearanceChanged || blendModeChanged || (pauseChanged && movingAppearance == nil)
-        if appearanceChanged, currentFade != nil, !renderingSuspended, !mustStopSettling, !retargetTier,
+        if appearanceChanged, currentFade != nil, !renderingSuspended, !mustHoldSelection, !retargetTier,
            let leg = movingAppearance, let pair = variantSelector?.pair, let activePair {
             fadeMovingAppearance(leg, towardIncoming: pair.url(dark: wantsDark, in: activePair) != asset.url)
         } else if renderingSuspended || retargetTier || (matchedDissolve == nil && retargetAppearance) {
             cancelAppearanceCut()
         }
-        if renderingSuspended || mustStopSettling {
+        if renderingSuspended || mustHoldSelection {
             if isPaused, rampTimer != nil {
                 scheduleDeepPause()
             }
@@ -60,7 +60,7 @@ extension VideoRenderer {
         }
         extensionLog("  [target #\(debugID)] \(currentPolicy) → \(target.policy)\(target.ramps ? " (ramp)" : "") asset=\(asset.url.lastPathComponent)")
         currentPolicy = target.policy
-        switch (target.policy, target.ramps || (paired && hasStarted && settlesAfterSelection)) {
+        switch (target.policy, target.ramps) {
         case (.paused, true): rampDown()
         case (.paused, false): pause()
         case (_, true): rampUp()
@@ -126,12 +126,18 @@ extension VideoRenderer {
     static let rampDownDuration: TimeInterval = 6.0
     private static let rampStepInterval: TimeInterval = 1.0 / 120.0
 
-    /// Run the upstream single-video startup clock long enough to present its first frame.
-    func holdAfterFirstFrame() {
+    /// Give a newly enqueued frame time to appear before holding a paused desktop.
+    func startSelectionClock() {
+        CMTimebaseSetRate(timebase, rate: 1)
+        guard isPaused else { return }
+        firstFrameHoldGeneration &+= 1
+        let generation = firstFrameHoldGeneration
         queue.asyncAfter(deadline: .now() + 0.25) { [self] in
-            guard isRunning, isPaused, rampTimer == nil else { return }
+            guard isRunning, isPaused, rampTimer == nil, firstFrameHoldGeneration == generation else { return }
             CMTimebaseSetRate(timebase, rate: 0)
+            suspendPairFeed()
         }
+        scheduleDeepPause()
     }
 
     func firstFrame(from output: AVAssetReaderTrackOutput) -> CMSampleBuffer? {
@@ -149,20 +155,13 @@ extension VideoRenderer {
     /// Flipping it at ramp completion would make a resume arriving mid-ramp look like
     /// a no-op and strand the rate wherever the cancelled ramp left it (slow motion).
     private func rampDown() {
-        guard !isPaused || variantSelector?.pair != nil else { return }
+        guard !isPaused else { return }
         isPaused = true
         cancelDeepPauseTimer()
         ramp(to: 0.0, over: Self.rampDownDuration) { [self] in
             suspendPairFeed()
             scheduleDeepPause()
         }
-    }
-
-    /// The selected source can start moving even though the desktop's target is already paused.
-    func settleSelection() {
-        CMTimebaseSetRate(timebase, rate: 1)
-        resumePairFeed()
-        rampDown()
     }
 
     /// Gradually raise the timebase rate to 1.0 from wherever it is now, so reversing
@@ -393,7 +392,7 @@ extension VideoRenderer {
         cancelDeepPauseTimer()
         flushInFlight = true
         appearanceTransition.cancel()
-        if isPaused, settlesAfterSelection, variantSelector?.pair != nil {
+        if isPaused, allowsSelectionPlayback, variantSelector?.pair != nil {
             cancelRamp()
         }
         // Freeze the clock up front so it can't advance past PTS 0 during the async
@@ -447,14 +446,8 @@ extension VideoRenderer {
         let paired = variantSelector?.pair != nil
         enqueueRestartFrame(paired ? firstFrame(from: output) : output.copyNextSampleBuffer())
 
-        if !paired, !renderingSuspended {
-            CMTimebaseSetRate(timebase, rate: 1)
-            if isPaused {
-                holdAfterFirstFrame()
-                scheduleDeepPause()
-            }
-        } else if reason == .selection, isPaused, settlesAfterSelection, !renderingSuspended {
-            settleSelection()
+        if !renderingSuspended, !paired || (reason == .selection && allowsSelectionPlayback) {
+            startSelectionClock()
         } else if rampTimer == nil {
             CMTimebaseSetRate(timebase, rate: isPaused || renderingSuspended ? 0.0 : 1.0)
             if isPaused {
