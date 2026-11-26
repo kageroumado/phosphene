@@ -179,7 +179,7 @@ final class SilentUpdates {
         // The background check shares AppUpdater's metadata request and can prepare the download.
         Task { await check() }
         do {
-            availableVersion = try await updater.check()?.version
+            _ = try await checkForRelease()
         } catch {
             return
         }
@@ -215,7 +215,7 @@ final class SilentUpdates {
         Task { [weak panel] in
             let result: Result<String?, any Error>
             do {
-                result = try await .success(updater.check()?.version)
+                result = try await .success(checkForRelease()?.version)
             } catch {
                 result = .failure(error)
             }
@@ -322,10 +322,15 @@ final class SilentUpdates {
         }
     }
 
-    private func checkCandidate() async throws -> UpdateActivity.Candidate? {
+    private func checkForRelease() async throws -> Update? {
         let update = try await updater.check()
         availableVersion = update?.version
-        guard let update else { return nil }
+        lastCheckedAt = .now
+        return update
+    }
+
+    private func checkCandidate() async throws -> UpdateActivity.Candidate? {
+        guard let update = try await checkForRelease() else { return nil }
         return UpdateActivity.Candidate(version: update.version) {
             let prepared = try await update.prepareInstallation()
             return UpdateActivity.Download(

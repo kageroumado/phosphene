@@ -61,12 +61,11 @@ final class UpdateActivity {
     /// Preparation and installation run inside the serialized check or manual request.
     func prepare(_ candidate: Candidate) async throws {
         guard pendingVersion != candidate.version else { return }
+        // The previous prepared update keeps its verified image mounted until discarded.
         let previous = staged
-        staged = nil
-        // Preparing an AppUpdater download can clean up another promoted image.
-        await previous?.download.discard()
         staged = try await (candidate.version, candidate.prepare())
         holdPrepared(version: candidate.version)
+        await previous?.download.discard()
     }
 
     func install(version: String, findCandidate: @MainActor () async throws -> Candidate?) async throws -> ManualResult {

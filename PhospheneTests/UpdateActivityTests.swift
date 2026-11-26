@@ -176,6 +176,40 @@ struct UpdateActivityTests {
         #expect(installs == 1)
     }
 
+    @Test(arguments: [false, true])
+    func `a held download is discarded only after its replacement is ready`(replacementSucceeds: Bool) async throws {
+        let tiptoe = makeTiptoe()
+        let activity = UpdateActivity(tiptoe: tiptoe, videoIsIdle: { true })
+        var discarded = false
+        var installedVersion: String?
+        try await activity.prepare(.init(version: "2.0.0") {
+            .init(install: { installedVersion = "2.0.0" }, discard: { discarded = true })
+        })
+
+        let replacement = UpdateActivity.Candidate(version: "3.0.0") {
+            #expect(activity.pendingVersion == "2.0.0")
+            #expect(tiptoe.pending?.version == "2.0.0")
+            #expect(!discarded)
+            guard replacementSucceeds else { throw URLError(.cannotDecodeContentData) }
+            return .init(install: { installedVersion = "3.0.0" }, discard: {})
+        }
+        if replacementSucceeds {
+            try await activity.prepare(replacement)
+        } else {
+            await #expect(throws: URLError.self) { try await activity.prepare(replacement) }
+        }
+
+        let held = replacementSucceeds ? "3.0.0" : "2.0.0"
+        #expect(discarded == replacementSucceeds)
+        #expect(activity.pendingVersion == held)
+        #expect(tiptoe.pending?.version == held)
+        #expect(try await activity.install(version: held) {
+            Issue.record("The held update must be available offline.")
+            return nil
+        } == .attempted)
+        #expect(installedVersion == held)
+    }
+
     @Test(arguments: ["2.0.0", "4.0.0"])
     func `a different online candidate cannot replace the advertised version`(version: String) async throws {
         let activity = UpdateActivity(tiptoe: makeTiptoe(), videoIsIdle: { true })
