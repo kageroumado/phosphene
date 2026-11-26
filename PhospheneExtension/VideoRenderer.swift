@@ -342,6 +342,7 @@ final class VideoRenderer: @unchecked Sendable {
         let startRate: Double
         let totalSteps: Int
         let firstTick: DispatchTime
+        let isSelection: Bool
         var index = 0
     }
 
@@ -438,7 +439,8 @@ final class VideoRenderer: @unchecked Sendable {
         var time = CMTime.invalid
         var rate = 0.0
         guard CMTimebaseGetTimeAndRate(handoff.source.predecessor.timebase, timeOut: &time, rateOut: &rate) == 0,
-              time.isNumeric, time >= phase.time, rate >= 0, rate <= phase.rate else {
+              time.isNumeric, time >= phase.time, rate >= 0, rate <= phase.rate,
+              rate == 0 || phase.ramp?.isSelection != true || allowsSelectionPlayback else {
             handoff.frame.reader.cancelReading()
             return .unavailable
         }
