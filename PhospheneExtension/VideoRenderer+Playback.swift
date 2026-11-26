@@ -31,14 +31,12 @@ extension VideoRenderer {
         renderingSuspended = target.renderingSuspended
         let appearanceChanged = wantsDark != target.wantsDark
         wantsDark = target.wantsDark
-        let policyChanged = target.policy != currentPolicy
         let pauseChanged = (target.policy == .paused) != (currentPolicy == .paused)
-        let retargetTier = paired && policyChanged && target.policy != .paused
         let retargetAppearance = appearanceChanged || blendModeChanged || (pauseChanged && movingAppearance == nil)
-        if appearanceChanged, currentFade != nil, !renderingSuspended, !mustHoldSelection, !retargetTier,
+        if appearanceChanged, currentFade != nil, !renderingSuspended, !mustHoldSelection,
            let leg = movingAppearance, let pair = variantSelector?.pair, let activePair {
             fadeMovingAppearance(leg, towardIncoming: pair.url(dark: wantsDark, in: activePair) != asset.url)
-        } else if renderingSuspended || retargetTier || (matchedDissolve == nil && retargetAppearance) {
+        } else if renderingSuspended || (matchedDissolve == nil && retargetAppearance) {
             cancelAppearanceCut()
         }
         if renderingSuspended || mustHoldSelection {
