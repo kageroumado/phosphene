@@ -60,6 +60,7 @@ nonisolated struct VideoPairSelection: Identifiable, Sendable {
 struct VideoPairPreview: View {
     let selection: VideoPairSelection
     let swapped: Bool
+    var contentMode: ContentMode = .fit
     var fraction: CGFloat = 0.5
     var isPlaying: Bool = false
     var onPlaybackEnded: (() -> Void)?
@@ -78,7 +79,7 @@ struct VideoPairPreview: View {
                 poster(videoID: selection.first?.id, url: sources.first, size: size, clip: swapped ? right : left)
                 poster(videoID: selection.second?.id, url: sources.second, size: size, clip: swapped ? left : right)
                 if let session {
-                    PairPlayerLayerView(playback: session, swapped: swapped, fraction: fraction)
+                    PairPlayerLayerView(playback: session, swapped: swapped, fraction: fraction, contentMode: contentMode)
                         .frame(width: size.width, height: size.height)
                         .transition(.identity)
                         .allowsHitTesting(false)
@@ -107,7 +108,7 @@ struct VideoPairPreview: View {
     }
 
     private func poster(videoID: String?, url: URL?, size: CGSize, clip: CGRect) -> some View {
-        PairPoster(videoID: videoID, videoURL: url)
+        PairPoster(videoID: videoID, videoURL: url, contentMode: contentMode)
             .id(url)
             .frame(width: size.width, height: size.height)
             .mask { Path(clip) }
@@ -117,13 +118,14 @@ struct VideoPairPreview: View {
 private struct PairPoster: View {
     let videoID: String?
     let videoURL: URL?
+    let contentMode: ContentMode
     @State private var image: NSImage?
 
     var body: some View {
         Rectangle().fill(.quaternary)
             .overlay {
                 if let image {
-                    Image(nsImage: image).resizable().scaledToFit()
+                    Image(nsImage: image).resizable().aspectRatio(contentMode: contentMode)
                 } else {
                     Image(systemName: "film").foregroundStyle(.secondary)
                 }
