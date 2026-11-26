@@ -8,6 +8,7 @@ enum LibrarySection: Hashable, RawRepresentable {
     static let storageKey = "librarySection"
 
     case allVideos
+    case lightDarkPairs
     case inUse
     /// Every Wallpaper Engine wallpaper found on this Mac.
     case workshopAll
@@ -21,6 +22,7 @@ enum LibrarySection: Hashable, RawRepresentable {
     init?(rawValue: String) {
         switch rawValue {
         case "all": self = .allVideos
+        case "lightDarkPairs": self = .lightDarkPairs
         case "inUse": self = .inUse
         case "workshop": self = .workshopAll
         case "workshop.ready": self = .workshopReady
@@ -34,6 +36,7 @@ enum LibrarySection: Hashable, RawRepresentable {
     var rawValue: String {
         switch self {
         case .allVideos: "all"
+        case .lightDarkPairs: "lightDarkPairs"
         case .inUse: "inUse"
         case .workshopAll: "workshop"
         case .workshopReady: "workshop.ready"
@@ -54,7 +57,7 @@ enum LibrarySection: Hashable, RawRepresentable {
 
     var content: Content {
         switch self {
-        case .allVideos, .inUse: .videos
+        case .allVideos, .lightDarkPairs, .inUse: .videos
         case .workshopAll, .workshopReady, .workshopSource: .downloads
         case .catalog: .catalog
         }
@@ -83,6 +86,7 @@ enum LibraryIconSize {
 nonisolated struct VideoRow: Identifiable, Sendable {
     let entry: VideoDeploymentService.EntryInfo
     let isInUse: Bool
+    let isPair: Bool
     let fileSize: Int64
 
     var id: String {
@@ -213,6 +217,7 @@ nonisolated struct LibraryTileModel: Identifiable, Equatable {
     let isDimmed: Bool
     let badge: Badge?
     let help: String
+    var isPair = false
 }
 
 /// Finder's click rules for a grid: a click selects one item, ⌘-click toggles one,
@@ -236,5 +241,36 @@ enum GridSelection {
             selection = [id]
             anchor = id
         }
+    }
+}
+
+/// Keep the warning and the deletion bound to the same selection even if the library refreshes.
+struct LibraryDeletion {
+    let entries: [VideoDeploymentService.EntryInfo]
+    let pairs: [String: VideoPairSelection]
+
+    var isSinglePair: Bool {
+        entries.count == 1 && !pairs.isEmpty
+    }
+
+    var title: String {
+        if entries.count == 1, let entry = entries.first {
+            return isSinglePair ? String(localized: "Delete the pair “\(entry.name)”?") : String(localized: "Delete “\(entry.name)”?")
+        }
+        return pairs.isEmpty ? String(localized: "Delete \(entries.count) Videos?") : String(localized: "Delete \(entries.count) Library Items?")
+    }
+
+    var message: String {
+        guard !pairs.isEmpty else { return String(localized: "The \(entries.count) videos leave your library and System Settings.") }
+        let warning = isSinglePair
+            ? String(localized: "This removes the pair from your library and System Settings and permanently deletes both library copies.")
+            : String(localized: "The selected items will be removed from your library and System Settings. Both library copies of each pair below will be permanently deleted.")
+        let names = entries.compactMap { entry -> String? in
+            guard let selection = pairs[entry.id], let pair = selection.saved else { return nil }
+            let light = selection.entry(light: true, swapped: pair.swapped)?.name ?? (pair.swapped ? pair.validation.alternate : pair.validation.original).basename
+            let dark = selection.entry(light: false, swapped: pair.swapped)?.name ?? (pair.swapped ? pair.validation.original : pair.validation.alternate).basename
+            return String(localized: "Light — \(light)\nDark — \(dark)")
+        }
+        return ([warning] + names).joined(separator: "\n\n")
     }
 }

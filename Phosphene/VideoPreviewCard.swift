@@ -13,6 +13,14 @@ struct VideoPreviewCard: View {
 
     @State private var isHovering = false
     @State private var thumbnail: NSImage?
+    @State private var loadedSelection: (videoID: String, pair: VideoPairSelection?)?
+    @State private var revision = 0
+
+    private struct SelectionKey: Equatable {
+        let videoID: String?
+        let videoURL: URL?
+        let revision: Int
+    }
 
     private enum Layout {
         static let playButtonDiameter: CGFloat = 56
@@ -22,9 +30,16 @@ struct VideoPreviewCard: View {
         .shared
     }
 
+    private var pair: VideoPairSelection? {
+        loadedSelection?.videoID == videoID ? loadedSelection?.pair : nil
+    }
+
     var body: some View {
         ZStack {
-            if let thumbnail {
+            if let pair, let record = pair.saved {
+                PairComparisonView(selection: pair, swapped: record.swapped)
+                    .id(revision)
+            } else if let thumbnail {
                 Color.black
                 Image(nsImage: thumbnail)
                     .resizable()
@@ -33,17 +48,36 @@ struct VideoPreviewCard: View {
                 placeholder
             }
 
-            playOverlay
+            if pair == nil {
+                playOverlay
+            }
         }
         .aspectRatio(16 / 9, contentMode: .fit)
         .frame(maxWidth: .infinity)
         .clipped()
+        .overlay(alignment: .topTrailing) {
+            if pair != nil, canToggleWallpaper {
+                Button("Wallpaper", systemImage: isEffectivelyPaused ? "play.fill" : "pause.fill", action: toggleWallpaperPlayback)
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .accessibilityLabel(Text(wallpaperPlaybackLabel))
+                    .help(Text(wallpaperPlaybackLabel))
+                    .padding(8)
+            }
+        }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovering = hovering
             }
         }
-        .task(id: videoID) { await loadThumbnail() }
+        .task(id: SelectionKey(videoID: videoID, videoURL: videoURL, revision: revision)) {
+            await loadPair()
+            guard !Task.isCancelled, pair == nil else { return }
+            await loadThumbnail()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: VideoDeploymentService.libraryChangedNotification)) { _ in
+            revision += 1
+        }
     }
 
     // MARK: - Placeholder
@@ -69,17 +103,24 @@ struct VideoPreviewCard: View {
             isPaused: isEffectivelyPaused,
             isVisible: shouldShowOverlay,
             diameter: Layout.playButtonDiameter,
-        ) {
-            // A global user pause (the popover's "Paused" scope) outranks per-display
-            // pause, so while it is set the play button resumes globally — toggling a
-            // display underneath it would visibly do nothing.
-            if prefsService.userPaused {
-                prefsService.userPaused = false
-            } else if let displayID {
-                prefsService.togglePause(displayID: displayID)
-            } else {
-                prefsService.togglePause()
-            }
+            action: toggleWallpaperPlayback,
+        )
+    }
+
+    private var wallpaperPlaybackLabel: LocalizedStringKey {
+        isEffectivelyPaused ? "Resume Desktop Wallpaper" : "Pause Desktop Wallpaper"
+    }
+
+    private func toggleWallpaperPlayback() {
+        // A global user pause (the popover's "Paused" scope) outranks per-display
+        // pause, so while it is set the play button resumes globally — toggling a
+        // display underneath it would visibly do nothing.
+        if prefsService.userPaused {
+            prefsService.userPaused = false
+        } else if let displayID {
+            prefsService.togglePause(displayID: displayID)
+        } else {
+            prefsService.togglePause()
         }
     }
 
@@ -109,8 +150,12 @@ struct VideoPreviewCard: View {
         prefsService.alwaysPauseDesktop || isPausedByOcclusion
     }
 
+    private var canToggleWallpaper: Bool {
+        (videoURL != nil || pair != nil) && !isAutoPaused
+    }
+
     private var shouldShowOverlay: Bool {
-        videoURL != nil && !isAutoPaused && (isHovering || isEffectivelyPaused)
+        canToggleWallpaper && (isHovering || isEffectivelyPaused)
     }
 
     // MARK: - Thumbnail
@@ -135,11 +180,35 @@ struct VideoPreviewCard: View {
             for: videoURL,
             in: videoURL.deletingLastPathComponent(),
         )
+        guard !Task.isCancelled else { return }
         if let url = VideoDeploymentService.thumbnailURL(for: videoID) {
             thumbnail = NSImage(contentsOf: url)
         } else {
             thumbnail = nil
         }
+    }
+
+    private func loadPair() async {
+        guard let videoID else {
+            loadedSelection = nil
+            return
+        }
+        let record = await Self.pairRecord(for: videoID, in: VideoDeploymentService.videosFolderURL)
+        guard !Task.isCancelled else { return }
+        guard let record else {
+            loadedSelection = (videoID, nil)
+            return
+        }
+        let entries = VideoDeploymentService.listEntries()
+        loadedSelection = (
+            videoID,
+            VideoPairSelection(first: entries.first { $0.id == record.owner }, second: entries.first { $0.id == record.counterpart }, saved: record),
+        )
+    }
+
+    @concurrent
+    private nonisolated static func pairRecord(for videoID: String, in directory: URL) async -> AppearancePair? {
+        try? AppearancePair.read(in: directory).first { $0.contains(videoID) && $0.deletionPending != true }
     }
 }
 

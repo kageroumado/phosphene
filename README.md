@@ -29,6 +29,12 @@ Phosphene adds your videos to System Settings → Wallpaper through the same wal
 
 </details>
 
+## Light and dark wallpapers
+
+Select two videos in the Library to create a light/dark pair. Compatible videos keep their original files. The pair converter can give two clips matching dimensions, frame timing, color format, and keyframes. The resulting pair appears as one choice in System Settings → Wallpaper. **Automatic** follows the Mac’s appearance, while **Light** and **Dark** pin the selected version. Splitting a pair restores the two individual Library entries.
+
+HDR playback supports HLG and PQ. **Dynamic Range** controls highlight brightness at playback time. When creating optimized versions, **Convert to SDR** tone-maps the output to Rec. 709 and keeps the HDR original.
+
 ## Wallpaper Engine
 
 ![Phosphene’s library at its Wallpaper Engine section, with Steam Workshop downloads ready to become videos](.github/phosphene-library.png)
