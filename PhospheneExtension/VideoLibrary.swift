@@ -68,10 +68,16 @@ final class VideoLibrary: Sendable {
             .appendingPathComponent(entry.filename)
     }
 
-    /// URL to the video file for a given video ID.
+    /// A selected pair keeps its choice ID when only the other member survives.
     func videoURL(for id: String) -> URL? {
-        guard let entry = entry(for: id) else { return nil }
-        return videoURL(for: entry)
+        if let entry = entry(for: id) {
+            return videoURL(for: entry)
+        }
+        guard let pair = try? AppearancePair.read(in: videosDir).first(where: { $0.contains(id) }),
+              pair.deletionPending != true,
+              let survivor = entry(for: id == pair.owner ? pair.counterpart : pair.owner) else { return nil }
+        let url = videoURL(for: survivor)
+        return isLocalVideo(url) ? url : nil
     }
 
     func isChoiceDownloaded(_ id: String) -> Bool {
@@ -239,6 +245,9 @@ final class VideoLibrary: Sendable {
                 entry = try? JSONDecoder().decode(VideoEntry.self, from: data)
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
                 entry = nil
+            } catch {
+                extensionLog("[VideoLibrary] Could not read metadata for \(id): \(error)")
+                continue
             }
             if let entry {
                 // Metadata id must match its containing directory, and the
@@ -248,33 +257,28 @@ final class VideoLibrary: Sendable {
                     continue
                 }
                 let videoFile = dir.appendingPathComponent(entry.filename)
+                do {
+                    guard try PathSafety.attributes(at: videoFile) != nil else {
+                        try pruneMetadataOnlyOrphan(in: dir, metadataURL: metadataURL)
+                        continue
+                    }
+                } catch {
+                    extensionLog("[VideoLibrary] Could not inspect video for \(id): \(error)")
+                    continue
+                }
                 guard PathSafety.contained(videoFile, in: videosDir) else {
                     extensionLog("[VideoLibrary] Quarantining \(id): video path escapes library")
                     continue
                 }
-                do {
-                    _ = try fm.attributesOfItem(atPath: videoFile.path)
-                } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-                    extensionLog("[VideoLibrary] Pruning orphaned entry \(id): video file missing")
-                    try? fm.removeItem(at: dir)
-                    continue
-                }
                 discovered.append(sanitizingVariants(entry))
-            } else if let videoFile = try findVideoFile(in: dir) {
-                let entry = VideoEntry(
-                    id: id,
-                    name: videoFile.deletingPathExtension().lastPathComponent,
-                    filename: videoFile.lastPathComponent,
-                    duration: 0,
-                    fps: 0,
-                    resolution: .zero,
-                    dateAdded: Date(),
-                )
-                discovered.append(entry)
-                try? JSONEncoder().encode(entry).write(to: metadataURL)
             } else {
-                extensionLog("[VideoLibrary] Pruning empty directory \(id): no video file found")
-                try? fm.removeItem(at: dir)
+                do {
+                    if let recovered = try recoverEntry(in: dir, metadataURL: metadataURL) {
+                        discovered.append(recovered)
+                    }
+                } catch {
+                    extensionLog("[VideoLibrary] Could not inspect directory \(id): \(error)")
+                }
             }
         }
 
@@ -394,14 +398,35 @@ final class VideoLibrary: Sendable {
         try? JSONEncoder().encode(entries).write(to: indexURL, options: .atomic)
     }
 
-    private func findVideoFile(in directory: URL) throws -> URL? {
+    private func pruneMetadataOnlyOrphan(in directory: URL, metadataURL: URL) throws {
+        guard PathSafety.contained(directory, in: videosDir), PathSafety.isItem(at: directory, ofType: .typeDirectory),
+              PathSafety.isItem(at: metadataURL, ofType: .typeRegular),
+              try FileManager.default.contentsOfDirectory(atPath: directory.path) == [metadataURL.lastPathComponent],
+              unsafe unlink(metadataURL.path) == 0, unsafe rmdir(directory.path) == 0 else { return }
+        extensionLog("[VideoLibrary] Pruned orphaned entry \(directory.lastPathComponent): video file missing")
+    }
+
+    private func recoverEntry(in directory: URL, metadataURL: URL) throws -> VideoEntry? {
         let extensions = ["mp4", "mov", "m4v"]
-        let contents = try FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil,
-        )
-        return contents.first { file in
-            extensions.contains(file.pathExtension.lowercased())
+        let id = directory.lastPathComponent
+        let contents = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        guard let videoFile = contents.first(where: { extensions.contains($0.pathExtension.lowercased()) && isLocalVideo($0) }) else {
+            if contents.isEmpty, unsafe rmdir(directory.path) == 0 {
+                extensionLog("[VideoLibrary] Pruning empty directory \(id): no video file found")
+            }
+            return nil
         }
+        let entry = VideoEntry(
+            id: id,
+            name: videoFile.deletingPathExtension().lastPathComponent,
+            filename: videoFile.lastPathComponent,
+            duration: 0,
+            fps: 0,
+            resolution: .zero,
+            dateAdded: Date(),
+        )
+        try? JSONEncoder().encode(entry).write(to: metadataURL)
+        return entry
     }
 
     /// Migrate legacy single-file `wallpaper.{mp4,mov,m4v}` from Documents root into the library.

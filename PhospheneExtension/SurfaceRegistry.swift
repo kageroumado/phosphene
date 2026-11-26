@@ -137,7 +137,7 @@ final class SurfaceRegistry: Sendable {
         let state = PlaybackStore.snapshot
         let hosted = lock.withLock { $0.surfaces.values.compactMap(\.videoID) }
         for id in Set(hosted + [state.lastVideoID, state.shufflePick].compactMap(\.self))
-            where PathSafety.isValidEntryID(id) && VideoLibrary.shared.entry(for: id) == nil {
+            where PathSafety.isValidEntryID(id) && VideoLibrary.shared.videoURL(for: id) == nil {
             removeSurfaces(showing: id)
             PlaybackStore.post(.videoRemoved(id))
         }

@@ -39,6 +39,132 @@ struct VideoLibraryRemovalTests {
     }
 
     @Test
+    func `scan preserves unreadable entries and unrecognized media while publishing healthy entries`() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = VideoLibrary(documents: root)
+        defer { try? fm.removeItem(at: root) }
+        let healthyID = UUID().uuidString
+        _ = try writeEntry(healthyID, in: library)
+        let unreadableID = UUID().uuidString
+        let unreadable = try writeEntry(unreadableID, in: library)
+        let metadata = unreadable.deletingLastPathComponent().appendingPathComponent("metadata.json")
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: metadata.path)
+
+        let unrecognizedID = UUID().uuidString
+        let media = try writeEntry(unrecognizedID, in: library)
+        let directory = media.deletingLastPathComponent()
+        try fm.removeItem(at: directory.appendingPathComponent("metadata.json"))
+        let renamed = media.deletingPathExtension().appendingPathExtension("qt")
+        try fm.moveItem(at: media, to: renamed)
+        let empty = library.videosDir.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: empty, withIntermediateDirectories: false)
+
+        #expect(library.scan())
+        #expect(library.entries.map(\.id) == [healthyID])
+        #expect(fm.fileExists(atPath: unreadable.path))
+        #expect(fm.fileExists(atPath: renamed.path))
+        #expect(!fm.fileExists(atPath: empty.path))
+
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: metadata.path)
+        #expect(library.scan())
+        #expect(Set(library.entries.map(\.id)) == [healthyID, unreadableID])
+    }
+
+    @Test(arguments: [false, true])
+    func `scan prunes metadata-only orphans and preserves renamed media`(hasRenamedMedia: Bool) throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = VideoLibrary(documents: root)
+        defer { try? fm.removeItem(at: root) }
+        let id = UUID().uuidString
+        let media = try writeEntry(id, in: library)
+        let directory = media.deletingLastPathComponent()
+        let metadata = directory.appendingPathComponent("metadata.json")
+        let renamed = media.deletingPathExtension().appendingPathExtension("qt")
+        let savedMetadata = try Data(contentsOf: metadata)
+        if hasRenamedMedia {
+            try fm.moveItem(at: media, to: renamed)
+        } else {
+            try fm.removeItem(at: media)
+        }
+
+        #expect(library.scan())
+        #expect(library.entry(for: id) == nil)
+        if hasRenamedMedia {
+            #expect(try Data(contentsOf: renamed) == Data([1]))
+            #expect(try Data(contentsOf: metadata) == savedMetadata)
+        } else {
+            #expect(!fm.fileExists(atPath: directory.path))
+        }
+    }
+
+    @Test
+    func `pair choice plays the surviving member after losing its owner directory`() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = VideoLibrary(documents: root)
+        defer { try? fm.removeItem(at: root) }
+        let owner = UUID().uuidString
+        let counterpart = UUID().uuidString
+        let original = try writeEntry(owner, in: library)
+        let alternate = try writeEntry(counterpart, in: library)
+        let pair = try AppearancePair(owner: owner, counterpart: counterpart, swapped: false, validation: validate(original, alternate))
+        try AppearancePair.update(in: library.videosDir) { $0 = [pair] }
+
+        #expect(library.scan())
+        #expect(library.videoURL(for: owner) == original)
+        #expect(library.pairRendition(for: owner) != nil)
+        #expect(throws: PairIssue.changed) { try library.removeDownloadedChoice(owner, files: [original]) }
+        #expect(fm.fileExists(atPath: original.path))
+        #expect(fm.fileExists(atPath: alternate.path))
+
+        try fm.moveItem(at: original.deletingLastPathComponent(), to: root.appendingPathComponent("moved-owner"))
+        #expect(library.scan())
+        #expect(library.entry(for: owner) == nil)
+        #expect(library.videoURL(for: owner) == alternate)
+        #expect(library.isChoiceDownloaded(owner))
+        #expect(library.pairRendition(for: owner) == nil)
+    }
+
+    @Test
+    func `reduced pair playback skips incomplete tiers`() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = VideoLibrary(documents: root)
+        defer { try? fm.removeItem(at: root) }
+        let owner = UUID().uuidString
+        let counterpart = UUID().uuidString
+        let original = try writeEntry(owner, in: library)
+        let alternate = try writeEntry(counterpart, in: library)
+        let generation = UUID()
+        let optimization = original.deletingLastPathComponent().appendingPathComponent(".paired-variants-\(generation.uuidString)")
+        let originalTiers = optimization.appendingPathComponent("original")
+        let alternateTiers = optimization.appendingPathComponent("alternate")
+        try fm.createDirectory(at: originalTiers, withIntermediateDirectories: true)
+        try fm.createDirectory(at: alternateTiers, withIntermediateDirectories: true)
+        let tiers = try [30, 15].map { fps in
+            let first = originalTiers.appendingPathComponent("\(fps).mov")
+            let second = alternateTiers.appendingPathComponent("\(fps).mov")
+            try Data([1]).write(to: first)
+            try Data([2]).write(to: second)
+            return try AppearancePair.Tier(fps: fps, resolution: CGSize(width: 1, height: 1), validation: validate(first, second, fps: Int32(fps)))
+        }
+        let pair = try AppearancePair(
+            owner: owner, counterpart: counterpart, swapped: false, validation: validate(original, alternate, fps: 60),
+            optimization: .init(generation: generation, tiers: tiers),
+        )
+        try AppearancePair.update(in: library.videosDir) { $0 = [pair] }
+        #expect(library.scan())
+        let rendition = try #require(library.pairRendition(for: owner))
+
+        #expect(rendition.playback(for: .reduced).validation == tiers[0].validation)
+        try fm.removeItem(at: alternateTiers.appendingPathComponent("30.mov"))
+        #expect(rendition.playback(for: .reduced).validation == tiers[1].validation)
+        #expect(rendition.playback(for: .full) == rendition.originals)
+    }
+
+    @Test
     func `failed degraded removal preserves membership and tiers`() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -96,11 +222,11 @@ struct VideoLibraryRemovalTests {
         return media
     }
 
-    private func validate(_ original: URL, _ alternate: URL) throws -> AppearancePair.Validation {
+    private func validate(_ original: URL, _ alternate: URL, fps: Int32 = 24) throws -> AppearancePair.Validation {
         try AppearancePair.Validation(
             original: #require(FileIdentity(of: original)),
             alternate: #require(FileIdentity(of: alternate)),
-            frameTicks: 1, timescale: 24, frameCount: 1, commonSyncFrames: [0],
+            frameTicks: 1, timescale: fps, frameCount: 1, commonSyncFrames: [0],
         )
     }
 

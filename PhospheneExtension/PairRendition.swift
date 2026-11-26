@@ -6,9 +6,9 @@ struct PairRendition: Sendable {
     private let directory: URL
 
     init?(_ pair: AppearancePair, library: VideoLibrary) {
-        guard let first = library.videoURL(for: pair.owner), let second = library.videoURL(for: pair.counterpart),
-              pair.deletionPending != true,
-              let originals = Playback(original: first, alternate: second, validation: pair.validation) else { return nil }
+        guard pair.deletionPending != true, let first = library.entry(for: pair.owner), let second = library.entry(for: pair.counterpart),
+              let originals = Playback(original: library.videoURL(for: first), alternate: library.videoURL(for: second), validation: pair.validation)
+        else { return nil }
         self.pair = pair
         self.originals = originals
         directory = library.videosDir
@@ -23,10 +23,12 @@ struct PairRendition: Sendable {
     }
 
     func playback(for policy: PlaybackPolicy) -> Playback {
-        guard policy != .paused else { return originals }
+        guard policy != .paused, originals.filesMatch else { return originals }
         let fps = Int((Double(pair.validation.timescale) / Double(pair.validation.frameTicks)).rounded())
-        return VariantSelection.tier(for: policy, sourceFPS: fps, tiers: pair.optimization?.tiers ?? [], fps: \.fps)
-            .flatMap(optimizedPlayback(for:)) ?? originals
+        let tiers = (pair.optimization?.tiers ?? []).compactMap { tier in
+            optimizedPlayback(for: tier).map { (fps: tier.fps, playback: $0) }
+        }
+        return VariantSelection.tier(for: policy, sourceFPS: fps, tiers: tiers, fps: \.fps)?.playback ?? originals
     }
 
     func retains(_ playback: Playback) -> Bool {
@@ -37,8 +39,7 @@ struct PairRendition: Sendable {
     }
 
     private func optimizedPlayback(for tier: AppearancePair.Tier) -> Playback? {
-        guard originals.filesMatch,
-              let first = pair.optimizedURL(for: tier, alternate: false, in: directory),
+        guard let first = pair.optimizedURL(for: tier, alternate: false, in: directory),
               let second = pair.optimizedURL(for: tier, alternate: true, in: directory) else { return nil }
         return Playback(original: first, alternate: second, validation: tier.validation)
     }

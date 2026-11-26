@@ -862,18 +862,17 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
 
     private func removeDownloadBody(id: String, files: [URL], reply: @escaping @Sendable ((any Error)?) -> Void) {
         let library = VideoLibrary.shared
-        let result = Result {
+        do {
             extensionLog("=== REMOVE DOWNLOAD === \(id)")
             try library.removeDownloadedChoice(id, files: files)
+        } catch {
+            reply(error)
+            return
         }
         if library.scan() {
             SurfaceRegistry.shared.reconcileLibrary()
         }
         DispatchQueue.main.async { SettingsPush.libraryDidChange() }
-        if case let .failure(error) = result {
-            reply(error)
-            return
-        }
         agentProxy?.invalidateSnapshots { error in
             if let error {
                 extensionLog("  [Remove] invalidateSnapshots error: \(error)")
