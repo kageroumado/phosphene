@@ -14,7 +14,10 @@ final class UsageCounting {
     private let crashApp: String
     private let currentCrashSlice: UUID?
     private let findReports: @Sendable (Date, Date, Set<UUID>) async -> [OwnCrashReports.Report]
-    private var state = ReportingState.recovery
+    private let initialState: () -> ReportingState
+    private let retireLegacy: (() -> Void)?
+    private var state = ReportingState()
+    @ObservationIgnored private var initialized = false
     @ObservationIgnored private var scheduledConsent: ReportingConsent?
     private var statuses: [ReportingStream: DigoxinStatus] = [:]
     @ObservationIgnored private var ownership: FileHandle?
@@ -30,7 +33,7 @@ final class UsageCounting {
 
     init(
         stateURL: URL,
-        initialState: () -> ReportingState,
+        initialState: @escaping () -> ReportingState,
         retireLegacy: (() -> Void)? = nil,
         legacyStore: LegacyStatisticsStore? = nil,
         makeClient: @escaping @MainActor (ReportingStream) -> any ReportingClient,
@@ -46,11 +49,10 @@ final class UsageCounting {
         self.crashApp = crashApp
         self.currentCrashSlice = currentCrashSlice
         self.findReports = findReports
+        self.initialState = initialState
+        self.retireLegacy = retireLegacy
         do {
-            state = try store.initialize(initial: initialState, retireLegacy: retireLegacy) {
-                configureLegacy(&$0)
-                configureScan(&$0)
-            }
+            state = try initializeJournal()
         } catch {
             storageError = true
         }
@@ -66,14 +68,18 @@ final class UsageCounting {
     }
 
     func choose(_ value: Bool, for keyPath: WritableKeyPath<ReportingConsent, Bool>) {
-        changeConsent { $0[keyPath: keyPath] = value }
+        let stream: ReportingStream = keyPath == \.usageStatistics ? .statistics : .crashes
+        changeConsent(revoking: value ? nil : stream) { $0[keyPath: keyPath] = value }
     }
 
-    private func changeConsent(_ change: (inout ReportingConsent) -> Void) {
-        saveChoice { state in
+    private func changeConsent(revoking stream: ReportingStream? = nil, _ change: (inout ReportingConsent) -> Void) {
+        saveChoice(canRecover: true) { state in
             let previous = state.consent ?? ReportingConsent()
             var choice = previous
             change(&choice)
+            if let stream {
+                state.requiredRevocations.insert(stream)
+            }
             guard state.consent != choice else { return }
             state.consent = choice
             if previous.usageStatistics, !choice.usageStatistics {
@@ -272,12 +278,16 @@ final class UsageCounting {
             let status = await client.status
             guard refreshState() else { return }
             updateStatus(status, for: stream)
+            let revoking = state.requiredRevocations.contains(stream)
+            let retiredStream = stream == .previousCrashes || stream == .legacyStatistics
             if current == .off, hasStrandedData(stream, status) {
-                editState { $0.block(stream) }
+                if revoking || retiredStream {
+                    editState { $0.block(stream) }
+                }
                 return
             }
             let target = targetTier(for: stream)
-            if state.requiredRevocations.contains(stream) || (target == .off && current != .off) {
+            if revoking || (retiredStream && current != .off) {
                 let previousActivity = activity[stream]
                 previousActivity?.cancel()
                 if current != .off {
@@ -305,6 +315,8 @@ final class UsageCounting {
                 return
             }
 
+            // A stream without a current grant stays idle until explicitly revoked or granted.
+            guard target != .off else { return }
             let previousActivity = activity[stream]
             previousActivity?.cancel()
             await client.setTier(target)
@@ -402,7 +414,8 @@ final class UsageCounting {
     @discardableResult
     private func refreshState() -> Bool {
         do {
-            try adopt(store.read())
+            let latest = try initialized ? store.read() : initializeJournal()
+            adopt(latest)
             storageError = choiceWriteFailed
         } catch {
             failClosed()
@@ -410,10 +423,31 @@ final class UsageCounting {
         return !storageError
     }
 
-    private func saveChoice(_ change: (inout ReportingState) -> Void) {
-        choiceWriteFailed = !editState(change)
-        if !choiceWriteFailed {
+    private func initializeJournal(
+        recoveringConsent: Bool = false, _ change: (inout ReportingState) -> Void = { _ in },
+    ) throws -> ReportingState {
+        let latest = try store.initialize(initial: initialState, retireLegacy: retireLegacy, recoveringConsent: recoveringConsent) {
+            configureLegacy(&$0)
+            configureScan(&$0)
+            change(&$0)
+        }
+        initialized = true
+        return latest
+    }
+
+    private func saveChoice(canRecover: Bool = false, _ change: (inout ReportingState) -> Void) {
+        do {
+            let latest = if canRecover {
+                try initializeJournal(recoveringConsent: true, change)
+            } else {
+                try store.edit(change)
+            }
+            adopt(latest)
+            choiceWriteFailed = false
             noteUse()
+        } catch {
+            choiceWriteFailed = true
+            failClosed()
         }
     }
 
