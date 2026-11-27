@@ -229,7 +229,7 @@ final class ConversionToolModel {
             panel.nameFieldStringValue = request.name.replacingOccurrences(of: "/", with: "-") + ".mp4"
             guard panel.runModal() == .OK, let url = panel.url else { return }
             guard !PathSafety.contained(url, in: VideoDeploymentService.videosFolderURL),
-                  request.sources.allSatisfy({ $0.url.resolvingSymlinksInPath().standardizedFileURL != url.resolvingSymlinksInPath().standardizedFileURL }) else {
+                  !request.sources.contains(where: { FileIdentity.sameFile($0.url, url) }) else {
                 errorMessage = String(localized: "Choose a destination outside the managed Library and distinct from the source video.")
                 return
             }
@@ -299,7 +299,8 @@ final class ConversionToolModel {
         }
         try Task.checkCancellation()
         if let output {
-            guard FileIdentity(of: output.url) == output.priorIdentity else {
+            guard FileIdentity(of: output.url) == output.priorIdentity,
+                  !sources.contains(where: { FileIdentity.sameFile($0.url, output.url) }) else {
                 throw ConversionIssue(String(localized: "The destination changed during conversion. Choose it again."))
             }
             if output.priorIdentity == nil {

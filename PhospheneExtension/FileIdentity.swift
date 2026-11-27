@@ -8,6 +8,13 @@ nonisolated struct FileIdentity: Codable, Equatable, Sendable {
     let inode: UInt64
     let modified: Date
 
+    /// Compare the underlying files even when their paths or link names differ.
+    static func sameFile(_ first: URL, _ second: URL) -> Bool {
+        var lhs = stat(), rhs = stat()
+        guard unsafe stat(first.path, &lhs) == 0, unsafe stat(second.path, &rhs) == 0 else { return false }
+        return lhs.st_dev == rhs.st_dev && lhs.st_ino == rhs.st_ino
+    }
+
     init?(of url: URL) {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return nil }
         self.init(basename: url.lastPathComponent, attributes: attributes)
