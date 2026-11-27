@@ -165,8 +165,7 @@ enum VideoOptimizationService {
         case false?:
             return (track, nil, false)
         case true?:
-            guard let format = formats.first, let hdr = VideoProbe.hdrFormat(format),
-                  formats.allSatisfy({ VideoProbe.hdrFormat($0) == hdr }) else {
+            guard let hdr = matchingHDRFormat(formats) else {
                 throw OptimizationError.unsupportedDynamicRange
             }
             return (track, hdr, false)
@@ -178,6 +177,38 @@ enum VideoOptimizationService {
             }
             return (track, nil, true)
         }
+    }
+
+    private nonisolated static func matchingHDRFormat(_ formats: [CMFormatDescription]) -> VideoProbe.HDRFormat? {
+        guard let first = formats.first, let hdr = VideoProbe.hdrFormat(first),
+              formats.allSatisfy({ VideoProbe.hdrFormat($0) == hdr }) else { return nil }
+        return hdr
+    }
+
+    private nonisolated static func loadOptimizationSource(
+        in asset: AVURLAsset, forPair: Bool,
+    ) async throws -> (track: AVAssetTrack, hdr: VideoProbe.HDRFormat?, isHDR: Bool, tagSDR: Bool) {
+        if forPair {
+            let source = try await loadSource(in: asset)
+            return (source.track, source.hdr, source.hdr != nil, true)
+        }
+        // Match single-video playback and the SDR optimizer's first-track selection.
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw OptimizationError.noVideoTrack }
+        let formats = try await track.load(.formatDescriptions)
+        let classification = await VideoProbe.classify(track)
+        let isHDR: Bool
+        if let classification {
+            isHDR = classification
+        } else {
+            let characteristics = try await track.load(.mediaCharacteristics)
+            isHDR = characteristics.contains(.containsHDRVideo) || formats.contains {
+                let transfer = VideoProbe.colorProperties($0)[AVVideoTransferFunctionKey]
+                return isDolbyVision($0) || transfer == AVVideoTransferFunction_ITU_R_2100_HLG
+                    || transfer == AVVideoTransferFunction_SMPTE_ST_2084_PQ
+            }
+        }
+        let hdr = isHDR && !formats.contains(where: isDolbyVision) ? matchingHDRFormat(formats) : nil
+        return (track, hdr, isHDR, classification == nil)
     }
 
     private nonisolated static func sampleDescriptionAtoms(_ format: CMFormatDescription) -> [String: Any] {
@@ -204,28 +235,26 @@ enum VideoOptimizationService {
     @concurrent
     static func createVariants(
         sourceURL: URL,
-        sourceIsHDR: Bool,
+        sourceIsHDR: Bool?,
         targetResolution: CGSize,
         outputDirectory: URL,
         forPair: Bool = false,
         convertToSDR: Bool = false,
         progress: @escaping @MainActor @Sendable (Double) -> Void,
-    ) async throws -> [(url: URL, variant: VideoVariant)] {
+    ) async throws -> (sourceIsHDR: Bool, variants: [(url: URL, variant: VideoVariant)]) {
         let asset = AVURLAsset(url: sourceURL, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
-        let source = try await loadSource(in: asset, assumeSDR: !forPair && !sourceIsHDR)
-        let videoTrack = source.track
-        let hdr = source.hdr
-        guard sourceIsHDR == (hdr != nil) else { throw OptimizationError.unsupportedDynamicRange }
+        let (videoTrack, hdr, isHDR, tagSDR) = try await loadOptimizationSource(in: asset, forPair: forPair)
+        guard sourceIsHDR == isHDR || (sourceIsHDR == nil && !forPair) else { throw OptimizationError.unsupportedDynamicRange }
         if let error = resolutionError(targetResolution) {
             throw error
         }
-        let toneMap = sourceIsHDR && convertToSDR
+        // AVFoundation can still encode an SDR tier for HDR formats that cannot be carried through as Main 10.
+        let toneMap = isHDR && (convertToSDR || hdr == nil)
         let outputHDR = toneMap ? nil : hdr
-        let renderSDR = toneMap || source.assumesSDR
-        let format = OutputFormat(codec: outputHDR == nil ? .h264 : .hevc, hdr: outputHDR, explicitSDR: renderSDR || forPair)
-        let renderer: ConversionFrameRenderer.Configuration? = renderSDR
-            ? .init(range: .sdr, sourceIsHDR: sourceIsHDR, assumeSDR: source.assumesSDR) : nil
-        let transform = sourceIsHDR || forPair || source.assumesSDR ? try await videoTrack.load(.preferredTransform) : .identity
+        let format = OutputFormat(codec: outputHDR == nil ? .h264 : .hevc, hdr: outputHDR, explicitSDR: toneMap || tagSDR)
+        let renderer: ConversionFrameRenderer.Configuration? = toneMap && hdr != nil
+            ? .init(range: .sdr, sourceIsHDR: true) : nil
+        let transform = isHDR || tagSDR ? try await videoTrack.load(.preferredTransform) : .identity
         let sourceRate = try await videoTrack.load(.nominalFrameRate)
         let sourceSize = try await videoTrack.load(.naturalSize)
         let timeRange = try await videoTrack.load(.timeRange)
@@ -239,10 +268,10 @@ enum VideoOptimizationService {
             guard timeRange == full else { throw PairIssue.tracks }
         }
 
-        let size = try alignedSize(targetResolution, chromaAligned: sourceIsHDR || forPair)
+        let size = try alignedSize(targetResolution, chromaAligned: isHDR || forPair)
 
         var tiers = computeFPSTiers(sourceRate: sourceRate)
-        if !toneMap, size.width >= sourceSize.width - 1, size.height >= sourceSize.height - 1 {
+        if !toneMap, tiers.count > 1, size.width >= sourceSize.width - 1, size.height >= sourceSize.height - 1 {
             tiers.removeFirst()
         }
 
@@ -270,7 +299,7 @@ enum VideoOptimizationService {
 
             let fps = try await validateTier(
                 outputURL, size: size, format: format,
-                duration: duration, step: step, frameCount: count,
+                duration: duration, step: step, frameCount: count, toleratesRounding: !forPair,
             )
             results.append((outputURL, VideoVariant(
                 filename: filename, fps: fps, resolution: size,
@@ -280,7 +309,7 @@ enum VideoOptimizationService {
 
         try Task.checkCancellation()
         await progress(1.0)
-        return results
+        return (isHDR, results)
     }
 
     private nonisolated static func alignedSize(_ resolution: CGSize, chromaAligned: Bool) throws -> CGSize {
@@ -299,7 +328,9 @@ enum VideoOptimizationService {
         guard frames <= Double(Int32.max) else { throw OptimizationError.encodingFailed("Too many output frames") }
         let count = Int32(frames)
         let step = CMTimeMultiplyByRatio(duration, multiplier: 1, divisor: count)
-        guard step.isNumeric, step > .zero, CMTimeMultiply(step, multiplier: count) == duration else {
+        let encodedDuration = CMTimeMultiply(step, multiplier: count)
+        guard step.isNumeric, step > .zero, encodedDuration.isNumeric,
+              forPair ? encodedDuration == duration : CMTimeAbsoluteValue(encodedDuration - duration) <= step else {
             throw OptimizationError.encodingFailed("Cannot represent a constant frame rate for this duration")
         }
         if forPair, step > CMTime(value: 1, timescale: 2) {
@@ -350,20 +381,35 @@ enum VideoOptimizationService {
 
     private nonisolated static func validateTier(
         _ url: URL, size: CGSize, format: OutputFormat,
-        duration: CMTime, step: CMTime, frameCount: Int32,
+        duration: CMTime, step: CMTime, frameCount: Int32, toleratesRounding: Bool = false,
     ) async throws -> Int {
         let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         let tracks = try await asset.loadTracks(withMediaType: .video)
         guard tracks.count == 1, let track = tracks.first,
               try await track.load(.naturalSize) == size,
-              try await asset.load(.duration) == duration,
-              try await track.load(.timeRange) == CMTimeRange(start: .zero, duration: duration),
-              let cursor = track.makeSampleCursorAtFirstSampleInDecodeOrder(),
-              cursor.stepInDecodeOrder(byCount: Int64(frameCount)) == Int64(frameCount) - 1 else {
+              let cursor = track.makeSampleCursorAtFirstSampleInDecodeOrder() else {
+            throw OptimizationError.encodingFailed("Output dimensions, duration, or frame count differ from the requested tier")
+        }
+        let outputDuration = try await asset.load(.duration)
+        let outputRange = try await track.load(.timeRange)
+        let countTolerance: Int64 = toleratesRounding ? 1 : 0
+        let expectedCount = Int64(frameCount)
+        let actualCount = cursor.stepInDecodeOrder(byCount: expectedCount + countTolerance) + 1
+        let matchesTimeline = if toleratesRounding {
+            CMTimeAbsoluteValue(outputDuration - duration) <= step
+                && CMTimeAbsoluteValue(outputRange.duration - duration) <= step
+                && CMTimeAbsoluteValue(outputRange.start) <= step
+        } else {
+            outputDuration == duration && outputRange == CMTimeRange(start: .zero, duration: duration)
+        }
+        guard outputDuration.isNumeric, outputDuration > .zero,
+              outputRange.start.isNumeric, outputRange.duration.isNumeric, outputRange.duration > .zero,
+              matchesTimeline, abs(actualCount - expectedCount) <= countTolerance else {
             throw OptimizationError.encodingFailed("Output dimensions, duration, or frame count differ from the requested tier")
         }
         let rate = try await Double(track.load(.nominalFrameRate))
-        guard rate.isFinite, abs(rate * step.seconds - 1) < 0.001 else {
+        let relativeRateTolerance = max(0.001, Double(countTolerance) / Double(frameCount))
+        guard rate.isFinite, rate > 0, rate <= Double(Int32.max), abs(rate * step.seconds - 1) < relativeRateTolerance else {
             throw OptimizationError.encodingFailed("Output frame rate differs from the requested tier")
         }
         let formats = try await track.load(.formatDescriptions)

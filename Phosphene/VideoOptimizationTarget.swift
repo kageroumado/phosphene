@@ -49,7 +49,7 @@ struct VideoOptimizationTarget {
     }
 
     func optimize(
-        preset: OptimizationPreset, convertToSDR: Bool, confirmUntaggedSDR: () -> Bool,
+        preset: OptimizationPreset, convertToSDR: Bool,
         progress: @escaping @MainActor @Sendable (Double) -> Void,
     ) async throws {
         let files = FileManager.default
@@ -63,25 +63,14 @@ struct VideoOptimizationTarget {
 
         guard let pair else {
             try AppearancePair.requireSingle(id, in: library)
-            let sourceIsHDR: Bool
-            if let knownRange = entry.sourceIsHDR {
-                sourceIsHDR = knownRange
-            } else {
-                let inspected = try await ConversionSource.inspect(url: source, name: entry.name)
-                guard inspected.identity == identity else { throw PairIssue.changed }
-                try Task.checkCancellation()
-                if inspected.range == nil, !confirmUntaggedSDR() {
-                    return
-                }
-                guard FileIdentity(of: source) == identity else { throw PairIssue.changed }
-                sourceIsHDR = inspected.range == .hlg || inspected.range == .pq
-            }
-            let variants = try await VideoOptimizationService.createVariants(
-                sourceURL: source, sourceIsHDR: sourceIsHDR, targetResolution: targetSize,
+            let result = try await VideoOptimizationService.createVariants(
+                sourceURL: source, sourceIsHDR: entry.sourceIsHDR, targetResolution: targetSize,
                 outputDirectory: work, convertToSDR: convertToSDR, progress: progress,
             )
             try Task.checkCancellation()
-            try VideoDeploymentService.deployVariants(entryID: id, source: identity, sourceIsHDR: sourceIsHDR, variants: variants)
+            try VideoDeploymentService.deployVariants(
+                entryID: id, source: identity, sourceIsHDR: result.sourceIsHDR, variants: result.variants,
+            )
             return
         }
 
@@ -96,12 +85,12 @@ struct VideoOptimizationTarget {
         let alternateDir = work.appendingPathComponent("alternate", isDirectory: true)
         try files.createDirectory(at: originalDir, withIntermediateDirectories: false)
         try files.createDirectory(at: alternateDir, withIntermediateDirectories: false)
-        let originalTiers = try await VideoOptimizationService.createVariants(
+        let (_, originalTiers) = try await VideoOptimizationService.createVariants(
             sourceURL: source, sourceIsHDR: sourceIsHDR, targetResolution: targetSize,
             outputDirectory: originalDir, forPair: true, convertToSDR: convertToSDR,
         ) { progress($0 * 0.45) }
         try Task.checkCancellation()
-        let alternateTiers = try await VideoOptimizationService.createVariants(
+        let (_, alternateTiers) = try await VideoOptimizationService.createVariants(
             sourceURL: alternate, sourceIsHDR: alternateIsHDR, targetResolution: targetSize,
             outputDirectory: alternateDir, forPair: true, convertToSDR: convertToSDR,
         ) { progress(0.45 + $0 * 0.45) }

@@ -162,15 +162,8 @@ final class PhospheneManager {
             do {
                 try Task.checkCancellation()
                 try await target.optimize(
-                    preset: preset, convertToSDR: convertToSDR && target.entry.sourceIsHDR == true,
-                ) {
-                    let alert = NSAlert()
-                    alert.messageText = String(localized: "Create Variants")
-                    alert.informativeText = target.entry.name
-                    alert.addButton(withTitle: String(localized: "Interpret as SDR (Rec. 709)"))
-                    alert.addButton(withTitle: String(localized: "Cancel")).keyEquivalent = "\u{1b}"
-                    return alert.runModal() == .alertFirstButtonReturn
-                } progress: { progress in
+                    preset: preset, convertToSDR: convertToSDR,
+                ) { progress in
                     self.optimizationProgress = progress
                 }
             } catch {
