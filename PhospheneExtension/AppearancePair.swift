@@ -109,7 +109,18 @@ nonisolated struct AppearancePair: Codable, Equatable, Sendable {
         id == owner || id == counterpart
     }
 
+    /// Corrupt membership is empty for choice lookup and single-entry operations.
     static func read(in directory: URL) throws -> [Self] {
+        do {
+            return try readForMutation(in: directory)
+        } catch is DecodingError {
+            return []
+        } catch let error as CocoaError where error.code == .fileReadCorruptFile {
+            return []
+        }
+    }
+
+    private static func readForMutation(in directory: URL) throws -> [Self] {
         let url = directory.appendingPathComponent(".appearance-pairs.json")
         do {
             let pairs = try JSONDecoder().decode([Self].self, from: Data(contentsOf: url))
@@ -139,7 +150,7 @@ nonisolated struct AppearancePair: Codable, Equatable, Sendable {
         _ change: (inout [Self]) throws -> Void,
     ) throws {
         try withLibraryLock(in: directory) {
-            var pairs = try read(in: directory)
+            var pairs = try readForMutation(in: directory)
             do {
                 try change(&pairs)
                 try write(pairs, in: directory)
@@ -204,7 +215,7 @@ nonisolated struct AppearancePair: Codable, Equatable, Sendable {
         checkSources: (Self) throws -> Void,
     ) throws {
         try Self.withLibraryLock(in: directory) {
-            var pairs = try Self.read(in: directory)
+            var pairs = try Self.readForMutation(in: directory)
             let index = try optimizationIndex(in: pairs)
             try checkSources(pairs[index])
             let stagingName = staging.lastPathComponent
@@ -301,7 +312,7 @@ nonisolated struct AppearancePair: Codable, Equatable, Sendable {
     /// Persist the confirmed identities before detaching either member.
     func remove(in directory: URL) throws {
         try Self.withLibraryLock(in: directory) {
-            try removeWhileLocked(in: directory, pairs: Self.read(in: directory))
+            try removeWhileLocked(in: directory, pairs: Self.readForMutation(in: directory))
         }
     }
 
@@ -346,7 +357,7 @@ nonisolated struct AppearancePair: Codable, Equatable, Sendable {
 
     func finishDeletion(in directory: URL) throws {
         try Self.withLibraryLock(in: directory) {
-            let pairs = try Self.read(in: directory)
+            let pairs = try Self.readForMutation(in: directory)
             guard deletionPending == true, let index = pairs.firstIndex(where: {
                 $0.deletionPending == true && $0.owner == owner && $0.counterpart == counterpart &&
                     $0.membershipID == membershipID && $0.deletion?.token == deletion?.token

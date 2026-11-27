@@ -2,9 +2,8 @@ import CoreGraphics
 import Foundation
 import Testing
 
-/// The optimizer skips the full-FPS tier when it isn't downscaling, so the
-/// variant list's shape encodes the preset: Balanced/Quality yield only
-/// below-source tiers, Battery Saver includes a downscaled full-rate tier.
+/// Balanced and Quality normally produce below-source tiers, while Battery
+/// Saver can also produce a downscaled full-rate tier.
 @MainActor
 struct VariantSelectionTests {
     private let fourK = CGSize(width: 3_840, height: 2_160)
@@ -14,17 +13,14 @@ struct VariantSelectionTests {
         VideoVariant(filename: "variant_\(fps)fps.mp4", fps: fps, resolution: resolution)
     }
 
-    @Test
-    func `legacy variants still work without source or output HDR metadata`() throws {
+    @Test(arguments: [nil, false, true] as [Bool?])
+    func `legacy variants still work after probing the source`(sourceIsHDR: Bool?) throws {
         let original = [variant(60, hd), variant(30, hd), variant(15, hd)]
         let legacy = try JSONDecoder().decode([VideoVariant].self, from: JSONEncoder().encode(original))
-        #expect(VariantSelection.variant(for: .full, sourceIsHDR: nil, sourceFPS: 60, variants: legacy) == legacy[0])
-        #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: nil, sourceFPS: 60, variants: legacy) == legacy[1])
-        #expect(VariantSelection.variant(for: .minimal, sourceIsHDR: nil, sourceFPS: 60, variants: legacy) == legacy[2])
-        #expect(VariantSelection.variant(for: .paused, sourceIsHDR: nil, sourceFPS: 60, variants: legacy) == nil)
-        for policy in [PlaybackPolicy.full, .reduced, .minimal] {
-            #expect(VariantSelection.variant(for: policy, sourceIsHDR: true, sourceFPS: 60, variants: legacy) == nil)
-        }
+        #expect(VariantSelection.variant(for: .full, sourceIsHDR: sourceIsHDR, sourceFPS: 60, variants: legacy) == legacy[0])
+        #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: sourceIsHDR, sourceFPS: 60, variants: legacy) == legacy[1])
+        #expect(VariantSelection.variant(for: .minimal, sourceIsHDR: sourceIsHDR, sourceFPS: 60, variants: legacy) == legacy[2])
+        #expect(VariantSelection.variant(for: .paused, sourceIsHDR: sourceIsHDR, sourceFPS: 60, variants: legacy) == nil)
     }
 
     @Test
@@ -34,6 +30,8 @@ struct VariantSelectionTests {
         let mapped = VideoVariant(filename: "mapped.mp4", fps: 15, resolution: hd, isHDR: false, toneMappedToSDR: true)
         let unverified = VideoVariant(filename: "unverified.mp4", fps: 15, resolution: hd, toneMappedToSDR: true)
         let variants = [hdr, sdr, mapped, unverified]
+        #expect(mapped.supportsPublication(verifiedSourceIsHDR: true, recordedSourceIsHDR: true))
+        #expect(!sdr.supportsPublication(verifiedSourceIsHDR: true, recordedSourceIsHDR: true))
         #expect(VariantSelection.variant(for: .full, sourceIsHDR: true, sourceFPS: 60, variants: variants) == hdr)
         #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: true, sourceFPS: 60, variants: variants) == mapped)
         #expect(VariantSelection.variant(for: .minimal, sourceIsHDR: true, sourceFPS: 60, variants: [sdr, unverified]) == nil)
@@ -43,11 +41,20 @@ struct VariantSelectionTests {
     }
 
     @Test
-    func `a new SDR tier is playable after confirming an untagged source as SDR`() {
+    func `an untagged source can publish its SDR tier and source classification together`() {
         let sdr = VideoVariant(filename: "variant_30fps.mp4", fps: 30, resolution: hd, isHDR: false)
+        #expect(sdr.supportsPublication(verifiedSourceIsHDR: false, recordedSourceIsHDR: nil))
         #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: nil, sourceFPS: 60, variants: [sdr]) == nil)
         #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: false, sourceFPS: 60, variants: [sdr]) == sdr)
         #expect(VariantSelection.variant(for: .reduced, sourceIsHDR: true, sourceFPS: 60, variants: [sdr]) == nil)
+    }
+
+    @Test(arguments: [4, 8])
+    func `a low frame rate source can play its only tier at every running policy`(fps: Int) {
+        let tier = VideoVariant(filename: "variant_\(fps)fps.mp4", fps: fps, resolution: hd, isHDR: false)
+        for policy in [PlaybackPolicy.full, .reduced, .minimal] {
+            #expect(VariantSelection.variant(for: policy, sourceIsHDR: false, sourceFPS: fps, variants: [tier]) == tier)
+        }
     }
 
     @Test

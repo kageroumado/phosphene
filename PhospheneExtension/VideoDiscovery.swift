@@ -9,17 +9,8 @@ import ImageIO
 /// Falls back to the first video in the library, then bundle resources, so
 /// the picker fallback path still has something to display.
 func findVideoURL(forChoice videoID: String?) -> URL? {
-    if let videoID,
-       let url = VideoLibrary.shared.videoURL(for: videoID),
-       FileManager.default.fileExists(atPath: url.path) {
+    if let url = VideoLibrary.shared.playbackURL(for: videoID) {
         return url
-    }
-
-    if let first = VideoLibrary.shared.entries.first {
-        let url = VideoLibrary.shared.videoURL(for: first)
-        if FileManager.default.fileExists(atPath: url.path) {
-            return url
-        }
     }
 
     let videoExtensions = ["mp4", "mov", "m4v"]

@@ -80,10 +80,22 @@ final class VideoLibrary: Sendable {
         return isLocalVideo(url) ? url : nil
     }
 
+    /// Use the first available picker choice when the requested video cannot be played.
+    func playbackURL(for id: String?) -> URL? {
+        if let id, let url = localChoiceURL(for: id) {
+            return url
+        }
+        return entries.lazy.map(videoURL(for:)).first(where: isLocalVideo)
+    }
+
     func isChoiceDownloaded(_ id: String) -> Bool {
-        guard let original = videoURL(for: id), isLocalVideo(original) else { return false }
+        localChoiceURL(for: id) != nil
+    }
+
+    private func localChoiceURL(for id: String) -> URL? {
+        guard let original = videoURL(for: id), isLocalVideo(original) else { return nil }
         let pair = (try? AppearancePair.read(in: videosDir))?.first { $0.contains(id) }
-        return pair?.deletionPending != true
+        return pair?.deletionPending == true ? nil : original
     }
 
     func removeDownloadedChoice(_ id: String, files: [URL]) throws {

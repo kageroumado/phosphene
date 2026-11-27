@@ -9,13 +9,18 @@ nonisolated struct VideoVariant: Codable, Equatable, Sendable {
     var toneMappedToSDR: Bool? = nil // Explicit HDR-to-SDR conversion.
 
     func supports(sourceIsHDR: Bool?) -> Bool {
-        switch sourceIsHDR {
+        // Older tiers were playable regardless of the source's dynamic range.
+        if isHDR == nil, toneMappedToSDR == nil {
+            return true
+        }
+
+        return switch sourceIsHDR {
         case true?:
             isHDR == true || (isHDR == false && toneMappedToSDR == true)
         case false?:
             isHDR != true && toneMappedToSDR != true
         case nil:
-            isHDR == nil && toneMappedToSDR == nil
+            false
         }
     }
 

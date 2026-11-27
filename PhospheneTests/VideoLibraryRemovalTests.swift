@@ -100,6 +100,71 @@ struct VideoLibraryRemovalTests {
     }
 
     @Test
+    func `playback falls back to the first available choice when an ID is unknown`() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = VideoLibrary(documents: root)
+        defer { try? fm.removeItem(at: root) }
+        _ = try writeEntry(UUID().uuidString, in: library)
+        _ = try writeEntry(UUID().uuidString, in: library)
+        #expect(library.scan())
+        let entries = library.entries
+        try #require(entries.count == 2)
+        let first = library.videoURL(for: entries[0])
+        let second = library.videoURL(for: entries[1])
+        let unknown = UUID().uuidString
+
+        #expect(library.videoURL(for: unknown) == nil)
+        #expect(!library.isChoiceDownloaded(unknown))
+        #expect(library.playbackURL(for: unknown) == first)
+        #expect(library.playbackURL(for: entries[1].id) == second)
+        try fm.removeItem(at: first)
+        #expect(library.playbackURL(for: unknown) == second)
+    }
+
+    @Test(arguments: [false, true])
+    func `a corrupt pair index allows single-entry playback and removal`(duplicateMembership: Bool) throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = VideoLibrary(documents: root)
+        defer { try? fm.removeItem(at: root) }
+        let owner = UUID().uuidString
+        let counterpart = UUID().uuidString
+        let tier = VideoVariant(filename: "variant_12fps.mp4", fps: 12, resolution: CGSize(width: 64, height: 48))
+        let original = try writeEntry(owner, in: library, variants: [tier])
+        let alternate = try writeEntry(counterpart, in: library)
+        let variant = library.variantURL(for: owner, variant: tier)
+        try Data([2]).write(to: variant)
+        let validation = try validate(original, alternate)
+        let pair = AppearancePair(owner: owner, counterpart: counterpart, swapped: false, validation: validation)
+        try AppearancePair.update(in: library.videosDir) { $0 = [pair] }
+        #expect(library.scan())
+        #expect(library.bestVariantURL(for: owner, policy: .reduced) == original)
+        #expect(!library.hasPlayableVariant(variant, for: owner))
+
+        let manifest = library.videosDir.appendingPathComponent(".appearance-pairs.json")
+        let corrupt = duplicateMembership ? try JSONEncoder().encode([pair, pair]) : Data("{".utf8)
+        try corrupt.write(to: manifest)
+        #expect(try AppearancePair.read(in: library.videosDir).isEmpty)
+        try AppearancePair.requireSingle(owner, in: library.videosDir)
+        #expect(library.bestVariantURL(for: owner, policy: .reduced) == variant)
+        #expect(library.hasPlayableVariant(variant, for: owner))
+        #expect(library.pairRendition(for: owner) == nil)
+
+        #expect(throws: (any Error).self) { try pair.edit(in: library.videosDir, split: true) }
+        #expect(throws: (any Error).self) { try pair.remove(in: library.videosDir) }
+        #expect(throws: PairIssue.changed) { try library.removeDownloadedChoice(owner, files: [original, alternate]) }
+        #expect(try Data(contentsOf: variant) == Data([2]))
+        #expect(FileIdentity(of: original) == validation.original)
+        #expect(FileIdentity(of: alternate) == validation.alternate)
+
+        try library.removeDownloadedChoice(owner, files: [original])
+        #expect(!fm.fileExists(atPath: original.deletingLastPathComponent().path))
+        #expect(FileIdentity(of: alternate) == validation.alternate)
+        #expect(try Data(contentsOf: manifest) == corrupt)
+    }
+
+    @Test
     func `pair choice plays the surviving member after losing its owner directory`() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -123,6 +188,7 @@ struct VideoLibraryRemovalTests {
         #expect(library.scan())
         #expect(library.entry(for: owner) == nil)
         #expect(library.videoURL(for: owner) == alternate)
+        #expect(library.playbackURL(for: owner) == alternate)
         #expect(library.isChoiceDownloaded(owner))
         #expect(library.pairRendition(for: owner) == nil)
     }
@@ -212,10 +278,10 @@ struct VideoLibraryRemovalTests {
         #expect(FileIdentity(of: alternate) == replacement)
     }
 
-    private func writeEntry(_ id: String, in library: VideoLibrary) throws -> URL {
+    private func writeEntry(_ id: String, in library: VideoLibrary, variants: [VideoVariant]? = nil) throws -> URL {
         let directory = library.videosDir.appendingPathComponent(id)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let entry = VideoEntry(id: id, name: "Sample", filename: "sample.mov", duration: 1, fps: 24, resolution: .zero, dateAdded: .now)
+        let entry = VideoEntry(id: id, name: "Sample", filename: "sample.mov", duration: 1, fps: 24, resolution: .zero, dateAdded: .now, variants: variants)
         let media = library.videoURL(for: entry)
         try Data([1]).write(to: media)
         try JSONEncoder().encode(entry).write(to: directory.appendingPathComponent("metadata.json"))
