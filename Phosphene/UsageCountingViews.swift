@@ -85,7 +85,15 @@ struct UsageCountingSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            tierMenu
+            PopoverSettingPicker(
+                title: "Count this Mac",
+                selection: Binding(get: { tier }, set: reporting.choose),
+                inactiveSelection: .off,
+            ) {
+                ForEach(ConsentTier.allCases, id: \.self) { tier in
+                    Text(Self.title(of: tier)).tag(tier)
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(summary)
                     .font(.caption)
@@ -110,42 +118,6 @@ struct UsageCountingSettings: View {
         .task {
             activeMacs = await reporting.activeMacs()
         }
-    }
-
-    private var tierMenu: some View {
-        Menu {
-            Picker("Count this Mac", selection: Binding(get: { tier }, set: reporting.choose)) {
-                ForEach(ConsentTier.allCases, id: \.self) { tier in
-                    Text(Self.title(of: tier)).tag(tier)
-                }
-            }
-            .pickerStyle(.inline)
-            .labelsHidden()
-        } label: {
-            HStack(spacing: 6) {
-                Text("Count this Mac")
-                    .font(.caption)
-                    .foregroundStyle(tier == .off ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                    .lineLimit(1)
-                Spacer(minLength: Theme.Space.sm)
-                Text(Self.title(of: tier))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(Theme.Space.sm)
-            .contentShape(Theme.concentricInnerShape)
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .glassEffect(
-            tier == .off ? .regular : .regular.tint(Color.accentColor.opacity(0.35)),
-            in: Theme.concentricInnerShape,
-        )
     }
 
     private var detailsToggle: some View {

@@ -1,19 +1,36 @@
 import Propofol
 import SwiftUI
 
-struct DynamicRangePicker: View {
-    @Binding var selection: HDRMode
+struct PopoverSettingPicker<Selection: Hashable, Options: View>: View {
+    let title: LocalizedStringKey
+    @Binding var selection: Selection
+    let inactiveSelection: Selection
+    @ViewBuilder var options: Options
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Picker("Dynamic Range", selection: $selection) {
-            Text("Automatic").tag(HDRMode.automatic)
-            Text("Standard").tag(HDRMode.standard)
-            Text("Constrained High").tag(HDRMode.constrainedHigh)
-            Text("High").tag(HDRMode.high)
+        let isActive = selection != inactiveSelection
+        HStack(spacing: Theme.Space.sm) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(isActive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .padding(.vertical, Theme.Space.sm)
+                .accessibilityHidden(true)
+            Spacer(minLength: 0)
+            Picker(title, selection: $selection) { options }
+                .pickerStyle(.menu)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .foregroundStyle(.secondary)
+                .labelsHidden()
+                .fixedSize()
         }
-        .pickerStyle(.menu)
-        .buttonStyle(.borderless)
-        .controlSize(.small)
+        .padding(.horizontal, Theme.Space.sm)
+        .glassEffect(
+            isActive ? .regular.tint(Color.accentColor.opacity(0.35)) : .regular,
+            in: Theme.concentricInnerShape,
+        )
+        .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.8), value: isActive)
     }
 }
 

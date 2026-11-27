@@ -253,22 +253,15 @@ struct MenuBarPopoverView: View {
             }
             .toggleStyle(SettingPillToggleStyle())
 
-            HStack(spacing: Theme.Space.sm) {
-                Text("Dynamic Range")
-                    .font(.caption)
-                    .padding(.vertical, Theme.Space.sm)
-                    .accessibilityHidden(true)
-                Spacer(minLength: 0)
-                DynamicRangePicker(selection: $prefsService.hdrMode)
-                    .labelsHidden()
-                    .fixedSize()
-            }
-            .padding(.horizontal, Theme.Space.sm)
-            .glassEffect(.regular, in: Theme.concentricInnerShape)
-
             Toggle("Blend Matching Frames", isOn: $prefsService.frameMatchedTransitions)
                 .toggleStyle(SettingPillToggleStyle(showsBlendInfo: true))
 
+            PopoverSettingPicker(title: "Dynamic Range", selection: $prefsService.hdrMode, inactiveSelection: .automatic) {
+                Text("Automatic").tag(HDRMode.automatic)
+                Text("Standard").tag(HDRMode.standard)
+                Text("Constrained High").tag(HDRMode.constrainedHigh)
+                Text("High").tag(HDRMode.high)
+            }
             UsageCountingSettings()
         }
     }
