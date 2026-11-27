@@ -97,22 +97,36 @@ struct PlaybackReducerTests {
     // MARK: - Per-surface presentation
 
     @Test
-    func `invalidated surface defers rendering until acquired again`() {
+    func `invalidated pair defers rendering until acquired again`() {
         let state = run([
+            prefs { $0.alwaysPauseDesktop = true },
             acquire(desktop),
-            acquire(otherDisplay),
-            .surfaceInvalidated(desktop),
+            .surfaceInvalidated(desktop, isPaired: true),
+            .agentUpdate(nil, mode: .locked, activity: .suspended),
             .systemAppearanceChanged(dark: true),
-            .agentUpdate(nil, mode: .default, activity: .active),
         ])
         let targets = PlaybackReducer.targets(state)
         #expect(targets[desktop]?.policy == .paused)
         #expect(targets[desktop]?.renderingSuspended == true)
-        #expect(targets[otherDisplay]?.policy == .full)
+        #expect(state.surfaces[desktop]?.mode == .locked)
         let acquired = PlaybackReducer.targets(run([acquire(desktop)], from: state))
         #expect(acquired[desktop]?.renderingSuspended == false)
         #expect(acquired[desktop]?.wantsDark == true)
         #expect(acquired[desktop]?.policy == .full)
+    }
+
+    @Test
+    func `a replacement inherits the invalidated surface's presentation but starts active`() {
+        let state = run([
+            prefs { $0.alwaysPauseDesktop = true },
+            acquire(desktop),
+            .agentUpdate(desktop, mode: .locked, activity: .suspended),
+            .surfaceInvalidated(desktop, isPaired: true),
+            acquire(newDesktop),
+        ])
+        #expect(PlaybackReducer.targets(state)[desktop]?.renderingSuspended == true)
+        #expect(PlaybackReducer.targets(state)[newDesktop]?.renderingSuspended == false)
+        #expect(policy(newDesktop, state) == .full)
     }
 
     /// A Settings preview's `idle` used to overwrite the one global presentation mode and
@@ -131,15 +145,41 @@ struct PlaybackReducerTests {
     }
 
     @Test
-    func `update for an unknown surface applies to all`() {
+    func `late update and teardown for an invalidated preview leave desktops alone`() {
         let state = run([
             prefs { $0.alwaysPauseDesktop = true },
             acquire(desktop),
-            acquire(otherDisplay),
-            .agentUpdate(nil, mode: .locked, activity: .active),
+            acquire(otherDisplay, "single"),
+            acquire(preview, role: .preview),
+            .screenLockChanged(true),
+            .surfaceInvalidated(preview, isPaired: true),
         ])
-        #expect(policy(desktop, state) == .full)
-        #expect(policy(otherDisplay, state) == .full)
+        let targets = PlaybackReducer.targets(state)
+        #expect(targets[desktop]?.policy == .full && targets[desktop]?.ramps == true)
+        #expect(targets[otherDisplay]?.policy == .full && targets[otherDisplay]?.ramps == true)
+        let liveIDs = [desktop.surfaceUUID: desktop, otherDisplay.surfaceUUID: otherDisplay]
+        let lateUpdates = [preview.surfaceUUID, UUID()].compactMap { uuid in
+            PlaybackEvent.agentUpdate(wallpaperUUID: uuid, resolved: liveIDs[uuid], mode: .idle, activity: .suspended)
+        }
+        #expect(lateUpdates.isEmpty)
+        #expect(run(lateUpdates, from: state) == state)
+        let removed = PlaybackReducer.targets(run([.surfaceRemoved(preview)], from: state))
+        #expect(removed[preview] == nil)
+        #expect(removed[desktop] == targets[desktop])
+        #expect(removed[otherDisplay] == targets[otherDisplay])
+    }
+
+    @Test
+    func `single keeps playing during grace and follows unaddressed updates`() throws {
+        let state = run([acquire(desktop), acquire(otherDisplay, "single")])
+        let invalidated = run([.surfaceInvalidated(desktop, isPaired: false)], from: state)
+        #expect(invalidated == state)
+        let update = try #require(PlaybackEvent.agentUpdate(wallpaperUUID: nil, resolved: nil, mode: .idle, activity: .suspended))
+        let suspended = PlaybackReducer.targets(run([update], from: invalidated))
+        for key in [desktop, otherDisplay] {
+            #expect(suspended[key]?.policy == .paused)
+            #expect(suspended[key]?.renderingSuspended == false)
+        }
     }
 
     // MARK: - Lock screen

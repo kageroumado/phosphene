@@ -600,27 +600,31 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     }
 
     private func updateBody(id: Any?, request: Any?, reply: @escaping @Sendable ((any Error)?) -> Void) {
+        // Read the enum cases through Mirror rather than a stringified description,
+        // whose format changes silently. A field that can't be found reads as the
+        // benign desktop-active value.
+        let mode = request.flatMap { mirrorFindProperty("presentationMode", in: $0) }
+            .map { PresentationMode(caseName: enumCaseName($0)) } ?? .default
+        let activity = request.flatMap { mirrorFindProperty("activityState", in: $0) }
+            .map { ActivityState(caseName: enumCaseName($0)) } ?? .active
+
+        let registry = SurfaceRegistry.shared
+        let uuid = extractWallpaperUUID(fromID: id)
+        let key = uuid.flatMap { uuid -> SurfaceKey? in
+            guard let key = registry.key(forWallpaperID: uuid), registry.surface(for: key) != nil else { return nil }
+            return key
+        }
+        guard let update = PlaybackEvent.agentUpdate(wallpaperUUID: uuid, resolved: key, mode: mode, activity: activity) else {
+            traceLog("=== UPDATE (pid \(connectionPID)) === ignored unmapped WallpaperID \(String(describing: uuid))")
+            reply(nil)
+            return
+        }
+
         // Option edits can travel on the update path; adopt a shuffle-frequency
         // change without waiting for the next acquire.
         if let frequency = extractPickerOptionValue("shuffleFrequency", fromRequest: request) {
             ShuffleController.shared.noteFrequencyChange(frequency)
         }
-
-        // Read the enum cases through Mirror rather than a stringified description,
-        // whose format changes silently. A field that can't be found reads as the
-        // benign desktop-active value.
-        var mode = PresentationMode.default
-        var activity = ActivityState.active
-        if let request {
-            if let value = mirrorFindProperty("presentationMode", in: request) {
-                mode = PresentationMode(caseName: enumCaseName(value))
-            }
-            if let value = mirrorFindProperty("activityState", in: request) {
-                activity = ActivityState(caseName: enumCaseName(value))
-            }
-        }
-
-        let key = extractWallpaperUUID(fromID: id).flatMap { SurfaceRegistry.shared.key(forWallpaperID: $0) }
         if let key, let raw = extractPickerOptionValue(PairAppearanceMode.optionID, fromRequest: request),
            let appearance = PairAppearanceMode(rawValue: raw) {
             PlaybackStore.post(.appearanceSelected(key, appearance))
@@ -629,10 +633,10 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         if let systemDark {
             PlaybackStore.post(.systemAppearanceChanged(dark: systemDark))
         }
-        PlaybackStore.post(.agentUpdate(key, mode: mode, activity: activity))
+        PlaybackStore.post(update)
         let systemAppearance = systemDark.map { $0 ? "dark" : "light" } ?? "absent"
         extensionLog(
-            "=== UPDATE (pid \(connectionPID)) === \(key.map(\.description) ?? "unknown surface → all") "
+            "=== UPDATE (pid \(connectionPID)) === \(key.map(\.description) ?? "unaddressed → all") "
                 + "mode: \(mode), activity: \(activity), systemAppearance: \(systemAppearance)",
         )
         reply(nil)
@@ -660,7 +664,9 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
             reply(nil); return
         }
         registry.forget(wallpaperID: uuid)
-        PlaybackStore.post(.surfaceInvalidated(key))
+        let choice = registry.surface(for: key).flatMap { ShuffleController.shared.resolveChoice($0.videoID) }
+        let isPaired = choice.flatMap { VideoLibrary.shared.pairRendition(for: $0) } != nil
+        PlaybackStore.post(.surfaceInvalidated(key, isPaired: isPaired))
         scheduleTeardown(for: key)
         extensionLog("=== INVALIDATE === \(key) → tear down in \(Lifecycle.teardownGrace)s unless re-acquired")
         reply(nil)
