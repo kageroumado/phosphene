@@ -132,7 +132,11 @@ final class PhospheneManager {
 
         let name = url.deletingPathExtension().lastPathComponent
         await VideoDeploymentService.deployVideo(url: url, name: name) { error in
-            self.reportLibraryError(error, title: String(localized: "Couldn’t Import Video"))
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn’t Import Video")
+            alert.informativeText = error.localizedDescription
+            NSApp.activate()
+            alert.runModal()
         }
     }
 
