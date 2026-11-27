@@ -23,9 +23,11 @@ struct ExternalWallpaperToneMap {
     }
 
     /// Filter the composited scene once, including spare video and transition layers.
+    /// Keep the current filter while the replacement track is being classified.
     @discardableResult
-    mutating func apply(to root: CALayer, mode: HDRMode, headroom: Float?, isHDR: Bool) -> Bool {
-        let next: Configuration? = if mode != .automatic, isHDR, let headroom, headroom.isFinite, headroom > 1 {
+    mutating func apply(to root: CALayer, mode: HDRMode, headroom: Float?, isHDR: Bool?) -> Bool {
+        let next: Configuration? = if mode != .automatic, isHDR ?? (configuration != nil),
+                                      let headroom, headroom.isFinite, headroom > 1 {
             Configuration(mode: mode, headroom: headroom)
         } else {
             nil

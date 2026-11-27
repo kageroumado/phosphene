@@ -54,7 +54,13 @@ struct WallpaperSnapshotSelection: Sendable {
     let frame: Frame
     let file: SnapshotVideoFile?
     let localTime: CMTime
-    let preserveHDR: Bool
+    /// Synchronized pair playback records a file phase shared by both appearances.
+    let exactFileTime: Bool
+    let hdrMode: HDRMode
+
+    var preserveHDR: Bool {
+        hdrMode == .constrainedHigh || hdrMode == .high
+    }
 }
 
 private let snapshotContext = CIContext(options: [.cacheIntermediates: false])
@@ -81,20 +87,24 @@ func createSnapshotViaRuntime(_ selection: WallpaperSnapshotSelection, requested
         }
     }
     guard let file = selection.file, file.existsUnchanged,
-          let image = await snapshotFileFrame(file, at: selection.localTime, preserveHDR: selection.preserveHDR, requestedAt: requestedAt),
+          let image = await snapshotFileFrame(
+              file, at: selection.localTime, exact: selection.exactFileTime, preserveHDR: selection.preserveHDR, requestedAt: requestedAt,
+          ),
           let surface = renderWallpaperSnapshot(CIImage(cgImage: image), preserveHDR: selection.preserveHDR),
           let reply = createSnapshotXPC(surface: surface) else { return nil }
     return (reply, route == "file" ? "file" : "\(route)-fallback", surface.pixelFormat)
 }
 
-func snapshotFileFrame(_ file: SnapshotVideoFile, at time: CMTime, preserveHDR: Bool, requestedAt: CMTime) async -> CGImage? {
+func snapshotFileFrame(_ file: SnapshotVideoFile, at time: CMTime, exact: Bool, preserveHDR: Bool, requestedAt: CMTime) async -> CGImage? {
     guard time.isNumeric, time >= .zero, file.existsUnchanged else { return nil }
-    let asset = AVURLAsset(url: file.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+    let asset = AVURLAsset(url: file.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: exact])
     let generator = AVAssetImageGenerator(asset: asset)
     generator.dynamicRangePolicy = preserveHDR ? .matchSource : .forceSDR
     generator.appliesPreferredTrackTransform = true
-    generator.requestedTimeToleranceBefore = .zero
-    generator.requestedTimeToleranceAfter = .zero
+    if exact {
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+    }
 
     do {
         let result = try await generator.image(at: time)

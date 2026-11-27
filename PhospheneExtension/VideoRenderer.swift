@@ -44,7 +44,7 @@ final class VideoRenderer: @unchecked Sendable {
     private var externalToneMapMode = HDRMode.automatic
     private var externalHDRHeadroom: Float?
     private weak var toneMapTrack: AVAssetTrack?
-    private var toneMapTrackIsHDR = false
+    private var toneMapTrackIsHDR: Bool?
     var isRunning = true
     /// `start()` has built the pipeline. Before that a target only sets the logical
     /// state, which `start()` then honors.
@@ -547,10 +547,11 @@ final class VideoRenderer: @unchecked Sendable {
     /// Re-frame the video layer to a new destination geometry (points) and backing
     /// scale, used when a display reconnects at, or switches to, a different
     /// resolution. The layer fills the root with `resizeAspectFill`, so re-framing it
-    /// to the full bounds is all that's needed. Synchronous, inside an action-free
-    /// flushed transaction, like the acquire path's own layer mutations.
+    /// to the full bounds is all that's needed. Runs on the renderer queue in an
+    /// action-free flushed transaction.
     func resize(to destSize: CGSize, scale: CGFloat) {
-        queue.sync {
+        queue.async { [self] in
+            guard isRunning else { return }
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             for layer in [displayLayer, spareLayer].compactMap(\.self) {
@@ -559,8 +560,8 @@ final class VideoRenderer: @unchecked Sendable {
             }
             CATransaction.commit()
             CATransaction.flush()
+            traceLog("  [resize #\(debugID)] → \(destSize) @\(scale)x")
         }
-        traceLog("  [resize #\(debugID)] → \(destSize) @\(scale)x")
     }
 
     func snapshotSelection(requestedAt hostTime: CMTime) async -> WallpaperSnapshotSelection? {
@@ -600,7 +601,6 @@ final class VideoRenderer: @unchecked Sendable {
 
         let visible = visibleSources.last { $0.start <= time }
         var file = visible?.file
-        let preserveHDR = displayLayer.preferredDynamicRange != .standard
         var local = CMTime.zero
         if let visible {
             let end = lastEnqueuedEnd
@@ -635,7 +635,10 @@ final class VideoRenderer: @unchecked Sendable {
                 "loop=\(visible?.fileLoopStart.seconds ?? 0) frontier=\(lastEnqueuedEnd.seconds) " +
                 "file=\(file?.url.lastPathComponent ?? "nil") local=\(local.seconds)",
         )
-        return WallpaperSnapshotSelection(frame: frame, file: flushInFlight ? nil : file, localTime: local, preserveHDR: preserveHDR)
+        return WallpaperSnapshotSelection(
+            frame: frame, file: flushInFlight ? nil : file, localTime: local,
+            exactFileTime: visible?.playback != nil, hdrMode: externalToneMapMode,
+        )
     }
 
     private func snapshotRoute(_ frame: WallpaperSnapshotSelection.Frame, display: AVSampleBufferVideoRenderer?) -> String {
@@ -685,25 +688,28 @@ final class VideoRenderer: @unchecked Sendable {
     }
 
     /// Configure the initial source before replying to the first acquire.
-    func setVariantSelector(_ selector: VideoSourceSelection) {
-        queue.sync {
-            guard isRunning else { return }
-            variantSelector = selector
-            guard selector.pair != nil else { return }
-            observeDecoder(renderer)
-            // Register the second slot before the remote context is first hosted.
-            guard spareLayer == nil, let root = displayLayer.superlayer else { return }
-            let spare = Self.makeVideoLayer(in: root)
-            spare.controlTimebase = timebase
-            spare.opacity = 0
-            spare.preferredDynamicRange = displayLayer.preferredDynamicRange
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            root.insertSublayer(spare, below: displayLayer)
-            CATransaction.commit()
-            CATransaction.flush()
-            spareLayer = spare
-            observeDecoder(spare.sampleBufferRenderer)
+    func setVariantSelector(_ selector: VideoSourceSelection) async {
+        await withCheckedContinuation { (ready: CheckedContinuation<Void, Never>) in
+            queue.async { [self] in
+                defer { ready.resume() }
+                guard isRunning else { return }
+                variantSelector = selector
+                guard selector.pair != nil else { return }
+                observeDecoder(renderer)
+                // Register the second slot before the remote context is first hosted.
+                guard spareLayer == nil, let root = displayLayer.superlayer else { return }
+                let spare = Self.makeVideoLayer(in: root)
+                spare.controlTimebase = timebase
+                spare.opacity = 0
+                spare.preferredDynamicRange = displayLayer.preferredDynamicRange
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                root.insertSublayer(spare, below: displayLayer)
+                CATransaction.commit()
+                CATransaction.flush()
+                spareLayer = spare
+                observeDecoder(spare.sampleBufferRenderer)
+            }
         }
     }
 
@@ -889,7 +895,7 @@ final class VideoRenderer: @unchecked Sendable {
     private func refreshExternalToneMap() {
         if externalToneMapMode != .automatic, externalHDRHeadroom != nil, toneMapTrack !== videoTrack {
             toneMapTrack = videoTrack
-            toneMapTrackIsHDR = false
+            toneMapTrackIsHDR = nil
             let track = SendableBox(value: videoTrack)
             Task { [weak self] in
                 let isHDR = await VideoProbe.classify(track.value) == true
@@ -903,7 +909,7 @@ final class VideoRenderer: @unchecked Sendable {
 
         externalToneMap.apply(
             to: rootLayer, mode: externalToneMapMode, headroom: externalHDRHeadroom,
-            isHDR: toneMapTrack === videoTrack && toneMapTrackIsHDR,
+            isHDR: toneMapTrack === videoTrack ? toneMapTrackIsHDR : nil,
         )
     }
 

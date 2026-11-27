@@ -37,14 +37,37 @@ struct ExternalWallpaperToneMapTests {
         #expect(updated.value(forKey: "inputDisplayHeadroom") as? Float == 3)
     }
 
+    @Test(arguments: [HDRMode.standard, .constrainedHigh, .high])
+    func `a pending variant keeps the HDR filter until its range is known`(mode: HDRMode) {
+        let root = CALayer()
+        var toneMap = ExternalWallpaperToneMap()
+
+        let firstPending = toneMap.apply(to: root, mode: mode, headroom: 7, isHDR: nil)
+        #expect(!firstPending)
+        let installed = toneMap.apply(to: root, mode: mode, headroom: 7, isHDR: true)
+        #expect(installed)
+        let pendingHDR = toneMap.apply(to: root, mode: mode, headroom: 7, isHDR: nil)
+        #expect(!pendingHDR)
+        #expect(root.filters?.count == 1)
+        let confirmedHDR = toneMap.apply(to: root, mode: mode, headroom: 7, isHDR: true)
+        #expect(!confirmedHDR)
+        let pendingSDR = toneMap.apply(to: root, mode: mode, headroom: 7, isHDR: nil)
+        #expect(!pendingSDR)
+        let confirmedSDR = toneMap.apply(to: root, mode: mode, headroom: 7, isHDR: false)
+        #expect(confirmedSDR)
+        #expect(root.filters == nil)
+    }
+
     @Test
     func `automatic SDR and unavailable display headroom clear the filter`() {
         let root = CALayer()
         var toneMap = ExternalWallpaperToneMap()
-        let fallbacks: [(HDRMode, Float?, Bool)] = [
+        let fallbacks: [(HDRMode, Float?, Bool?)] = [
             (.automatic, 7, true),
+            (.automatic, 7, nil),
             (.high, 7, false),
             (.high, nil, true),
+            (.high, nil, nil),
             (.high, 1, true),
             (.high, .nan, true),
         ]

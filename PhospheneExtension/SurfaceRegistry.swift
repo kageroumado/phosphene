@@ -84,7 +84,7 @@ final class SurfaceRegistry: Sendable {
     }
 
     /// A library edit can tear down the claimed context while its renderer is being created.
-    func installRenderer(_ renderer: VideoRenderer, videoID: String?, for key: SurfaceKey, contextID: UInt32) -> Bool {
+    func installRenderer(_ renderer: VideoRenderer, videoID: String?, for key: SurfaceKey, contextID: UInt32) async -> Bool {
         let needsReload = lock.withLock { contents -> Bool? in
             guard var surface = contents.surfaces[key], surface.contextId == contextID,
                   surface.rendererPending, surface.renderer == nil else { return nil }
@@ -97,13 +97,17 @@ final class SurfaceRegistry: Sendable {
             return needsReload
         }
         guard let needsReload else { return false }
-        if needsReload {
-            Lifecycle.queue.sync {
-                guard surface(for: key)?.renderer === renderer else { return }
-                reload(renderer, for: key, choice: ShuffleController.shared.resolveChoice(videoID))
+        guard needsReload else { return true }
+        return await withCheckedContinuation { ready in
+            Lifecycle.queue.async { [self] in
+                guard let surface = surface(for: key), surface.renderer === renderer else {
+                    ready.resume(returning: false)
+                    return
+                }
+                reload(renderer, for: key, choice: ShuffleController.shared.resolveChoice(surface.videoID))
+                ready.resume(returning: true)
             }
         }
-        return true
     }
 
     /// Record a surface's geometry, returning the surface only when it changed since

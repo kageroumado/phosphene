@@ -335,8 +335,8 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     SurfaceRegistry.shared.clearRendererPending(for: key, contextID: contextID)
                     return
                 }
-                renderer.setVariantSelector(selector)
-                guard SurfaceRegistry.shared.installRenderer(renderer, videoID: choiceConfiguration, for: key, contextID: contextID) else {
+                await renderer.setVariantSelector(selector)
+                guard await SurfaceRegistry.shared.installRenderer(renderer, videoID: choiceConfiguration, for: key, contextID: contextID) else {
                     renderer.stop()
                     return
                 }
@@ -478,8 +478,8 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                     reply(boxedReply.value, nil) // unblock the acquire regardless
                     return
                 }
-                renderer.setVariantSelector(selector)
-                guard SurfaceRegistry.shared.installRenderer(renderer, videoID: choiceConfiguration, for: key, contextID: contextId) else {
+                await renderer.setVariantSelector(selector)
+                guard await SurfaceRegistry.shared.installRenderer(renderer, videoID: choiceConfiguration, for: key, contextID: contextId) else {
                     renderer.stop()
                     reply(nil, CocoaError(.userCancelled))
                     return
@@ -736,13 +736,13 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         let url: URL? = if let pair {
             pair.url(dark: appearances.first ?? state.systemDark)
         } else if let choice {
-            VideoLibrary.shared.videoURL(for: choice)
+            findVideoURL(forChoice: choice)
         } else {
             requested == nil ? findVideoURL(forChoice: nil) : nil
         }
         let selection = url.map { WallpaperSnapshotSelection(
             frame: .file, file: SnapshotVideoFile(url: $0, identity: FileIdentity(of: $0)), localTime: .zero,
-            preserveHDR: state.prefs.hdrMode != .standard,
+            exactFileTime: false, hdrMode: state.prefs.hdrMode,
         ) }
         return (selection, "no-renderer")
     }
