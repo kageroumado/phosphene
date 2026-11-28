@@ -142,7 +142,7 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
         lazy var videoURL = selection?.pair?.url(dark: usesDark()) ?? selection?.fallback
         lazy var seedSource = videoURL.flatMap(FileIdentity.init(of:))
         lazy var cachedStill = loadCachedSnapshotImage(
-            forChoice: choice, source: seedSource, videoURL: videoURL,
+            forChoice: choice, source: seedSource, videoURL: videoURL, pair: selection?.pair,
             width: Int(destination.size.width * destination.scale), height: Int(destination.size.height * destination.scale),
         )
     }

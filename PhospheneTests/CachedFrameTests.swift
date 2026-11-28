@@ -3,6 +3,56 @@ import Testing
 
 struct CachedFrameTests {
     @Test
+    func `same size pair members keep independent stills`() throws {
+        let fixture = try LegacyStill { staged in
+            try Data([2]).write(to: staged.appendingPathComponent("video.mov"))
+        }
+        defer { fixture.remove() }
+        let directory = fixture.directory
+        let alternate = fixture.staged.appendingPathComponent("video.mov")
+        let alternateSource = try #require(FileIdentity(of: alternate))
+        let originalSource = fixture.source
+
+        func lookup(_ source: FileIdentity, member: String? = nil) -> URL? {
+            CachedFrame.lookup(
+                choice: "A", source: source, width: 64, height: 48, directory: directory,
+                pairMember: member, legacyOriginal: fixture.original, recordsDirectory: directory,
+            )
+        }
+
+        func publish(_ source: FileIdentity, member: String, stamp: String) throws -> URL {
+            let prefix = CachedFrame.prefix("A", 64, 48, pairMember: member)
+            let bmp = directory.appendingPathComponent(prefix + stamp + ".bmp")
+            try Data().write(to: bmp)
+            let record = CachedFrame(choice: "A", source: source, width: 64, height: 48, filename: bmp.lastPathComponent)
+            try JSONEncoder().encode(record).write(to: CachedFrame.recordURL(prefix, in: directory), options: .atomic)
+            return bmp
+        }
+
+        #expect(CachedFrame.prefix("A", 64, 48) == "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd-64-48-0-")
+        #expect(lookup(originalSource, member: "A") == nil)
+        try fixture.writeRecord(source: originalSource)
+        #expect(lookup(originalSource, member: "A") == nil)
+        #expect(lookup(originalSource, member: "B") == nil)
+
+        let originalStill = try publish(originalSource, member: "A", stamp: "1")
+        let alternateStill = try publish(alternateSource, member: "B", stamp: "1")
+        #expect(lookup(originalSource, member: "A") == originalStill)
+        #expect(lookup(alternateSource, member: "B") == alternateStill)
+        #expect(lookup(alternateSource, member: "A") == nil)
+        #expect(lookup(originalSource, member: "B") == nil)
+
+        try Data([3, 4]).write(to: alternate, options: .atomic)
+        let replacement = try #require(FileIdentity(of: alternate))
+        #expect(lookup(replacement, member: "B") == nil)
+        let replacementStill = try publish(replacement, member: "B", stamp: "2")
+        #expect(lookup(replacement, member: "B") == replacementStill)
+        #expect(lookup(alternateSource, member: "B") == nil)
+        #expect(lookup(originalSource, member: "A") == originalStill)
+        #expect(lookup(originalSource) == fixture.bmp)
+    }
+
+    @Test
     func `metadata migration preserves and adopts a legacy still`() async throws {
         let fixture = try LegacyStill()
         defer { fixture.remove() }

@@ -6,8 +6,20 @@ import os
 
 private let pendingFrames = OSAllocatedUnfairLock(initialState: [String: (source: FileIdentity, ticket: UUID)]())
 
-func loadCachedSnapshotImage(forChoice choice: String?, source: FileIdentity?, videoURL: URL?, width: Int, height: Int) -> CGImage? {
-    guard let choice, let source,
+private struct SnapshotSource: Equatable {
+    let url: URL
+    let pairMember: String?
+
+    init(_ url: URL, pair: PairRendition?) {
+        self.url = url
+        pairMember = pair.map { $0.originals.alternate == url ? $0.pair.counterpart : $0.pair.owner }
+    }
+}
+
+func loadCachedSnapshotImage(
+    forChoice choice: String?, source: FileIdentity?, videoURL: URL?, pair: PairRendition?, width: Int, height: Int,
+) -> CGImage? {
+    guard let choice, let source, let videoURL,
           let directory = SurfaceRegistry.shared.cacheDirectoryURL else { return nil }
     let scoped = directory.startAccessingSecurityScopedResource()
     defer {
@@ -15,9 +27,11 @@ func loadCachedSnapshotImage(forChoice choice: String?, source: FileIdentity?, v
             directory.stopAccessingSecurityScopedResource()
         }
     }
-    let legacy = videoURL.flatMap { VideoLibrary.shared.legacySnapshotOriginal($0, for: choice) }
+    let member = SnapshotSource(videoURL, pair: pair).pairMember
+    let legacy = member == nil ? VideoLibrary.shared.legacySnapshotOriginal(videoURL, for: choice) : nil
     guard let url = CachedFrame.lookup(
-        choice: choice, source: source, width: width, height: height, directory: directory, legacyOriginal: legacy,
+        choice: choice, source: source, width: width, height: height, directory: directory,
+        pairMember: member, legacyOriginal: legacy,
     ) else { return nil }
     return decodeCachedSnapshot(url)
 }
@@ -40,7 +54,8 @@ private func writeBMPSnapshot(for key: SurfaceKey) async {
           let cacheDir = SurfaceRegistry.shared.cacheDirectoryURL else { return }
     let displayPixelWidth = Int(surface.destSize.width * surface.scaleFactor)
     let displayPixelHeight = Int(surface.destSize.height * surface.scaleFactor)
-    guard let videoURL = selectedSnapshotSource(for: key, choice: videoID), let source = FileIdentity(of: videoURL) else { return }
+    guard let selection = selectedSnapshotSource(for: key, choice: videoID), let source = FileIdentity(of: selection.url) else { return }
+    let (videoURL, member) = (selection.url, selection.pairMember)
     let scoped = cacheDir.startAccessingSecurityScopedResource()
     defer {
         if scoped {
@@ -49,60 +64,102 @@ private func writeBMPSnapshot(for key: SurfaceKey) async {
     }
     guard scoped else { return }
 
-    let prefix = CachedFrame.prefix(videoID, displayPixelWidth, displayPixelHeight)
+    let prefix = CachedFrame.prefix(videoID, displayPixelWidth, displayPixelHeight, pairMember: member)
     let ticket = UUID()
-    let legacy = VideoLibrary.shared.legacySnapshotOriginal(videoURL, for: videoID)
-    let needed = pendingFrames.withLock { pending in
-        guard selectedSnapshotSource(for: key, choice: videoID) == videoURL, FileIdentity(of: videoURL) == source, pending[prefix]?.source != source else { return false }
-        if let cached = CachedFrame.lookup(
-            choice: videoID, source: source, width: displayPixelWidth, height: displayPixelHeight, directory: cacheDir, legacyOriginal: legacy,
-        ), let image = CGImageSourceCreateWithURL(cached as CFURL, nil), CGImageSourceGetCount(image) > 0 {
-            pending[prefix] = nil
-            return false
-        }
-        pending[prefix] = (source, ticket)
-        return true
-    }
-    guard needed else { return }
-    defer { pendingFrames.withLock {
-        if $0[prefix]?.ticket == ticket {
-            $0[prefix] = nil
-        }
-    } }
+    let legacy = member == nil ? VideoLibrary.shared.legacySnapshotOriginal(videoURL, for: videoID) : nil
+    let cache = SnapshotCacheWriter(choice: videoID, source: source, width: displayPixelWidth, height: displayPixelHeight, directory: cacheDir)
 
-    let generator = AVAssetImageGenerator(asset: AVURLAsset(url: videoURL))
-    generator.dynamicRangePolicy = .forceSDR
-    generator.appliesPreferredTrackTransform = true
-    guard let cgImage = try? await generator.image(at: .zero).image,
-          let bmp = makeBMP(from: cgImage) else { return }
-
-    let timestamp = String(format: "%016llx", Date.timeIntervalSinceReferenceDate.bitPattern)
-    let filename = prefix + timestamp + ".bmp"
-    let record = CachedFrame(choice: videoID, source: source, width: displayPixelWidth, height: displayPixelHeight, filename: filename)
     do {
-        try pendingFrames.withLock { pending in
-            guard pending[prefix]?.ticket == ticket, selectedSnapshotSource(for: key, choice: videoID) == videoURL, FileIdentity(of: videoURL) == source else { return }
-            try FileManager.default.createDirectory(at: URL.cachesDirectory, withIntermediateDirectories: true)
-            // Publish the identity first so an interrupted write cannot leave an untracked BMP.
-            try JSONEncoder().encode(record).write(to: CachedFrame.recordURL(prefix), options: .atomic)
-            try bmp.write(to: cacheDir.appendingPathComponent(filename), options: .atomic)
-            let files = try FileManager.default.contentsOfDirectory(at: cacheDir, includingPropertiesForKeys: nil)
-            for old in files where old.lastPathComponent.hasPrefix(prefix) && old.pathExtension == "bmp" && old.lastPathComponent != filename {
-                try? FileManager.default.removeItem(at: old)
+        let needed = try pendingFrames.withLock { pending in
+            guard selectedSnapshotSource(for: key, choice: videoID) == selection, FileIdentity(of: videoURL) == source,
+                  pending[prefix]?.source != source else { return false }
+            if let cached = CachedFrame.lookup(
+                choice: videoID, source: source, width: displayPixelWidth, height: displayPixelHeight, directory: cacheDir,
+                pairMember: member, legacyOriginal: legacy,
+            ), let image = CGImageSourceCreateWithURL(cached as CFURL, nil), CGImageSourceGetCount(image) > 0 {
+                pending[prefix] = nil
+                try cache.refreshAgentFallback(from: cached, for: key, selection: selection)
+                return false
             }
-            try Data(#"{"version":2}"#.utf8).write(to: cacheDir.appendingPathComponent("cacheVersion.db"), options: .atomic)
+            pending[prefix] = (source, ticket)
+            return true
+        }
+        guard needed else { return }
+        defer { pendingFrames.withLock {
+            if $0[prefix]?.ticket == ticket {
+                $0[prefix] = nil
+            }
+        } }
+
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: videoURL))
+        generator.dynamicRangePolicy = .forceSDR
+        generator.appliesPreferredTrackTransform = true
+        guard let cgImage = try? await generator.image(at: .zero).image,
+              let bmp = makeBMP(from: cgImage) else { return }
+
+        try pendingFrames.withLock { pending in
+            // Another surface can still need this member after the initiating surface switches.
+            guard pending[prefix]?.ticket == ticket, FileIdentity(of: videoURL) == source,
+                  member != nil || selectedSnapshotSource(for: key, choice: videoID) == selection else { return }
+            let cached = try cache.publish(prefix) { url in
+                try bmp.write(to: url, options: .atomic)
+            }
+            try cache.refreshAgentFallback(from: cached, for: key, selection: selection)
         }
     } catch {
         traceLog("  [BMPCache] Publish failed: \(error)")
     }
 }
 
-private func selectedSnapshotSource(for key: SurfaceKey, choice videoID: String) -> URL? {
+private struct SnapshotCacheWriter {
+    let choice: String
+    let source: FileIdentity
+    let width: Int
+    let height: Int
+    let directory: URL
+
+    func publish(_ prefix: String, writeBMP: (URL) throws -> Void) throws -> URL {
+        let timestamp = String(format: "%016llx", Date.timeIntervalSinceReferenceDate.bitPattern)
+        let filename = prefix + timestamp + ".bmp"
+        let url = directory.appendingPathComponent(filename)
+        let record = CachedFrame(choice: choice, source: source, width: width, height: height, filename: filename)
+        try FileManager.default.createDirectory(at: URL.cachesDirectory, withIntermediateDirectories: true)
+        // Publish the identity first so an interrupted write cannot leave an untracked BMP.
+        try JSONEncoder().encode(record).write(to: CachedFrame.recordURL(prefix), options: .atomic)
+        try writeBMP(url)
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        for old in files where old.lastPathComponent.hasPrefix(prefix) && old.pathExtension == "bmp" && old.lastPathComponent != filename {
+            try? FileManager.default.removeItem(at: old)
+        }
+        try Data(#"{"version":2}"#.utf8).write(to: directory.appendingPathComponent("cacheVersion.db"), options: .atomic)
+        return url
+    }
+
+    func refreshAgentFallback(from cached: URL, for key: SurfaceKey, selection: SnapshotSource) throws {
+        guard selection.pairMember != nil,
+              CachedFrame.lookup(choice: choice, source: source, width: width, height: height, directory: directory) == nil,
+              selectedSnapshotSource(for: key, choice: choice) == selection, FileIdentity(of: selection.url) == source else { return }
+
+        // Link the complete BMP into the Agent's slot without rewriting the pixels.
+        _ = try publish(CachedFrame.prefix(choice, width, height)) { destination in
+            do {
+                try FileManager.default.linkItem(at: cached, to: destination)
+            } catch {
+                try Data(contentsOf: cached, options: .mappedIfSafe).write(to: destination, options: .atomic)
+            }
+        }
+    }
+}
+
+private func selectedSnapshotSource(for key: SurfaceKey, choice videoID: String) -> SnapshotSource? {
     let state = PlaybackStore.snapshot
     guard let surface = state.surfaces[key], surface.choice == videoID,
           let id = PlaybackReducer.resolve(videoID, in: state) else { return nil }
     let library = VideoLibrary.shared
-    return library.pairRendition(for: id)?.url(dark: surface.appearance.usesDark(systemDark: state.systemDark)) ?? library.videoURL(for: id)
+    let pair = library.pairRendition(for: id)
+    let dark = surface.appearance.usesDark(systemDark: state.systemDark)
+    let url = pair?.url(dark: dark) ?? library.videoURL(for: id)
+    return url.map { SnapshotSource($0, pair: pair) }
 }
 
 private func makeBMP(from cgImage: CGImage) -> Data? {
