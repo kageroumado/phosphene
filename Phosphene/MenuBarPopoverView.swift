@@ -5,6 +5,7 @@ import SwiftUI
 struct MenuBarPopoverView: View {
     @Bindable var manager: PhospheneManager
     var openLibrary: () -> Void = {}
+    var openSettings: () -> Void = {}
     @State private var selectedIndex = 0
     @State private var isHoveringVersion = false
 
@@ -38,7 +39,6 @@ struct MenuBarPopoverView: View {
                     playbackScopePicker
                 }
 
-                settingsSection
                 footerSection
             }
             .popoverContainer()
@@ -239,33 +239,6 @@ struct MenuBarPopoverView: View {
         !VideoDeploymentService.listEntries().isEmpty
     }
 
-    // MARK: - Settings
-
-    private var settingsSection: some View {
-        @Bindable var prefsService = prefsService
-        return VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            SectionLabel(String(localized: "Settings"))
-
-            HStack(spacing: Theme.Space.sm) {
-                Toggle("Launch at Login", isOn: $manager.launchAtLogin)
-                Toggle("Pause When Hidden", isOn: $prefsService.pauseWhenOccluded)
-                    .help("Pause playback on displays fully covered by windows. Fullscreen apps and games always pause their display.")
-            }
-            .toggleStyle(SettingPillToggleStyle())
-
-            Toggle("Blend Matching Frames", isOn: $prefsService.frameMatchedTransitions)
-                .toggleStyle(SettingPillToggleStyle(showsBlendInfo: true))
-
-            PopoverSettingPicker(title: "Dynamic Range", selection: $prefsService.hdrMode, inactiveSelection: .automatic) {
-                Text("Automatic").tag(HDRMode.automatic)
-                Text("Standard").tag(HDRMode.standard)
-                Text("Constrained High").tag(HDRMode.constrainedHigh)
-                Text("High").tag(HDRMode.high)
-            }
-            UsageCountingSettings()
-        }
-    }
-
     // MARK: - Footer
 
     private var footerSection: some View {
@@ -306,6 +279,11 @@ struct MenuBarPopoverView: View {
             }
 
             Spacer(minLength: 0)
+
+            FooterIconButton(String(localized: "Settings"), systemImage: "gearshape") {
+                openSettings()
+            }
+            .help("Settings")
 
             FooterIconButton(String(localized: "Restart Wallpaper Agent"), systemImage: "arrow.clockwise") {
                 WallpaperPrefsService.shared.restartWallpaperAgent()
@@ -483,7 +461,7 @@ private struct RestingChip: ViewModifier {
     }
 }
 
-/// The miniature switch drawn inside chips and setting pills.
+/// The miniature switch drawn inside the version chip.
 private struct MiniSwitchPip: View {
     var isOn: Bool
 
@@ -498,46 +476,6 @@ private struct MiniSwitchPip: View {
                     .padding(2)
             }
             .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isOn)
-    }
-}
-
-/// A settings toggle as a tappable glass pill with a miniature switch — accent-tinted glass
-/// when on, plain glass when off.
-private struct SettingPillToggleStyle: ToggleStyle {
-    var showsBlendInfo = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 0) {
-            Button {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                    configuration.isOn.toggle()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    MiniSwitchPip(isOn: configuration.isOn)
-                    configuration.label
-                        .font(.caption)
-                        .foregroundStyle(configuration.isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                        .lineLimit(1)
-                        .fixedSize()
-                    Spacer(minLength: 0)
-                }
-                .padding(Theme.Space.sm)
-                .contentShape(Theme.concentricInnerShape)
-            }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(.isToggle)
-            .accessibilityValue(configuration.isOn ? "On" : "Off")
-
-            if showsBlendInfo {
-                BlendMatchingFramesInfoButton()
-                    .padding(.trailing, Theme.Space.sm)
-            }
-        }
-        .glassEffect(
-            configuration.isOn ? .regular.tint(Color.accentColor.opacity(0.35)) : .regular,
-            in: Theme.concentricInnerShape,
-        )
     }
 }
 

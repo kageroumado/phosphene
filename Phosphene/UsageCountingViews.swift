@@ -5,7 +5,7 @@ import SwiftUI
 // MARK: - The question
 
 /// Digoxin's question: whether this Mac is counted among Phosphene's users. Asked once,
-/// at the top of the popover; the settings section holds the choice from then on.
+/// at the top of the popover; the Settings window holds the choice from then on.
 struct UsageQuestionCard: View {
     private let reporting = UsageCounting.shared
     @State private var activeMacs: Int?
@@ -59,7 +59,7 @@ struct UsageQuestionCard: View {
 }
 
 /// "Yesterday, N Macs counted themselves in." in the quiet caption of the card and the
-/// settings.
+/// Settings window.
 private struct ActiveMacsLine: View {
     let count: Int
 
@@ -73,68 +73,40 @@ private struct ActiveMacsLine: View {
 
 // MARK: - The setting
 
-/// The "Count this Mac" choice among the popover's settings: the tier as a menu pill, one
-/// line on what the tier sends, and the full list behind a disclosure.
-struct UsageCountingSettings: View {
+/// The "Count this Mac" section of the Settings window: the tier, one line on what it
+/// sends, and the full list behind a disclosure.
+struct UsageCountingSection: View {
     private let reporting = UsageCounting.shared
     private var tier: ConsentTier {
         reporting.tier ?? .off
     }
     @State private var activeMacs: Int?
-    @State private var showsDetails = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            PopoverSettingPicker(
-                title: "Count this Mac",
-                selection: Binding(get: { tier }, set: reporting.choose),
-                inactiveSelection: .off,
-            ) {
+        Section {
+            Picker("Count this Mac", selection: Binding(get: { tier }, set: reporting.choose)) {
                 ForEach(ConsentTier.allCases, id: \.self) { tier in
                     Text(Self.title(of: tier)).tag(tier)
                 }
             }
+            DisclosureGroup("What is sent") { details }
+        } footer: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(summary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 if let statusLine {
                     Text(statusLine)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if let activeMacs {
                     ActiveMacsLine(count: activeMacs)
                 }
-                if showsDetails {
-                    details
-                }
-                detailsToggle
             }
-            .padding(.horizontal, Theme.Space.xs)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .task {
             activeMacs = await reporting.activeMacs()
         }
-    }
-
-    private var detailsToggle: some View {
-        Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showsDetails.toggle() }
-        } label: {
-            HStack(spacing: 3) {
-                Text("What is sent")
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
-                    .rotationEffect(.degrees(showsDetails ? 90 : 0))
-            }
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 2)
     }
 
     private var details: some View {

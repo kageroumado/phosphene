@@ -6,6 +6,7 @@ struct PhospheneApp: App {
     @State private var manager: PhospheneManager
 
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     init() {
         let manager = PhospheneManager()
@@ -52,9 +53,11 @@ struct PhospheneApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarPopoverView(manager: manager, openLibrary: {
-                showLibraryWindow()
-            })
+            MenuBarPopoverView(
+                manager: manager,
+                openLibrary: { showLibraryWindow() },
+                openSettings: { showSettingsWindow() },
+            )
         } label: {
             let announcing = SilentUpdates.shared.availableVersion != nil
                 || SilentUpdates.shared.justUpdatedVersion != nil
@@ -106,6 +109,10 @@ struct PhospheneApp: App {
         .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: 620, height: 660)
 
+        Settings {
+            PhospheneSettingsView(manager: manager)
+        }
+
         WindowGroup("Light/Dark Pair Converter", id: "pair-converter", for: PairConverterRequest.self) { $request in
             ConversionToolView(mode: .pair, pairRequest: request ?? .blank)
         }
@@ -142,14 +149,24 @@ struct PhospheneApp: App {
     private func showLibraryWindow() {
         NSApplication.shared.setActivationPolicy(.regular)
         openWindow(id: "library")
-        // Two passes: cooperative activation can be declined while the popover is
-        // still dismissing, so a second attempt runs after it has settled.
+        bringForward(windowID: "library")
+    }
+
+    private func showSettingsWindow() {
+        NSApplication.shared.setActivationPolicy(.regular)
+        openSettings()
+        bringForward(windowID: "com_apple_SwiftUI_Settings_window")
+    }
+
+    /// Two passes: cooperative activation can be declined while the popover is still
+    /// dismissing, so a second attempt runs after it has settled.
+    private func bringForward(windowID: String) {
         for delay in [0.0, 0.25] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 NSApplication.shared.activate()
                 NSRunningApplication.current.activate(options: [.activateAllWindows])
                 for window in NSApplication.shared.windows
-                    where window.identifier?.rawValue == "library" {
+                    where window.identifier?.rawValue == windowID {
                     window.makeKeyAndOrderFront(nil)
                 }
             }
