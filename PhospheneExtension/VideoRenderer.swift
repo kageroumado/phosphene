@@ -723,8 +723,8 @@ final class VideoRenderer: @unchecked Sendable {
     /// which already blocks for decodes), every switch runs to completion in FIFO
     /// order, and rapid switching is last-requested-wins. The only async hop is the
     /// renderer's `flush`, which is serialized and coalesces rapid switches. The pause
-    /// state carries over to the new source.
-    func switchVideo(to url: URL, selector: VideoSourceSelection) {
+    /// state carries over to the new source. Shuffle omits the URL to use the renderer's appearance.
+    func switchVideo(to url: URL? = nil, selector: VideoSourceSelection) {
         changeSource(to: url, selector: selector, reason: .selection)
     }
 
@@ -732,31 +732,25 @@ final class VideoRenderer: @unchecked Sendable {
         changeSource(to: url, selector: selector, reason: .reload)
     }
 
-    private func changeSource(to url: URL, selector: VideoSourceSelection, reason: SourceChange) {
+    private func changeSource(to requestedURL: URL?, selector: VideoSourceSelection, reason: SourceChange) {
         queue.async { [self] in
             guard isRunning else { return }
-            cancelAppearanceCut()
-            failedSource = nil
             let previous = variantSelector
             variantSelector = selector
-            discardNextReader()
             let sameChoice = previous?.choice == selector.choice && previous?.fallback == selector.fallback
             let currentFileMatches = openedFile != nil && openedFile == FileIdentity(of: asset.url)
 
+            if reason == .reload, sameChoice, currentFileMatches, reloadRetainedPair(previous: previous?.pair) {
+                return
+            }
+
+            cancelAppearanceCut()
+            failedSource = nil
+            discardNextReader()
             if let pair = selector.pair {
                 observeDecoder(renderer)
-                if sameChoice, let activePair, pair.retains(activePair), currentReader != nil || pairReadersReleased,
-                   currentFileMatches, !flushInFlight {
-                    prepareNextReader()
-                    if CMTimebaseGetRate(timebase) == 0 {
-                        suspendPairFeed()
-                    }
-                    prepareAppearanceCut()
-                    return
-                }
-                let playback = pair.playback(for: currentPolicy)
-                if open(pair.url(dark: wantsDark, in: playback), pair: playback, reason: reason)
-                    || (playback != pair.originals && open(pair.url(dark: wantsDark), pair: pair.originals, reason: reason)) {
+                let member = reason == .selection ? requestedURL : nil
+                if openPair(pair, selecting: member, reason: reason) {
                     return
                 }
                 variantSelector = previous
@@ -768,6 +762,7 @@ final class VideoRenderer: @unchecked Sendable {
                 return
             }
 
+            let url = requestedURL ?? selector.fallback
             if !needsMatchedRecovery, reason == .reload, sameChoice, previous?.pair == nil, currentFileMatches,
                previous?.fallbackIdentity == selector.fallbackIdentity,
                let choice = selector.choice, VideoLibrary.shared.hasPlayableVariant(asset.url, for: choice) {
@@ -802,6 +797,32 @@ final class VideoRenderer: @unchecked Sendable {
         }
     }
 
+    private func reloadRetainedPair(previous: PairRendition?) -> Bool {
+        guard let pair = variantSelector?.pair, let activePair, pair.retains(activePair),
+              currentReader != nil || pairReadersReleased || flushInFlight else { return false }
+        let rolesChanged = previous?.pair.swapped != pair.pair.swapped
+        if rolesChanged {
+            cancelAppearanceCut()
+        }
+        if rolesChanged || previous?.originals != pair.originals || previous?.pair.optimization != pair.pair.optimization {
+            failedSource = nil
+        }
+        prepareNextReader()
+        prepareAppearanceCut()
+        return true
+    }
+
+    private func openPair(_ pair: PairRendition, selecting member: URL?, reason: SourceChange) -> Bool {
+        let playback = pair.playback(for: currentPolicy)
+        let dark = member.map { $0 == pair.url(dark: true) } ?? wantsDark
+        guard open(pair.url(dark: dark, in: playback), pair: playback, reason: reason)
+            || (playback != pair.originals && open(pair.url(dark: dark), pair: pair.originals, reason: reason))
+        else { return false }
+        // Keep restart on the selected member until the next target arrives.
+        wantsDark = dark
+        return true
+    }
+
     func open(_ url: URL, pair: PairRendition.Playback?, reason: SourceChange) -> Bool {
         guard loadSource(url, pair: pair) else { return false }
         pairReadersReleased = false
@@ -827,7 +848,13 @@ final class VideoRenderer: @unchecked Sendable {
             return result
         }
         guard let selector = variantSelector else { return nil }
-        let original = selector.pair?.url(dark: wantsDark) ?? selector.fallback
+        let original: URL
+        if let pair = selector.pair {
+            let dark = activePair.map { asset.url == pair.url(dark: true, in: $0) } ?? wantsDark
+            original = pair.url(dark: dark)
+        } else {
+            original = selector.fallback
+        }
         guard original != asset.url, loadSource(original, pair: selector.pair?.originals) else { return nil }
         return startReader()
     }
