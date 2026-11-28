@@ -292,6 +292,7 @@ struct VideoInspector: View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 InspectorNameField(entryID: entry.id, name: entry.name)
+                    .id(entry.id)
                 if let pair, let record = pair.saved {
                     PairMemberNames(pair: pair, swapped: record.swapped)
                 }
@@ -532,7 +533,7 @@ private struct InspectorNameField: View {
                     .onExitCommand { finish(commit: false) }
                     .onChange(of: isFocused) { _, focused in
                         if !focused {
-                            finish(commit: false)
+                            finish(commit: true)
                         }
                     }
                     .task { isFocused = true }
@@ -557,13 +558,12 @@ private struct InspectorNameField: View {
         )
         .padding(.horizontal, -5)
         .onHover { isHovered = $0 }
-        .onChange(of: entryID) { isEditing = false }
     }
 
     private func finish(commit: Bool) {
         guard isEditing else { return }
         isEditing = false
-        guard commit else { return }
+        guard commit, store.section.content == .videos, store.videoSelection == [entryID] else { return }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != name else { return }
         store.renameVideo(entryID: entryID, to: trimmed)
