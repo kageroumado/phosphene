@@ -26,6 +26,8 @@ nonisolated enum SurfaceRole: Equatable, Sendable {
 
 /// Playback preferences written by the app to `phosphene-prefs.json`.
 nonisolated struct PlaybackPrefs: Decodable, Equatable, Sendable {
+    var hdrMode: HDRMode = .automatic
+    var frameMatchedTransitions = false
     var userPaused = false
     var alwaysPauseDesktop = false
     var pauseWhenOccluded = false
@@ -43,6 +45,8 @@ nonisolated struct PlaybackPrefs: Decodable, Equatable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        hdrMode = (try? container.decode(String.self, forKey: .hdrMode)).flatMap(HDRMode.init(rawValue:)) ?? .automatic
+        frameMatchedTransitions = try container.decodeIfPresent(Bool.self, forKey: .frameMatchedTransitions) ?? false
         userPaused = try container.decodeIfPresent(Bool.self, forKey: .userPaused) ?? false
         alwaysPauseDesktop = try container.decodeIfPresent(Bool.self, forKey: .alwaysPauseDesktop) ?? false
         pauseWhenOccluded = try container.decodeIfPresent(Bool.self, forKey: .pauseWhenOccluded) ?? false
@@ -54,6 +58,8 @@ nonisolated struct PlaybackPrefs: Decodable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case hdrMode
+        case frameMatchedTransitions
         case userPaused
         case alwaysPauseDesktop
         case pauseWhenOccluded
@@ -86,14 +92,32 @@ nonisolated struct PlaybackPrefs: Decodable, Equatable, Sendable {
     }
 }
 
+nonisolated enum PairAppearanceMode: String, CaseIterable, Sendable {
+    case automatic
+    case light
+    case dark
+
+    static let optionID = "appearanceMode"
+
+    func usesDark(systemDark: Bool) -> Bool {
+        switch self {
+        case .automatic: systemDark
+        case .light: false
+        case .dark: true
+        }
+    }
+}
+
 /// One surface as the playback model sees it.
 nonisolated struct Surface: Equatable, Sendable {
     var displayID: UInt32?
     var role: SurfaceRole
     /// The choice identifier as the agent sent it; `shuffleChoiceID` for shuffle.
     var choice: String?
+    var appearance: PairAppearanceMode = .automatic
     var mode: PresentationMode
     var activity: ActivityState
+    var awaitingReacquire = false
     /// Whether the event that last touched this surface ramps a policy change it
     /// causes, as opposed to cutting to it.
     var ramps = false
@@ -106,6 +130,7 @@ nonisolated struct PlaybackState: Equatable, Sendable {
     var surfaces: [SurfaceKey: Surface] = [:]
     /// loginwindow's lock state (`com.apple.screenIsLocked`/`Unlocked`).
     var screenLocked = false
+    var systemDark = false
     var displaysAsleep = false
     var prefs = PlaybackPrefs()
     var power = PowerState()
@@ -120,28 +145,38 @@ nonisolated struct PlaybackState: Equatable, Sendable {
 
 /// Every input to playback.
 nonisolated enum PlaybackEvent: Sendable, CustomStringConvertible {
-    case surfaceAcquired(SurfaceKey, displayID: UInt32?, role: SurfaceRole, choice: String?)
+    case surfaceAcquired(SurfaceKey, displayID: UInt32?, role: SurfaceRole, choice: String?, appearance: PairAppearanceMode = .automatic)
+    case systemAppearanceChanged(dark: Bool)
+    case appearanceSelected(SurfaceKey, PairAppearanceMode)
+    case surfaceInvalidated(SurfaceKey, isPaired: Bool)
     case surfaceRemoved(SurfaceKey)
-    /// An `update` from WallpaperAgent. `nil` when the request's WallpaperID is not one
-    /// we acquired; the update then applies to every surface.
+    /// A WallpaperAgent presentation update. An unaddressed update applies to all surfaces.
     case agentUpdate(SurfaceKey?, mode: PresentationMode, activity: ActivityState)
     case screenLockChanged(Bool)
     case displaysAsleepChanged(Bool)
     case prefsLoaded(PlaybackPrefs)
     case powerChanged(PowerState)
-    case shufflePicked(String)
+    case shufflePicked(String?)
     case videoRemoved(String)
+
+    static func agentUpdate(wallpaperUUID: UUID?, resolved key: SurfaceKey?, mode: PresentationMode, activity: ActivityState) -> Self? {
+        guard wallpaperUUID == nil || key != nil else { return nil }
+        return .agentUpdate(key, mode: mode, activity: activity)
+    }
 
     var description: String {
         switch self {
-        case let .surfaceAcquired(key, _, role, choice): "surfaceAcquired(\(key), \(role), \(choice ?? "nil"))"
+        case .systemAppearanceChanged: "systemAppearanceChanged"
+        case let .appearanceSelected(key, mode): "appearanceSelected(\(key), \(mode))"
+        case let .surfaceInvalidated(key, isPaired): "surfaceInvalidated(\(key), paired: \(isPaired))"
+        case let .surfaceAcquired(key, _, role, choice, _): "surfaceAcquired(\(key), \(role), \(choice ?? "nil"))"
         case let .surfaceRemoved(key): "surfaceRemoved(\(key))"
         case let .agentUpdate(key, mode, activity): "agentUpdate(\(key.map(\.description) ?? "all"), \(mode), \(activity))"
         case let .screenLockChanged(locked): "screenLockChanged(\(locked))"
         case let .displaysAsleepChanged(asleep): "displaysAsleepChanged(\(asleep))"
         case .prefsLoaded: "prefsLoaded"
         case let .powerChanged(power): "powerChanged(\(power))"
-        case let .shufflePicked(id): "shufflePicked(\(id))"
+        case let .shufflePicked(id): "shufflePicked(\(id ?? "none"))"
         case let .videoRemoved(id): "videoRemoved(\(id))"
         }
     }
@@ -152,6 +187,13 @@ nonisolated struct SurfaceTarget: Equatable, Sendable {
     var policy: PlaybackPolicy
     /// Reach `policy` with a rate ramp rather than a cut.
     var ramps: Bool
+    var hdrMode: HDRMode = .automatic
+    var frameMatchedTransitions: Bool = false
+
+    var wantsDark = false
+    var renderingSuspended = false
+    /// A visible desktop paused solely by lock-screen-only playback can briefly play a new selection.
+    var allowsSelectionPlayback = false
 
     static let paused = SurfaceTarget(policy: .paused, ramps: false)
 }
@@ -173,11 +215,19 @@ nonisolated enum PlaybackReducer {
     static func reduce(_ state: PlaybackState, _ event: PlaybackEvent) -> PlaybackState {
         var next = state
         switch event {
-        case let .surfaceAcquired(key, displayID, role, choice):
+        case let .systemAppearanceChanged(dark):
+            next.systemDark = dark
+        case let .appearanceSelected(key, appearance):
+            next.surfaces[key]?.appearance = appearance
+        case let .surfaceAcquired(key, displayID, role, choice, appearance):
             next.acquire(key, displayID: displayID, role: role, choice: choice)
+            next.surfaces[key]?.appearance = appearance
+        case let .surfaceInvalidated(key, isPaired):
+            if isPaired {
+                next.surfaces[key]?.awaitingReacquire = true
+            }
         case let .surfaceRemoved(key):
             next.surfaces[key] = nil
-            next.setRamps { _ in false }
         case let .agentUpdate(key, mode, activity):
             next.update(key, mode: mode, activity: activity)
         case let .screenLockChanged(locked):
@@ -204,26 +254,34 @@ nonisolated enum PlaybackReducer {
     }
 
     static func target(for surface: Surface, in state: PlaybackState) -> SurfaceTarget {
-        if state.displaysAsleep {
-            return .paused
+        let prefs = state.prefs
+        let wantsDark = surface.appearance.usesDark(systemDark: state.systemDark)
+        if state.displaysAsleep || surface.awaitingReacquire {
+            return SurfaceTarget(
+                policy: .paused, ramps: false, hdrMode: prefs.hdrMode,
+                frameMatchedTransitions: prefs.frameMatchedTransitions, wantsDark: wantsDark, renderingSuspended: true,
+            )
         }
         // loginwindow reports the lock before the agent updates the surfaces, and the
         // agent may leave a hidden desktop surface on `default` for the whole lock.
         // An idle (screensaver) presentation stays idle.
         let mode: PresentationMode = state.screenLocked && surface.mode == .default ? .locked : surface.mode
-        let prefs = state.prefs
+        let lockOnlyDesktop = prefs.alwaysPauseDesktop && mode == .default
         let policy = PlaybackPolicy.compute(
             presentationMode: mode,
             activityState: surface.activity,
             userPaused: prefs.isUserPaused(displayID: surface.displayID),
-            alwaysPauseDesktop: prefs.alwaysPauseDesktop,
-            pauseWhenOccluded: prefs.pauseWhenOccluded,
-            desktopOccluded: prefs.isOccluded(displayID: surface.displayID),
+            alwaysPauseDesktop: prefs.alwaysPauseDesktop && !lockOnlyDesktop,
+            pauseForOcclusion: prefs.pauseWhenOccluded && prefs.isOccluded(displayID: surface.displayID),
             displayHasFullscreenApp: prefs.hasFullscreenApp(displayID: surface.displayID),
             screenSaverIsOurs: prefs.screenSaverIsOurs,
             power: state.power,
         )
-        return SurfaceTarget(policy: policy, ramps: surface.ramps)
+        return SurfaceTarget(
+            policy: lockOnlyDesktop ? .paused : policy, ramps: surface.ramps, hdrMode: prefs.hdrMode,
+            frameMatchedTransitions: prefs.frameMatchedTransitions, wantsDark: wantsDark,
+            allowsSelectionPlayback: lockOnlyDesktop && policy != .paused && surface.role == .desktop && surface.activity == .active,
+        )
     }
 
     static func published(_ state: PlaybackState) -> PublishedState {
@@ -256,6 +314,10 @@ nonisolated enum PlaybackReducer {
 private nonisolated extension PlaybackState {
     mutating func acquire(_ key: SurfaceKey, displayID: UInt32?, role: SurfaceRole, choice: String?) {
         if var surface = surfaces[key] {
+            if surface.awaitingReacquire {
+                surface.awaitingReacquire = false
+                surface.activity = .active
+            }
             surface.displayID = displayID
             surface.role = role
             surface.choice = choice
@@ -266,12 +328,17 @@ private nonisolated extension PlaybackState {
             let predecessor = surfaces.values
                 .filter { $0.role == role && $0.displayID == displayID }
                 .max { $0.generation < $1.generation }
+            let activity: ActivityState = if let predecessor, !predecessor.awaitingReacquire {
+                predecessor.activity
+            } else {
+                .active
+            }
             surfaces[key] = Surface(
                 displayID: displayID,
                 role: role,
                 choice: choice,
                 mode: predecessor?.mode ?? .default,
-                activity: predecessor?.activity ?? .active,
+                activity: activity,
                 generation: nextGeneration,
             )
             nextGeneration += 1
@@ -287,7 +354,6 @@ private nonisolated extension PlaybackState {
     mutating func update(_ key: SurfaceKey?, mode: PresentationMode, activity: ActivityState) {
         let affected = key.map { [$0] } ?? Array(surfaces.keys)
         let rampsPresentation = prefs.alwaysPauseDesktop && activity == .active
-        setRamps { _ in false }
         for key in affected {
             guard var surface = surfaces[key] else { continue }
             surface.ramps = rampsPresentation && surface.mode != mode
@@ -310,7 +376,8 @@ private nonisolated extension PlaybackState {
         setRamps { _ in coverageChanged }
     }
 
-    mutating func pickShuffle(_ id: String) {
+    mutating func pickShuffle(_ id: String?) {
+        guard id == nil || shufflePick != id else { return }
         shufflePick = id
         if surfaces.values.contains(where: { $0.role == .desktop && $0.choice == shuffleChoiceID }) {
             lastVideoID = id

@@ -104,8 +104,7 @@ nonisolated enum PlaybackPolicy: Int, Comparable, Sendable {
         activityState: ActivityState,
         userPaused: Bool,
         alwaysPauseDesktop: Bool,
-        pauseWhenOccluded: Bool,
-        desktopOccluded: Bool,
+        pauseForOcclusion: Bool,
         displayHasFullscreenApp: Bool = false,
         screenSaverIsOurs: Bool,
         power: PowerState = PowerState(),
@@ -142,7 +141,7 @@ nonisolated enum PlaybackPolicy: Int, Comparable, Sendable {
             worst = max(worst, .paused)
         }
         // Desktop occlusion is irrelevant on full-screen presentations.
-        if pauseWhenOccluded, desktopOccluded, !fullScreenPresentation {
+        if pauseForOcclusion, !fullScreenPresentation {
             worst = max(worst, .paused)
         }
         // A fullscreen app owning the display pauses unconditionally: the wallpaper is
