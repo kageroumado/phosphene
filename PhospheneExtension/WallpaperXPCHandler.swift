@@ -497,7 +497,9 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
                 } else {
                     nil
                 }
-                await renderer.start(handoff: handoff)
+                let predecessor = PlaybackReducer.selectionPredecessor(of: key, in: PlaybackStore.snapshot)
+                    .flatMap { SurfaceRegistry.shared.surface(for: $0)?.renderer }
+                await renderer.start(handoff: handoff, replacing: predecessor)
                 // Switch: reply once the first frame is composited.
                 if !repliedWithStill {
                     reply(boxedReply.value, nil)
@@ -513,24 +515,15 @@ final class WallpaperXPCHandler: NSObject, WallpaperExtensionXPCProtocol {
     private static func appearanceHandoff(
         to key: SurfaceKey, choice: String, pair: PairRendition, renderer: VideoRenderer,
     ) -> VideoRenderer.StartHandoff? {
-        @Sendable
-        func predecessor(in state: PlaybackState) -> (key: SurfaceKey, surface: Surface)? {
-            guard let current = state.surfaces[key], let displayID = current.displayID,
-                  current.choice == choice, current.activity == .active,
-                  let previous = state.surfaces.lazy.filter({ $0.key != key && $0.value.displayID == displayID && $0.value.role == current.role })
-                      .max(by: { $0.value.generation < $1.value.generation }),
-                  previous.value.generation < current.generation, previous.value.choice == choice,
-                  previous.value.activity == .active, previous.value.mode == current.mode else { return nil }
-            return (previous.key, previous.value)
-        }
-
         let state = PlaybackStore.snapshot
         let registry = SurfaceRegistry.shared
-        guard let previous = predecessor(in: state), let current = state.surfaces[key],
+        guard let previous = PlaybackReducer.predecessor(of: key, in: state), previous.surface.choice == choice,
+              let current = state.surfaces[key], current.choice == choice,
               let donor = registry.surface(for: previous.key)?.renderer, donor !== renderer else { return nil }
         let isCurrent: @Sendable () -> Bool = {
             let state = PlaybackStore.snapshot
-            guard let latest = predecessor(in: state), latest.key == previous.key,
+            guard let latest = PlaybackReducer.predecessor(of: key, in: state), latest.key == previous.key,
+                  latest.surface.choice == choice, state.surfaces[key]?.choice == choice,
                   latest.surface.generation == previous.surface.generation, state.surfaces[key]?.generation == current.generation,
                   registry.key(forWallpaperID: previous.key.surfaceUUID) == previous.key,
                   registry.key(forWallpaperID: key.surfaceUUID) == key,

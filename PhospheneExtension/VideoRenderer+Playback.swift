@@ -24,8 +24,7 @@ extension VideoRenderer {
         setExternalToneMapMode(target.hdrMode)
         let blendModeChanged = frameMatchedTransitions != target.frameMatchedTransitions
         frameMatchedTransitions = target.frameMatchedTransitions
-        let paired = variantSelector?.pair != nil
-        let mustHoldSelection = paired && allowsSelectionPlayback && !target.allowsSelectionPlayback && target.policy == .paused
+        let mustHoldSelection = allowsSelectionPlayback && !target.allowsSelectionPlayback && target.policy == .paused
         let waking = renderingSuspended && !target.renderingSuspended
         allowsSelectionPlayback = target.allowsSelectionPlayback
         renderingSuspended = target.renderingSuspended
@@ -85,7 +84,7 @@ extension VideoRenderer {
             wakeFromDeepPause()
         } else {
             CMTimebaseSetRate(timebase, rate: 1.0)
-            resumePairFeed()
+            resumeFeed()
             prepareAppearanceCut()
         }
     }
@@ -98,6 +97,7 @@ extension VideoRenderer {
             prepareAppearanceCut()
             return
         }
+        feedSuspended = false
         // The feed can already be in a later loop, possibly on a different variant.
         let now = CMTimebaseGetTime(timebase)
         let time = now.isNumeric && lastEnqueuedEnd > .zero && now >= lastEnqueuedEnd
@@ -108,7 +108,7 @@ extension VideoRenderer {
             recreatePlayback(resumingAt: time)
         }
         guard currentReader != nil else {
-            _ = open(variantSelector?.fallback ?? asset.url, pair: nil, reason: .reload)
+            _ = open(variantSelector?.fallback ?? asset.url, pair: nil)
             return
         }
         CMTimebaseSetRate(timebase, rate: 1.0)
@@ -124,20 +124,25 @@ extension VideoRenderer {
     static let rampDownDuration: TimeInterval = 6.0
     private static let rampStepInterval: TimeInterval = 1.0 / 120.0
 
-    /// Give a newly enqueued frame time to appear before holding a paused desktop.
-    func startSelectionClock() {
-        CMTimebaseSetRate(timebase, rate: 1)
-        guard isPaused else { return }
-        let deadline = DispatchTime.now() + 0.25
-        firstFrameHoldDeadline = deadline
-        queue.asyncAfter(deadline: deadline) { [self] in finishFirstFrameHold(at: deadline) }
+    func holdStartedFrame() {
+        CMTimebaseSetRate(timebase, rate: 0)
+        if variantSelector?.pair == nil {
+            feedSuspended = true
+        } else {
+            suspendPairFeed()
+        }
         scheduleDeepPause()
     }
 
-    func firstFrame(from output: AVAssetReaderTrackOutput) -> CMSampleBuffer? {
+    func firstPresentableFrame(from output: AVAssetReaderTrackOutput) -> CMSampleBuffer? {
         while let sample = output.copyNextSampleBuffer() {
-            if sample.numSamples > 0 {
-                return sample
+            guard sample.numSamples > 0 else { continue }
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[CFString: Any]]
+            if attachments?.first?[kCMSampleAttachmentKey_DoNotDisplay] as? Bool == true {
+                // Trimmed tracks can need compressed preroll to decode the first visible sample.
+                renderer.enqueue(offsetTimingForLoop(sample))
+            } else {
+                return offsetTimingForLoop(sample)
             }
         }
         return nil
@@ -148,13 +153,15 @@ extension VideoRenderer {
     /// `isPaused` flips immediately: it is the logical state, and the rate follows.
     /// Flipping it at ramp completion would make a resume arriving mid-ramp look like
     /// a no-op and strand the rate wherever the cancelled ramp left it (slow motion).
-    private func rampDown() {
-        guard !isPaused else { return }
+    func rampDown(continuing phase: RampPhase? = nil) {
         isPaused = true
         cancelDeepPauseTimer()
-        ramp(to: 0.0, over: Self.rampDownDuration) { [self] in
+        ramp(to: 0.0, over: Self.rampDownDuration, continuing: phase) { [self] in
             suspendPairFeed()
             scheduleDeepPause()
+            if phase != nil {
+                prepareAppearanceCut()
+            }
         }
     }
 
@@ -164,14 +171,14 @@ extension VideoRenderer {
         guard isPaused else { return }
         isPaused = false
         cancelDeepPauseTimer()
-        guard currentReader != nil else {
+        guard currentReader != nil || flushInFlight else {
             // No frames to ramp into: wake instantly instead.
             cancelRamp()
             wakeFromDeepPause()
             return
         }
         ramp(to: 1.0, over: Self.rampUpDuration)
-        resumePairFeed()
+        resumeFeed()
         prepareAppearanceCut()
     }
 
@@ -181,7 +188,7 @@ extension VideoRenderer {
     /// mid-flight travels the remaining distance in proportionally less time,
     /// keeping the rate curve continuous instead of replaying a full schedule
     /// from 1.0 or 0 (which made a paused wallpaper leap to speed and decelerate).
-    func ramp(
+    private func ramp(
         to target: Double, over fullDuration: TimeInterval, continuing phase: RampPhase? = nil, then completion: (() -> Void)? = nil,
     ) {
         cancelRamp()
@@ -238,7 +245,6 @@ extension VideoRenderer {
     }
 
     func cancelRamp() {
-        firstFrameHoldDeadline = nil
         rampTimer?.cancel()
         rampTimer = nil
         rampDownPhase = nil
@@ -278,7 +284,7 @@ extension VideoRenderer {
         guard isRunning, isPaused, currentReader != nil, !flushInFlight else { return }
         if variantSelector?.pair != nil {
             pairReadersReleased = true
-            pairFeedSuspended = true
+            feedSuspended = true
             cancelAppearanceCut()
         }
         releaseReaders()
@@ -356,7 +362,7 @@ extension VideoRenderer {
         CMTimebaseSetTime(timebase, time: lastEnqueuedEnd)
         recordSnapshotSource(at: lastEnqueuedEnd)
         if resumeTime == nil {
-            enqueueRestartFrame(firstFrame(from: output).map(offsetTimingForLoop))
+            enqueueRestartFrame(firstPresentableFrame(from: output))
         }
 
         prepareNextReader()
@@ -369,21 +375,17 @@ extension VideoRenderer {
     /// renderer: freeze the clock (rate 0) so the fresh PTS-0 frames aren't judged
     /// "late", async-flush the decoder (a `flush` is a decoder RESET and discards
     /// anything enqueued before it completes — that was the "no reaction" bug), then
-    /// in the completion reset the timeline to 0, enqueue the first IDR frame, and
-    /// resume at rate 1. `removingDisplayedImage:false` holds the last frame (no
+    /// in the completion reset the timeline to 0, enqueue the first presentable frame, and
+    /// restore the playback clock. `removingDisplayedImage:false` holds the last frame (no
     /// black) until that first frame lands. Must run on `queue`.
-    func restartWithCurrentAsset(_ reason: SourceChange) {
+    func restartWithCurrentAsset() {
         // Serialize the decoder reset: if a flush is already in flight, just mark that
         // a restart is wanted. When that flush completes it will restart to whatever
         // `asset` is by then (the latest pick) — so rapid switching coalesces to one
         // reset per settle, never two overlapping flushes.
-        traceLog("  [restart #\(debugID)] ENTER flushInFlight=\(flushInFlight) pending=\(pendingRestart != nil) asset=\(asset.url.lastPathComponent)")
-        firstFrameHoldDeadline = nil
+        traceLog("  [restart #\(debugID)] ENTER flushInFlight=\(flushInFlight) pending=\(pendingRestart) asset=\(asset.url.lastPathComponent)")
         if flushInFlight {
-            // A library refresh still belongs to the selection whose flush is pending.
-            if pendingRestart != .selection {
-                pendingRestart = reason
-            }
+            pendingRestart = true
             traceLog("  [restart #\(debugID)] flush in flight → coalescing to latest (\(asset.url.lastPathComponent))")
             return
         }
@@ -391,12 +393,10 @@ extension VideoRenderer {
         cancelDeepPauseTimer()
         flushInFlight = true
         appearanceTransition.cancel()
-        if isPaused, allowsSelectionPlayback, variantSelector?.pair != nil {
-            cancelRamp()
+        if rampTimer == nil {
+            // Keep fresh PTS-0 frames from arriving late.
+            CMTimebaseSetRate(timebase, rate: 0)
         }
-        // Freeze the clock up front so it can't advance past PTS 0 during the async
-        // flush — otherwise the first frames arrive "late" and get dropped.
-        CMTimebaseSetRate(timebase, rate: 0.0)
         releaseReaders()
 
         traceLog("  [restart #\(debugID)] flushing decoder for \(asset.url.lastPathComponent)")
@@ -405,21 +405,21 @@ extension VideoRenderer {
         renderer.flush(removingDisplayedImage: false) { [weak self] in
             guard let self else { return }
             queue.async { [weak self] in
-                self?.finishRestart(reason)
+                self?.finishRestart()
             }
         }
     }
 
-    private func finishRestart(_ reason: SourceChange) {
+    private func finishRestart() {
         flushInFlight = false
         guard isRunning else { return }
-        traceLog("  [restart #\(debugID)] FLUSH-CB on queue: flushInFlight→false, pending=\(pendingRestart != nil), asset=\(asset.url.lastPathComponent), isRunning=\(isRunning)")
+        traceLog("  [restart #\(debugID)] FLUSH-CB on queue: flushInFlight→false, pending=\(pendingRestart), asset=\(asset.url.lastPathComponent), isRunning=\(isRunning)")
         // Switches arrived during the flush → do exactly one more restart to
         // the newest asset, instead of feeding this (now stale) one.
-        if let pendingRestart {
-            self.pendingRestart = nil
+        if pendingRestart {
+            pendingRestart = false
             traceLog("  [restart #\(debugID)] coalesced → restarting to \(asset.url.lastPathComponent)")
-            restartWithCurrentAsset(reason == .selection ? .selection : pendingRestart)
+            restartWithCurrentAsset()
             return
         }
         guard let (reader, output) = startSelectedReader() else {
@@ -431,45 +431,42 @@ extension VideoRenderer {
         currentReader = reader
         currentOutput = output
 
+        // A lock or unlock ramp can start or finish while the decoder is flushing.
+        let rate = rampTimer.map { _ in CMTimebaseGetRate(timebase) }
+        let holdsFrame = renderingSuspended || (isPaused && rate == nil)
+        CMTimebaseSetRate(timebase, rate: 0)
+
         // Fresh timeline from 0.
         ptsOffset = .zero
         lastEnqueuedEnd = .zero
         CMTimebaseSetTime(timebase, time: .zero)
         recordSnapshotSource(at: .zero)
 
-        // Enqueue the first (IDR) frame while the clock is still frozen, exactly
-        // like start(), so it isn't dropped as late. Tag it DisplayImmediately so
-        // it replaces the retained old frame the moment it decodes — an instant,
-        // blank-free swap that doesn't depend on the timebase (important since a
-        // switch can land while paused, rate=0).
-        let paired = variantSelector?.pair != nil
-        enqueueRestartFrame(paired ? firstFrame(from: output) : output.copyNextSampleBuffer())
+        enqueueRestartFrame(firstPresentableFrame(from: output), holding: holdsFrame)
 
-        if !renderingSuspended, !paired || (reason == .selection && allowsSelectionPlayback) {
-            startSelectionClock()
-        } else if rampTimer == nil {
-            CMTimebaseSetRate(timebase, rate: isPaused || renderingSuspended ? 0.0 : 1.0)
-            if isPaused {
-                suspendPairFeed()
-                scheduleDeepPause()
-            }
+        if holdsFrame {
+            holdStartedFrame()
+        } else {
+            CMTimebaseSetRate(timebase, rate: rate ?? 1)
+            feedSuspended = false
         }
         traceLog(
             "  [restart #\(debugID)] playing \(asset.url.lastPathComponent) rate=\(CMTimebaseGetRate(timebase)) " +
                 "rendererStatus=\(renderer.status.rawValue) requiresFlush=\(renderer.requiresFlushToResumeDecoding) " +
                 "readerStatus=\(reader.status.rawValue) err=\(renderer.error?.localizedDescription ?? "-")",
         )
-        if CMTimebaseGetRate(timebase) > 0, !renderingSuspended {
-            pairFeedSuspended = false
-        }
         prepareAppearanceCut()
         feedLogBudget = 4
         prepareNextReader()
         feedFromCurrentReader()
     }
 
-    private func enqueueRestartFrame(_ frame: CMSampleBuffer?) {
+    func enqueueRestartFrame(_ frame: CMSampleBuffer?, holding: Bool = false) {
         guard let frame else { return }
+        let time = frame.outputPresentationTimeStamp
+        if holding, time.isNumeric, time > .zero {
+            CMTimebaseSetTime(timebase, time: time)
+        }
         Self.setAttachment(kCMSampleAttachmentKey_DisplayImmediately, on: frame)
         renderer.enqueue(frame)
         if let end = sampleEnd(frame) {
@@ -554,7 +551,7 @@ extension VideoRenderer {
     /// Swap to the preloaded next reader at a loop boundary.
     /// Uses timing offset for gapless continuation — no flush, no timebase reset.
     private func swapToNextReader() {
-        guard isRunning, !flushInFlight, !pairFeedSuspended else { return }
+        guard isRunning, !flushInFlight, !feedSuspended else { return }
         renderer.stopRequestingMediaData()
 
         let playback: PairRendition.Playback?
@@ -629,7 +626,7 @@ extension VideoRenderer {
         guard lastEnqueuedEnd - CMTimebaseGetTime(timebase) >= reserve + reserve else { return false }
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.setEventHandler { [weak self] in
-            guard let self, feedGeneration == generation, isRunning, !flushInFlight, !pairFeedSuspended else { return }
+            guard let self, feedGeneration == generation, isRunning, !flushInFlight, !feedSuspended else { return }
             feedFromCurrentReader()
         }
         timer.resume()
@@ -649,13 +646,13 @@ extension VideoRenderer {
     }
 
     func feedFromCurrentReader() {
-        guard !pairFeedSuspended, !needsMatchedRecovery else { return }
+        guard !feedSuspended, !needsMatchedRecovery else { return }
         cancelPairRefill()
         feedGeneration &+= 1
         let generation = feedGeneration
         renderer.requestMediaDataWhenReady(on: queue) { [weak self] in
             guard self?.feedGeneration == generation else { return }
-            guard let self, isRunning, !pairFeedSuspended, !flushInFlight else {
+            guard let self, isRunning, !feedSuspended, !flushInFlight else {
                 self?.renderer.stopRequestingMediaData()
                 return
             }

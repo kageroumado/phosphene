@@ -196,6 +196,41 @@ struct PlaybackReducerTests {
         #expect(PlaybackReducer.targets(asleep)[desktop]?.allowsSelectionPlayback == false)
     }
 
+    @Test
+    func `selection deceleration follows each desktop's pause conditions`() {
+        let state = run([acquire(desktop), acquire(otherDisplay), prefs {
+            $0.alwaysPauseDesktop = true
+            $0.pausedDisplays = [1]
+        }])
+        #expect(PlaybackReducer.targets(state)[desktop]?.allowsSelectionPlayback == false)
+        #expect(PlaybackReducer.targets(state)[otherDisplay]?.allowsSelectionPlayback == true)
+
+        let covered = run([prefs {
+            $0.alwaysPauseDesktop = true
+            $0.fullscreenDisplays = [2]
+        }], from: state)
+        #expect(PlaybackReducer.targets(covered)[desktop]?.allowsSelectionPlayback == true)
+        #expect(PlaybackReducer.targets(covered)[otherDisplay]?.allowsSelectionPlayback == false)
+    }
+
+    @Test
+    func `only a different choice can carry desktop selection motion across WallpaperIDs`() {
+        let state = run([prefs { $0.alwaysPauseDesktop = true }, acquire(desktop), acquire(preview, "B", role: .preview)])
+        let repeated = run([acquire(newDesktop)], from: state)
+        #expect(PlaybackReducer.selectionPredecessor(of: newDesktop, in: repeated) == nil)
+        let different = run([acquire(newDesktop, "B"), acquire(otherDisplay, "B")], from: state)
+        #expect(PlaybackReducer.selectionPredecessor(of: newDesktop, in: different) == desktop)
+        #expect(PlaybackReducer.selectionPredecessor(of: otherDisplay, in: different) == nil)
+        #expect(PlaybackReducer.selectionPredecessor(of: preview, in: different) == nil)
+
+        let paused = run([prefs { $0.alwaysPauseDesktop = true; $0.pausedDisplays = [1] }], from: different)
+        #expect(PlaybackReducer.selectionPredecessor(of: newDesktop, in: paused) == nil)
+        let single = run([.surfaceInvalidated(desktop, isPaired: false)], from: different)
+        #expect(PlaybackReducer.selectionPredecessor(of: newDesktop, in: single) == desktop)
+        let pair = run([.surfaceInvalidated(desktop, isPaired: true)], from: different)
+        #expect(PlaybackReducer.selectionPredecessor(of: newDesktop, in: pair) == nil)
+    }
+
     /// loginwindow reports the lock before the agent updates any surface; playback
     /// starts on the notification, with a ramp.
     @Test

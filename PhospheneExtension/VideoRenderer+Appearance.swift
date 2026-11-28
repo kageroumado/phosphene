@@ -3,8 +3,8 @@ import CoreMedia
 
 extension VideoRenderer {
     func suspendPairFeed() {
-        guard variantSelector?.pair != nil, hasStarted, !pairFeedSuspended else { return }
-        pairFeedSuspended = true
+        guard variantSelector?.pair != nil, hasStarted, !feedSuspended else { return }
+        feedSuspended = true
         cancelPairRefill()
         renderer.stopRequestingMediaData()
         // Both live layers freeze at the same instant; let an ongoing wall-clock fade finish.
@@ -15,12 +15,12 @@ extension VideoRenderer {
         prepareAppearanceCut()
     }
 
-    func resumePairFeed() {
-        guard pairFeedSuspended, !pairReadersReleased else { return }
+    func resumeFeed() {
+        guard feedSuspended, !pairReadersReleased else { return }
         if movingAppearance == nil {
             cancelAppearanceCut()
         }
-        pairFeedSuspended = false
+        feedSuspended = false
         feedFromCurrentReader()
     }
 
@@ -441,7 +441,7 @@ extension VideoRenderer {
         guard let visible = visibleSources.last(where: { $0.start <= time }),
               let visiblePlayback = visible.playback, pair?.retains(visiblePlayback) != false else {
             if waking || needsMatchedRecovery {
-                _ = open(pair?.url(dark: wantsDark) ?? selector.fallback, pair: pair?.originals, reason: .reload)
+                _ = open(pair?.url(dark: wantsDark) ?? selector.fallback, pair: pair?.originals)
             }
             return
         }
@@ -478,7 +478,7 @@ extension VideoRenderer {
                 guard isRunning, !renderingSuspended, !flushInFlight else { return }
                 guard let prepared, playback.filesMatch else {
                     if waking || needsMatchedRecovery {
-                        _ = open(pair?.url(dark: wantsDark) ?? selector.fallback, pair: pair?.originals, reason: .reload)
+                        _ = open(pair?.url(dark: wantsDark) ?? selector.fallback, pair: pair?.originals)
                     } else if preferred != nil {
                         failedSource = playback.identity(for: wanted)
                         prepareAppearanceCut(afterTransitionAt: time)
@@ -508,7 +508,7 @@ extension VideoRenderer {
                 }
                 if waking {
                     pairReadersReleased = false
-                    pairFeedSuspended = false
+                    feedSuspended = false
                     CMTimebaseSetRate(timebase, rate: 1)
                 }
                 if pairReadersReleased {

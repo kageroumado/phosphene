@@ -192,7 +192,7 @@ nonisolated struct SurfaceTarget: Equatable, Sendable {
 
     var wantsDark = false
     var renderingSuspended = false
-    /// A visible desktop paused solely by lock-screen-only playback can briefly play a new selection.
+    /// A visible lock-screen-only desktop may ease to a stop if the outgoing wallpaper is moving.
     var allowsSelectionPlayback = false
 
     static let paused = SurfaceTarget(policy: .paused, ramps: false)
@@ -251,6 +251,24 @@ nonisolated enum PlaybackReducer {
     /// The target of every surface.
     static func targets(_ state: PlaybackState) -> [SurfaceKey: SurfaceTarget] {
         state.surfaces.mapValues { target(for: $0, in: state) }
+    }
+
+    static func predecessor(of key: SurfaceKey, in state: PlaybackState) -> (key: SurfaceKey, surface: Surface)? {
+        guard let current = state.surfaces[key], let displayID = current.displayID,
+              let previous = state.surfaces.lazy.filter({ $0.key != key && $0.value.displayID == displayID && $0.value.role == current.role })
+                  .max(by: { $0.value.generation < $1.value.generation }),
+              previous.value.generation < current.generation, previous.value.activity == .active,
+              current.activity == .active, previous.value.mode == current.mode else { return nil }
+        return (previous.key, previous.value)
+    }
+
+    static func selectionPredecessor(of key: SurfaceKey, in state: PlaybackState) -> SurfaceKey? {
+        guard let current = state.surfaces[key], current.role == .desktop,
+              target(for: current, in: state).allowsSelectionPlayback,
+              let choice = current.choice, let previous = predecessor(of: key, in: state),
+              let previousChoice = previous.surface.choice, previousChoice != choice,
+              !previous.surface.awaitingReacquire else { return nil }
+        return previous.key
     }
 
     static func target(for surface: Surface, in state: PlaybackState) -> SurfaceTarget {
