@@ -268,11 +268,11 @@ struct MenuBarPopoverView: View {
                 updateChip
                     .onHover { isHoveringVersion = $0 }
 
-                FooterChip(text: String(localized: "Library"), systemImage: "film.stack") {
+                HoverLabelChip(text: String(localized: "Library"), systemImage: "film.stack") {
                     openLibrary()
                 }
 
-                FooterChip(text: String(localized: "Choose"), systemImage: "photo.on.rectangle") {
+                HoverLabelChip(text: String(localized: "Choose"), systemImage: "photo.on.rectangle") {
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension")!)
                 }
                 .help("Choose the wallpaper in macOS Wallpaper Settings")
@@ -458,6 +458,36 @@ private struct RestingChip: ViewModifier {
             .padding(.horizontal, Theme.Space.sm)
             .frame(height: Theme.footerControlHeight)
             .glassEffect(.regular, in: Capsule())
+    }
+}
+
+/// A footer chip that shows its icon at rest and its title while hovered, so the footer
+/// fits the popover's margins. VoiceOver reads the title either way.
+private struct HoverLabelChip: View {
+    let text: String
+    let systemImage: String
+    let action: () -> Void
+    @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Theme.Space.xs) {
+                Image(systemName: systemImage)
+                if isHovered {
+                    Text(text)
+                        .transition(.opacity)
+                }
+            }
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.footerChip)
+        .accessibilityLabel(text)
+        .onHover { hovering in
+            withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.85)) {
+                isHovered = hovering
+            }
+        }
     }
 }
 
