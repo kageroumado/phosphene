@@ -233,15 +233,16 @@ final class LibraryStore {
     /// its thumbnail's file name.
     func reload() {
         let directory = VideoDeploymentService.videosFolderURL
-        var records = (try? AppearancePair.read(in: directory)) ?? []
-        for record in records where record.deletionPending == true {
+        let initialRecords = (try? AppearancePair.read(in: directory)) ?? []
+        let pending = initialRecords.filter { $0.deletionPending == true }
+        for record in pending {
             do {
                 try record.finishDeletion(in: directory)
-                records.removeAll { $0.owner == record.owner }
             } catch {
                 Log.video.error("Could not finish deleting pair \(record.owner): \(error.localizedDescription)")
             }
         }
+        let records = pending.isEmpty ? initialRecords : (try? AppearancePair.read(in: directory)) ?? initialRecords
         let physical = VideoDeploymentService.listEntries()
         sourceEntries = physical
         fileSizes = Dictionary(uniqueKeysWithValues: physical.map { entry in
@@ -468,6 +469,16 @@ final class LibraryStore {
             VideoDeploymentService.notifyExtensionLibraryChanged()
         } catch {
             libraryError = error.localizedDescription
+        }
+    }
+
+    func removeMemberVariants(_ removal: AppearancePair.MemberVariantRemoval) {
+        do {
+            try removal.remove(in: VideoDeploymentService.videosFolderURL)
+            VideoDeploymentService.notifyExtensionLibraryChanged()
+        } catch {
+            libraryError = error.localizedDescription
+            reload()
         }
     }
 

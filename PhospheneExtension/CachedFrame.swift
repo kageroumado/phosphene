@@ -9,8 +9,10 @@ struct CachedFrame: Codable {
     let filename: String
     var legacyOriginalOnly: Bool?
 
-    static func prefix(_ choice: String, _ width: Int, _ height: Int) -> String {
-        "\(SHA256.hash(data: Data(choice.utf8)).map { String(format: "%02x", $0) }.joined())-\(width)-\(height)-0-"
+    static func prefix(_ choice: String, _ width: Int, _ height: Int, pairMember: String? = nil) -> String {
+        // The Agent's filename uses the choice hash; Phosphene also caches each pair member.
+        let key = pairMember.map { choice + "\0" + $0 } ?? choice
+        return "\(SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined())-\(width)-\(height)-0-"
     }
 
     static func recordURL(_ prefix: String, in directory: URL = .cachesDirectory) -> URL {
@@ -19,9 +21,10 @@ struct CachedFrame: Codable {
 
     static func lookup(
         choice: String, source: FileIdentity, width: Int, height: Int, directory: URL,
-        legacyOriginal: URL? = nil, recordsDirectory: URL = .cachesDirectory,
+        pairMember: String? = nil, legacyOriginal: URL? = nil, recordsDirectory: URL = .cachesDirectory,
     ) -> URL? {
-        let prefix = prefix(choice, width, height)
+        let prefix = prefix(choice, width, height, pairMember: pairMember)
+        let legacyOriginal = pairMember == nil ? legacyOriginal : nil
         let recordURL = recordURL(prefix, in: recordsDirectory)
         func recordedImage() throws -> URL? {
             guard try FileManager.default.attributesOfItem(atPath: recordURL.path)[.type] as? FileAttributeType == .typeRegular else {
@@ -33,7 +36,7 @@ struct CachedFrame: Codable {
                 guard let legacyOriginal, let timestamp = legacyTimestamp(record.filename, prefix: prefix),
                       LegacyStillProvenance.read(for: legacyOriginal, source: source)?.contains(timestamp) == true else { return nil }
             }
-            return record.imageURL(choice: choice, source: source, width: width, height: height, directory: directory)
+            return record.imageURL(choice: choice, source: source, width: width, height: height, directory: directory, pairMember: pairMember)
         }
         do {
             return try recordedImage()
@@ -84,9 +87,10 @@ struct CachedFrame: Codable {
         }.max(by: { $0.timestamp < $1.timestamp })?.url
     }
 
-    func imageURL(choice: String, source: FileIdentity, width: Int, height: Int, directory: URL) -> URL? {
+    func imageURL(choice: String, source: FileIdentity, width: Int, height: Int, directory: URL, pairMember: String? = nil) -> URL? {
         guard self.source == source, self.choice == choice, self.width == width, self.height == height,
-              PathSafety.isSafeComponent(filename), filename.hasPrefix(Self.prefix(choice, width, height)), filename.hasSuffix(".bmp") else { return nil }
+              PathSafety.isSafeComponent(filename), filename.hasPrefix(Self.prefix(choice, width, height, pairMember: pairMember)),
+              filename.hasSuffix(".bmp") else { return nil }
         let url = directory.appendingPathComponent(filename)
         return PathSafety.contained(url, in: directory) && PathSafety.isItem(at: url, ofType: .typeRegular) ? url : nil
     }

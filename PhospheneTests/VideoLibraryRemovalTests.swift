@@ -278,6 +278,170 @@ struct VideoLibraryRemovalTests {
         #expect(FileIdentity(of: alternate) == replacement)
     }
 
+    enum MemberVariantCase: CaseIterable {
+        case complete
+        case replacedAfterConfirmation
+        case interrupted
+    }
+
+    @Test(arguments: MemberVariantCase.allCases)
+    func `removing one pair member's single-video variants checks the confirmed files`(scenario: MemberVariantCase) throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = VideoLibrary(documents: root)
+        defer { try? fm.removeItem(at: root) }
+        let owner = UUID().uuidString
+        let counterpart = UUID().uuidString
+        let tiers = [12, 24, 30, 60].map { VideoVariant(filename: "variant_\($0)fps.mp4", fps: $0, resolution: .zero) }
+        let unrecognized = VideoVariant(filename: "other.mov", fps: 15, resolution: .zero)
+        let original = try writeEntry(owner, in: library, variants: tiers + [unrecognized])
+        let alternate = try writeEntry(counterpart, in: library, variants: [tiers[0]])
+        let variants = tiers.map { library.variantURL(for: owner, variant: $0) }
+        let unrecognizedURL = library.variantURL(for: owner, variant: unrecognized)
+        let counterpartVariant = library.variantURL(for: counterpart, variant: tiers[0])
+        for url in [variants[0], variants[1], counterpartVariant, unrecognizedURL] {
+            try Data([2]).write(to: url)
+        }
+        try fm.linkItem(at: original, to: variants[2])
+        try fm.createSymbolicLink(at: variants[3], withDestinationURL: alternate)
+        let paired = original.deletingLastPathComponent().appendingPathComponent(".paired-variants-\(UUID().uuidString)")
+        try fm.createDirectory(at: paired, withIntermediateDirectories: false)
+        let validation = try validate(original, alternate)
+        let pair = AppearancePair(owner: owner, counterpart: counterpart, swapped: true, validation: validation)
+        try pair.merge(in: library.videosDir) { (original, alternate) }
+
+        let removal = try pair.memberVariantRemoval(for: owner, in: library.videosDir)
+        #expect(removal.filenames == tiers.prefix(2).map(\.filename))
+        switch scenario {
+        case .complete: break
+        case .replacedAfterConfirmation:
+            try Data([3]).write(to: variants[1], options: .atomic)
+            #expect(throws: PairIssue.changed) { try removal.remove(in: library.videosDir) }
+            #expect(try Data(contentsOf: variants[0]) == Data([2]))
+            #expect(try Data(contentsOf: variants[1]) == Data([3]))
+            #expect(library.scan())
+            #expect(library.entry(for: owner)?.variants == tiers + [unrecognized])
+            return
+        case .interrupted:
+            try setImmutable(true, at: variants[1])
+            defer { try? setImmutable(false, at: variants[1]) }
+            #expect(throws: POSIXError(.EPERM)) { try removal.remove(in: library.videosDir) }
+            #expect(!fm.fileExists(atPath: variants[0].path))
+            #expect(library.scan())
+            #expect(library.entry(for: owner)?.variants == tiers + [unrecognized])
+            try setImmutable(false, at: variants[1])
+        }
+        try removal.remove(in: library.videosDir)
+        #expect(library.scan())
+        #expect(library.entry(for: owner)?.variants == Array(tiers.dropFirst(2)) + [unrecognized])
+        #expect(try AppearancePair.read(in: library.videosDir) == [pair])
+        #expect(!fm.fileExists(atPath: variants[0].path))
+        #expect(!fm.fileExists(atPath: variants[1].path))
+        #expect(fm.fileExists(atPath: paired.path))
+        #expect(FileIdentity(of: original) == validation.original)
+        #expect(FileIdentity(of: alternate) == validation.alternate)
+        #expect(FileIdentity.sameFile(variants[2], original))
+        #expect(PathSafety.isItem(at: variants[3], ofType: .typeSymbolicLink))
+        #expect(try Data(contentsOf: counterpartVariant) == Data([2]))
+        #expect(try Data(contentsOf: unrecognizedURL) == Data([2]))
+    }
+
+    enum MissingOwnerCase: CaseIterable {
+        case library
+        case settingsWithReplacement
+        case settingsWithInterruptedCleanup
+    }
+
+    @Test(arguments: MissingOwnerCase.allCases)
+    func `removing a pair with missing owner media cleans its own paired variants`(scenario: MissingOwnerCase) throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = VideoLibrary(documents: root)
+        defer { try? fm.removeItem(at: root) }
+        let owner = UUID().uuidString
+        let counterpart = UUID().uuidString
+        let original = try writeEntry(owner, in: library)
+        let alternate = try writeEntry(counterpart, in: library)
+        let directory = original.deletingLastPathComponent()
+        let generation = UUID()
+        let paired = directory.appendingPathComponent(".paired-variants-\(generation.uuidString)")
+        let tierFiles = try ["original", "alternate"].map { side in
+            let folder = paired.appendingPathComponent(side)
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = folder.appendingPathComponent("tier.mov")
+            try Data([2]).write(to: url)
+            return url
+        }
+        let unrelated = directory.appendingPathComponent("keep.mov")
+        try Data([3]).write(to: unrelated)
+        let pair = try AppearancePair(
+            owner: owner, counterpart: counterpart, swapped: false, validation: validate(original, alternate),
+            optimization: .init(generation: generation, tiers: [AppearancePair.Tier(
+                fps: 12, resolution: CGSize(width: 1, height: 1), validation: validate(tierFiles[0], tierFiles[1]),
+            )]),
+        )
+        try AppearancePair.update(in: library.videosDir) { $0 = [pair] }
+        try fm.removeItem(at: original)
+        switch scenario {
+        case .library:
+            try pair.remove(in: library.videosDir)
+        case .settingsWithReplacement:
+            try Data([4]).write(to: tierFiles[1], options: .atomic)
+            try library.removeDownloadedChoice(counterpart, files: [alternate])
+            #expect(try Data(contentsOf: tierFiles[1]) == Data([4]))
+        case .settingsWithInterruptedCleanup:
+            #expect(library.scan())
+            try setImmutable(true, at: tierFiles[1])
+            defer { try? setImmutable(false, at: tierFiles[1]) }
+            #expect(throws: POSIXError(.EPERM)) { try library.removeDownloadedChoice(counterpart, files: [alternate]) }
+            #expect(!fm.fileExists(atPath: tierFiles[0].path))
+            #expect(FileIdentity(of: alternate) == pair.validation.alternate)
+            #expect(try AppearancePair.read(in: library.videosDir) == [pair])
+            #expect(library.choices.map(\.entry.id) == [counterpart])
+            #expect(library.isChoiceDownloaded(counterpart))
+            try setImmutable(false, at: tierFiles[1])
+            try library.removeDownloadedChoice(counterpart, files: [alternate])
+        }
+        #expect(try AppearancePair.read(in: library.videosDir).isEmpty)
+        #expect(!fm.fileExists(atPath: tierFiles[0].path))
+        #expect(fm.fileExists(atPath: paired.path) == (scenario == .settingsWithReplacement))
+        #expect(!fm.fileExists(atPath: alternate.path))
+        #expect(try Data(contentsOf: unrelated) == Data([3]))
+    }
+
+    @Test(arguments: [false, true])
+    func `a staging failure preserves the pair and allows an explicit retry`(secondMember: Bool) throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = VideoLibrary(documents: root)
+        defer { try? fm.removeItem(at: root) }
+        let owner = UUID().uuidString
+        let counterpart = UUID().uuidString
+        let original = try writeEntry(owner, in: library)
+        let alternate = try writeEntry(counterpart, in: library)
+        let validation = try validate(original, alternate)
+        let pair = AppearancePair(owner: owner, counterpart: counterpart, swapped: false, validation: validation)
+        try pair.merge(in: library.videosDir) { (original, alternate) }
+        let blocked = (secondMember ? alternate : original).deletingLastPathComponent()
+        try setImmutable(true, at: blocked)
+        defer { try? setImmutable(false, at: blocked) }
+
+        #expect(throws: POSIXError(.EPERM)) { try pair.remove(in: library.videosDir) }
+        #expect(try AppearancePair.read(in: library.videosDir) == [pair])
+        let restarted = VideoLibrary(documents: root)
+        #expect(restarted.scan())
+        #expect(restarted.pairRendition(for: owner) != nil)
+        #expect(FileIdentity(of: original) == validation.original)
+        #expect(FileIdentity(of: alternate) == validation.alternate)
+        #expect(try !fm.contentsOfDirectory(atPath: library.videosDir.path).contains { $0.hasPrefix(".delete-") })
+
+        try setImmutable(false, at: blocked)
+        try pair.remove(in: library.videosDir)
+        #expect(try AppearancePair.read(in: library.videosDir).isEmpty)
+        #expect(!fm.fileExists(atPath: original.path))
+        #expect(!fm.fileExists(atPath: alternate.path))
+    }
+
     private func writeEntry(_ id: String, in library: VideoLibrary, variants: [VideoVariant]? = nil) throws -> URL {
         let directory = library.videosDir.appendingPathComponent(id)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

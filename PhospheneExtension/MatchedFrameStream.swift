@@ -38,7 +38,6 @@ final class MatchedFrameStream: @unchecked Sendable {
     private var from: DecodedTrack?
     private var to: DecodedTrack?
     private var blender: MatchedFrameBlender?
-    private var terminal: (endpoint: Endpoint, since: Int64)?
     private(set) var frontier: CMTime
     private(set) var poolIsBusy = false
 
@@ -74,7 +73,7 @@ final class MatchedFrameStream: @unchecked Sendable {
     /// Discards synchronized pairs. Success leaves the next frame at `global`.
     func advance(to global: CMTime) -> Bool {
         guard let from, let to, let target = timeline.frame(at: global), target >= frame,
-              global - frontier <= Self.catchUpLimit, resumeBlend() else { return false }
+              global - frontier <= Self.catchUpLimit else { return false }
         let deadline = ContinuousClock.now + .milliseconds(400)
         while frame < target {
             let local = timeline.localTime(frame)
@@ -95,8 +94,7 @@ final class MatchedFrameStream: @unchecked Sendable {
         advance(to: global)
     }
 
-    /// Feed only the requested endpoint while waiting for a common sync. A reversal
-    /// resumes the parked reader at the same frontier, before choosing a handoff.
+    /// Keep both readers aligned while showing an endpoint so reversals can use the next frame.
     /// Nil leaves the frontier at the failed frame so the caller can rejoin compressed playback.
     func next(at global: CMTime, fraction: Float, finishing: Endpoint?) -> Output? {
         poolIsBusy = false
@@ -115,24 +113,14 @@ final class MatchedFrameStream: @unchecked Sendable {
             return .handoff(handoff)
         }
 
-        if terminal?.endpoint != endpoint {
-            guard resumeBlend() else { return nil }
-            terminal = endpoint.map { ($0, frame) }
-        }
-
+        guard let first = from?.sample(at: local, duration: duration),
+              let second = to?.sample(at: local, duration: duration) else { return nil }
         let sample: CMSampleBuffer?
-        if let endpoint {
-            let selected = endpoint == .from ? from : to
-            sample = selected?.sample(at: local, duration: duration).flatMap { offsetSampleTiming($0, by: offset) }
+        if fraction == 0 || fraction == 1 {
+            sample = offsetSampleTiming(fraction == 0 ? first : second, by: offset)
         } else {
-            guard let first = from?.sample(at: local, duration: duration),
-                  let second = to?.sample(at: local, duration: duration) else { return nil }
-            if fraction == 0 || fraction == 1 {
-                sample = offsetSampleTiming(fraction == 0 ? first : second, by: offset)
-            } else {
-                sample = blender?.blend(first: first, second: second, fraction: fraction, at: global)
-                poolIsBusy = blender?.poolIsBusy == true
-            }
+            sample = blender?.blend(first: first, second: second, fraction: fraction, at: global)
+            poolIsBusy = blender?.poolIsBusy == true
         }
         guard let sample, Self.matches(sample, at: global, duration: duration) else { return nil }
         consumeFrame(endingAt: end)
@@ -145,27 +133,12 @@ final class MatchedFrameStream: @unchecked Sendable {
         blender = nil
     }
 
-    private func resumeBlend() -> Bool {
-        guard let terminal else { return true }
-        guard let parked = terminal.endpoint == .from ? to : from else { return false }
-        for index in terminal.since ..< frame {
-            guard parked.sample(at: timeline.localTime(index), duration: timeline.duration) != nil else { return false }
-            parked.consume(looping: (index + 1) % timeline.frameCount == 0)
-        }
-        self.terminal = nil
-        return true
-    }
-
     private func consumeFrame(endingAt end: CMTime) {
         frame += 1
         frontier = end
         let looping = frame % timeline.frameCount == 0
-        if terminal?.endpoint != .to {
-            from?.consume(looping: looping)
-        }
-        if terminal?.endpoint != .from {
-            to?.consume(looping: looping)
-        }
+        from?.consume(looping: looping)
+        to?.consume(looping: looping)
     }
 
     private static func matches(_ sample: CMSampleBuffer, at time: CMTime, duration: CMTime) -> Bool {

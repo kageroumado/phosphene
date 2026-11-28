@@ -5,13 +5,8 @@ import QuartzCore
 import SwiftUI
 
 /// Call in order on the renderer's serial queue. Pause the renderer for the synchronous capture in begin.
-final nonisolated class AppearanceTransition: Sendable {
-    private struct Frame: @unchecked Sendable {
-        let displayLayer: AVSampleBufferDisplayLayer
-        let pixels: CVPixelBuffer
-    }
-
-    private let presentation = Presentation()
+final nonisolated class AppearanceTransition {
+    private var cover: CALayer?
     // SwiftUI's default spring on macOS 14 and later.
     private static let spring = Spring(response: 0.55, dampingRatio: 1)
     static var reduceMotion: Bool {
@@ -62,100 +57,39 @@ final nonisolated class AppearanceTransition: Sendable {
     }
 
     func begin(on displayLayer: AVSampleBufferDisplayLayer, renderer: AVSampleBufferVideoRenderer) {
-        guard let pixels = renderer.displayedPixelBuffer(), unsafe CVPixelBufferGetIOSurface(pixels) != nil else {
+        guard !Self.reduceMotion, let parent = displayLayer.superlayer,
+              let pixels = renderer.displayedPixelBuffer(), unsafe CVPixelBufferGetIOSurface(pixels) != nil,
+              let next = Self.makeCover(pixels, matching: displayLayer) else {
             cancel()
             return
         }
-        let frame = Frame(displayLayer: displayLayer, pixels: pixels)
-        DispatchQueue.main.async { [presentation] in presentation.show(frame) }
+        // Commit the held image before the renderer can enqueue its replacement.
+        Self.updateLayers {
+            cover?.removeFromSuperlayer()
+            parent.insertSublayer(next, above: displayLayer)
+        }
+        cover = next
     }
 
-    func reveal() {
-        DispatchQueue.main.async { [presentation] in presentation.reveal() }
+    func reveal(on queue: DispatchQueue) {
+        guard let cover else { return }
+        let fade = Fade(start: CACurrentMediaTime(), from: 1, to: 0)
+        fade.apply(to: cover)
+        queue.asyncAfter(deadline: .now() + fade.duration, execute: DispatchWorkItem { [weak self, weak cover] in
+            guard let self, let cover, self.cover === cover else { return }
+            cancel()
+        })
     }
 
     func updateDynamicRange(_ dynamicRange: CALayer.DynamicRange) {
-        DispatchQueue.main.async { [presentation] in
-            presentation.updateDynamicRange(dynamicRange)
-        }
+        guard let image = cover?.sublayers?.first else { return }
+        Self.updateLayers { image.preferredDynamicRange = dynamicRange }
     }
 
     func cancel() {
-        DispatchQueue.main.async { [presentation] in presentation.remove() }
-    }
-
-    @MainActor
-    private final class Presentation {
-        private var cover: CALayer?
-        private var revealing = false
-
-        nonisolated init() {}
-
-        isolated deinit { remove() }
-
-        func show(_ frame: Frame) {
-            let source = frame.displayLayer
-            guard let parent = source.superlayer,
-                  let next = AppearanceTransition.makeCover(frame.pixels, matching: source) else {
-                remove()
-                return
-            }
-            AppearanceTransition.updateLayers {
-                cover?.removeFromSuperlayer()
-                parent.insertSublayer(next, above: source)
-            }
-            cover = next
-            revealing = false
-        }
-
-        func updateDynamicRange(_ dynamicRange: CALayer.DynamicRange) {
-            guard let image = cover?.sublayers?.first else { return }
-            AppearanceTransition.updateLayers { image.preferredDynamicRange = dynamicRange }
-        }
-
-        func reveal() {
-            guard let cover, !revealing else { return }
-            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-                remove()
-                return
-            }
-            revealing = true
-            // AppKit animates the detached proxy. The cover stays in the hosted tree.
-            let proxy = OpacityLayer()
-            proxy.onOpacity = { [weak self, weak cover] opacity in
-                guard let cover, self?.cover === cover else { return }
-                AppearanceTransition.updateLayers { cover.opacity = opacity }
-            }
-            let view = NSView()
-            view.layer = proxy
-            view.wantsLayer = true
-            NSAnimationContext.animate(.default) {
-                view.alphaValue = 0
-            } completion: { [weak self, weak cover] in
-                withExtendedLifetime(view) {}
-                guard let cover, self?.cover === cover else { return }
-                self?.remove()
-            }
-        }
-
-        func remove() {
-            guard let cover else { return }
-            self.cover = nil
-            revealing = false
-            AppearanceTransition.updateLayers { cover.removeFromSuperlayer() }
-        }
-    }
-
-    private final class OpacityLayer: CALayer {
-        var onOpacity: (@MainActor (Float) -> Void)?
-
-        override var opacity: Float {
-            didSet {
-                guard let onOpacity else { return }
-                let value = opacity
-                MainActor.assumeIsolated { onOpacity(value) }
-            }
-        }
+        guard let cover else { return }
+        Self.updateLayers { cover.removeFromSuperlayer() }
+        self.cover = nil
     }
 
     private static func updateLayers(_ changes: () -> Void) {
@@ -166,7 +100,6 @@ final nonisolated class AppearanceTransition: Sendable {
         CATransaction.flush()
     }
 
-    @MainActor
     private static func makeCover(_ pixels: CVPixelBuffer, matching source: AVSampleBufferDisplayLayer) -> CALayer? {
         let displaySize = CVImageBufferGetDisplaySize(pixels)
         let clean = CVImageBufferGetCleanRect(pixels)
@@ -196,16 +129,9 @@ final nonisolated class AppearanceTransition: Sendable {
             width: clean.width / encoded.width, height: clean.height / encoded.height,
         )
         image.preferredDynamicRange = source.preferredDynamicRange
-        let size: CGSize
-        switch source.videoGravity {
-        case .resizeAspect, .resizeAspectFill:
-            let x = bounds.width / displaySize.width
-            let y = bounds.height / displaySize.height
-            let scale = source.videoGravity == .resizeAspect ? min(x, y) : max(x, y)
-            size = CGSize(width: displaySize.width * scale, height: displaySize.height * scale)
-        default:
-            size = bounds.size
-        }
+        // Both video layers use resizeAspectFill.
+        let scale = max(bounds.width / displaySize.width, bounds.height / displaySize.height)
+        let size = CGSize(width: displaySize.width * scale, height: displaySize.height * scale)
         image.frame = CGRect(
             x: bounds.midX - size.width / 2,
             y: bounds.midY - size.height / 2,

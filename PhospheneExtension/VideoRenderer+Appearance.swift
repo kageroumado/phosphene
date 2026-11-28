@@ -206,13 +206,14 @@ extension VideoRenderer {
     func enqueueMatchedFrame() {
         guard var blend = matchedDissolve, let playback = activePair, let pair = variantSelector?.pair, CMTimebaseGetRate(timebase) > 0 else { return }
         let desired: Double = pair.url(dark: wantsDark, in: playback) == blend.incoming ? 1 : 0
-        if desired != blend.target {
-            blend.finishing = false
-        }
         let step = CMTime(value: playback.validation.frameTicks, timescale: playback.validation.timescale)
+        // Leave finishing set through the late-frame check so a reversal starts at the aligned frontier.
         guard skipLateMatchedFrames(blend, step: step) else {
             fallBackToKeyframe()
             return
+        }
+        if desired != blend.target {
+            blend.finishing = false
         }
         let pts = lastEnqueuedEnd
         let fraction = matchedFraction(&blend, at: pts, desired: desired)
@@ -496,15 +497,16 @@ extension VideoRenderer {
                     prepareAppearanceCut()
                     return
                 }
-                appearanceTransition.cancel()
                 let fadeHeldFrame = changesImage && rate == 0 && !waking
                 if fadeHeldFrame {
                     appearanceTransition.begin(on: displayLayer, renderer: renderer)
+                } else {
+                    appearanceTransition.cancel()
                 }
                 installAppearanceFrame(prepared, playback: restoredPair, at: now, handoffRate: rate > 0 ? rate : nil)
                 installed = true
                 if fadeHeldFrame {
-                    appearanceTransition.reveal()
+                    appearanceTransition.reveal(on: queue)
                 }
                 if waking {
                     pairReadersReleased = false

@@ -8,6 +8,10 @@ nonisolated struct VideoVariant: Codable, Equatable, Sendable {
     var isHDR: Bool? = nil // Encoded output.
     var toneMappedToSDR: Bool? = nil // Explicit HDR-to-SDR conversion.
 
+    var hasGeneratedFilename: Bool {
+        fps > 0 && filename == "variant_\(fps)fps.mp4"
+    }
+
     func supports(sourceIsHDR: Bool?) -> Bool {
         // Older tiers were playable regardless of the source's dynamic range.
         if isHDR == nil, toneMappedToSDR == nil {

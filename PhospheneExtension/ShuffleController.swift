@@ -243,9 +243,10 @@ final class ShuffleController: @unchecked Sendable {
         }
         setPick(next)
 
+        let selector = VideoSourceSelection(choice: next, fallback: url)
         let renderers = SurfaceRegistry.shared.renderers(showing: shuffleChoiceID)
         for renderer in renderers {
-            renderer.switchVideo(to: url, selector: VideoSourceSelection(choice: next, fallback: url))
+            renderer.switchVideo(selector: selector)
         }
         PlaybackStore.post(.shufflePicked(next))
         extensionLog("[Shuffle] advanced to \(next) on \(renderers.count) renderer(s) (\(reason))")
