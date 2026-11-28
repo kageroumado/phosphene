@@ -9,6 +9,9 @@ struct AppearancePairTests {
         case interrupted
         case replacedMedia
         case replacedDirectory
+        case replacedStagedMedia
+        case missingStagedMedia
+        case restoreCollision
         case cleanupInterrupted
         case legacy
         case malformed
@@ -90,80 +93,140 @@ struct AppearancePairTests {
             try pending.finishDeletion(in: library)
             #expect(FileIdentity(of: files[1]) == validation.alternate)
         case .cleanupInterrupted:
-            try setImmutable(true, at: files[1])
-            defer {
-                try? setImmutable(false, at: files[1])
-                for directory in (try? fm.contentsOfDirectory(at: library, includingPropertiesForKeys: nil)) ?? []
-                    where directory.lastPathComponent.hasPrefix(".delete-") {
-                    try? setImmutable(false, at: directory.appendingPathComponent("sample.mov"))
-                }
-            }
-            #expect(throws: (any Error).self) { try confirmed.remove(in: library) }
-            let pending = try #require(AppearancePair.read(in: library).first)
-            #expect(pending.deletionPending == true)
-            #expect(!fm.fileExists(atPath: dirs[1].path))
-            let staged = try #require(fm.contentsOfDirectory(at: library, includingPropertiesForKeys: nil)
-                .first { $0.lastPathComponent.hasSuffix(ids[1]) })
-            let stagedMedia = staged.appendingPathComponent("sample.mov")
-            #expect(FileIdentity(of: stagedMedia) == validation.alternate)
-            try fm.createDirectory(at: dirs[1], withIntermediateDirectories: false)
-            try fm.copyItem(at: source, to: files[1])
-            let replacement = try #require(FileIdentity(of: files[1]))
-            #expect(replacement.inode != validation.alternate.inode)
-            try setImmutable(false, at: stagedMedia)
-            try pending.finishDeletion(in: library)
-            #expect(FileIdentity(of: files[1]) == replacement)
-            #expect(!fm.fileExists(atPath: staged.path))
+            try retryCommittedCleanup(of: confirmed, in: library, replacing: files[1], with: source)
         default:
-            try setImmutable(true, at: dirs[1])
-            defer { try? setImmutable(false, at: dirs[1]) }
-            #expect(throws: POSIXError(.EPERM)) { try confirmed.remove(in: library) }
-            let pending = try #require(AppearancePair.read(in: library).first)
-            #expect(pending.deletionPending == true)
-            #expect(throws: PairIssue.changed) { try pending.edit(in: library, split: true) }
-            let staged = try #require(fm.contentsOfDirectory(at: library, includingPropertiesForKeys: nil)
-                .first { $0.lastPathComponent.hasPrefix(".delete-") })
-            #expect(FileIdentity(of: staged.appendingPathComponent("sample.mov")) == validation.original)
-            #expect(!fm.fileExists(atPath: dirs[0].path))
-            #expect(FileIdentity(of: files[1]) == validation.alternate)
-            try setImmutable(false, at: dirs[1])
+            try recoverUncommittedDeletion(scenario, of: confirmed, in: root, unrelatedID: ids[2])
+            #expect(try Data(contentsOf: files[2]) == Data(contentsOf: source))
+            return
+        }
+        #expect(try AppearancePair.read(in: library).isEmpty)
+        #expect(!fm.fileExists(atPath: dirs[0].path))
+        #expect(fm.fileExists(atPath: dirs[1].path) == (scenario != .complete))
+        #expect(try Data(contentsOf: files[2]) == Data(contentsOf: source))
+    }
 
-            switch scenario {
-            case .replacedMedia, .malformed:
-                try Data([1, 2, 3]).write(to: files[1], options: .atomic)
-                #expect(FileIdentity(of: files[1])?.inode != validation.alternate.inode)
-            case .replacedDirectory:
-                let retired = root.appendingPathComponent("retired")
-                try fm.moveItem(at: dirs[1], to: retired)
-                try fm.createDirectory(at: dirs[1], withIntermediateDirectories: false)
-                try fm.linkItem(at: retired.appendingPathComponent("sample.mov"), to: files[1])
-                #expect(FileIdentity(of: files[1]) == validation.alternate)
-            default: break
-            }
-
-            let alias = root.appendingPathComponent("alias")
-            try fm.createSymbolicLink(at: alias, withDestinationURL: library)
-            if scenario == .malformed {
-                let manifest = library.appendingPathComponent(".appearance-pairs.json")
-                var records = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [[String: Any]])
-                var deletion = try #require(records[0]["deletion"] as? [String: Any])
-                let members = try #require(deletion["members"] as? [String: Any])
-                deletion["members"] = try [ids[2]: #require(members[ids[1]])]
-                records[0]["deletion"] = deletion
-                try JSONSerialization.data(withJSONObject: records).write(to: manifest)
-                let malformed = try #require(AppearancePair.read(in: library).first)
-                #expect(throws: CocoaError(.fileReadCorruptFile)) { try malformed.finishDeletion(in: alias) }
-                #expect(fm.fileExists(atPath: staged.path))
-            } else {
-                try pending.finishDeletion(in: alias)
-                try pending.finishDeletion(in: alias)
-                #expect(!fm.fileExists(atPath: staged.path))
+    private func retryCommittedCleanup(
+        of confirmed: AppearancePair, in library: URL, replacing media: URL, with source: URL,
+    ) throws {
+        let fm = FileManager.default
+        let folder = media.deletingLastPathComponent()
+        try setImmutable(true, at: media)
+        defer {
+            try? setImmutable(false, at: media)
+            for directory in (try? fm.contentsOfDirectory(at: library, includingPropertiesForKeys: nil)) ?? []
+                where directory.lastPathComponent.hasPrefix(".delete-") {
+                try? setImmutable(false, at: directory.appendingPathComponent("sample.mov"))
             }
         }
-        #expect(try AppearancePair.read(in: library).isEmpty == (scenario != .malformed))
-        #expect(!fm.fileExists(atPath: dirs[0].path))
-        #expect(fm.fileExists(atPath: dirs[1].path) == (scenario != .complete && scenario != .interrupted))
-        #expect(try Data(contentsOf: files[2]) == Data(contentsOf: source))
+        #expect(throws: (any Error).self) { try confirmed.remove(in: library) }
+        let pending = try #require(AppearancePair.read(in: library).first)
+        #expect(pending.deletionPending == true)
+        #expect(!fm.fileExists(atPath: folder.path))
+        let staged = try #require(fm.contentsOfDirectory(at: library, includingPropertiesForKeys: nil)
+            .first { $0.lastPathComponent.hasSuffix(confirmed.counterpart) })
+        let stagedMedia = staged.appendingPathComponent("sample.mov")
+        #expect(FileIdentity(of: stagedMedia) == confirmed.validation.alternate)
+        try fm.createDirectory(at: folder, withIntermediateDirectories: false)
+        try fm.copyItem(at: source, to: media)
+        let replacement = try #require(FileIdentity(of: media))
+        #expect(replacement.inode != confirmed.validation.alternate.inode)
+        try setImmutable(false, at: stagedMedia)
+        try pending.finishDeletion(in: library)
+        #expect(FileIdentity(of: media) == replacement)
+        #expect(!fm.fileExists(atPath: staged.path))
+    }
+
+    private func recoverUncommittedDeletion(
+        _ scenario: DeletionCase, of confirmed: AppearancePair, in root: URL, unrelatedID: String,
+    ) throws {
+        let fm = FileManager.default
+        let library = root.appendingPathComponent("videos")
+        let ids = [confirmed.owner, confirmed.counterpart]
+        let dirs = ids.map { library.appendingPathComponent($0) }
+        let files = dirs.map { $0.appendingPathComponent("sample.mov") }
+        let validation = confirmed.validation
+        // Simulate an exit after the first rename and before the deletion commit.
+        let token = UUID()
+        let staged = library.appendingPathComponent(".delete-\(token.uuidString)-\(ids[0])")
+        try persistUncommittedDeletion(of: confirmed, in: library, token: token, unrelatedID: scenario == .malformed ? unrelatedID : nil)
+        try fm.moveItem(at: dirs[0], to: staged)
+        let stagedAttributes = try fm.attributesOfItem(atPath: staged.path)
+        let stagedInode = try #require(stagedAttributes[.systemFileNumber] as? NSNumber)
+        let pending = try #require(AppearancePair.read(in: library).first)
+        #expect(pending.deletionPending == true)
+        #expect(throws: PairIssue.changed) { try pending.edit(in: library, split: true) }
+        let stagedMedia = staged.appendingPathComponent("sample.mov")
+
+        switch scenario {
+        case .replacedMedia:
+            try Data([1, 2, 3]).write(to: files[1], options: .atomic)
+            #expect(FileIdentity(of: files[1])?.inode != validation.alternate.inode)
+        case .replacedDirectory:
+            let retired = root.appendingPathComponent("retired")
+            try fm.moveItem(at: dirs[1], to: retired)
+            try fm.createDirectory(at: dirs[1], withIntermediateDirectories: false)
+            try fm.linkItem(at: retired.appendingPathComponent("sample.mov"), to: files[1])
+            #expect(FileIdentity(of: files[1]) == validation.alternate)
+        case .replacedStagedMedia:
+            try Data([9]).write(to: stagedMedia, options: .atomic)
+        case .missingStagedMedia:
+            try fm.removeItem(at: stagedMedia)
+        case .restoreCollision:
+            try fm.createDirectory(at: dirs[0], withIntermediateDirectories: false)
+            try Data([9]).write(to: files[0])
+            #expect(throws: POSIXError(.EEXIST)) { try pending.finishDeletion(in: library) }
+            #expect(try Data(contentsOf: files[0]) == Data([9]))
+            #expect(FileIdentity(of: stagedMedia) == validation.original)
+            #expect(try AppearancePair.read(in: library) == [pending])
+            try fm.moveItem(at: dirs[0], to: root.appendingPathComponent("replacement"))
+        default: break
+        }
+
+        let alias = root.appendingPathComponent("alias")
+        try fm.createSymbolicLink(at: alias, withDestinationURL: library)
+        if scenario == .malformed {
+            #expect(throws: CocoaError(.fileReadCorruptFile)) { try pending.finishDeletion(in: alias) }
+            #expect(fm.fileExists(atPath: staged.path))
+            #expect(try AppearancePair.read(in: library) == [pending])
+        } else {
+            let stagedIdentity = FileIdentity(of: stagedMedia)
+            let alternateIdentity = FileIdentity(of: files[1])
+            try pending.finishDeletion(in: alias)
+            try pending.finishDeletion(in: alias)
+            #expect(!fm.fileExists(atPath: staged.path))
+            #expect(fm.fileExists(atPath: dirs[0].path))
+            let restoredAttributes = try fm.attributesOfItem(atPath: dirs[0].path)
+            #expect(restoredAttributes[.systemFileNumber] as? NSNumber == stagedInode)
+            #expect(FileIdentity(of: files[0]) == stagedIdentity)
+            #expect(FileIdentity(of: files[1]) == alternateIdentity)
+            #expect(try AppearancePair.read(in: library) == [confirmed])
+        }
+    }
+
+    private func persistUncommittedDeletion(
+        of pair: AppearancePair, in library: URL, token: UUID, unrelatedID: String?,
+    ) throws {
+        let fm = FileManager.default
+        let ids = [pair.owner, pair.counterpart]
+        let dirs = ids.map { library.appendingPathComponent($0) }
+        let validation = pair.validation
+        let manifest = library.appendingPathComponent(".appearance-pairs.json")
+        var records = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [[String: Any]])
+        var members: [String: [String: Any]] = [:]
+        for (index, media) in [validation.original, validation.alternate].enumerated() {
+            let attributes = try fm.attributesOfItem(atPath: dirs[index].path)
+            members[ids[index]] = try [
+                "device": #require(attributes[.systemNumber]),
+                "inode": #require(attributes[.systemFileNumber]),
+                "media": JSONSerialization.jsonObject(with: JSONEncoder().encode(media)),
+            ]
+        }
+        if let unrelatedID {
+            members[unrelatedID] = members.removeValue(forKey: ids[1])
+        }
+        records[0]["deletionPending"] = true
+        records[0]["deletion"] = ["token": token.uuidString, "members": members, "split": false, "detached": false]
+        try JSONSerialization.data(withJSONObject: records).write(to: manifest)
     }
 
     @Test

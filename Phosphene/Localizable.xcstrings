@@ -3517,12 +3517,32 @@
         }
       }
     },
+    "Remove Single-Video Variants…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除单个视频的优化版本…"
+          }
+        }
+      }
+    },
     "Remove Variants": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "移除优化版本"
+          }
+        }
+      }
+    },
+    "Removes %@. The original videos and paired variants are kept.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将移除 %@。原始视频和配对优化版本会保留。"
           }
         }
       }

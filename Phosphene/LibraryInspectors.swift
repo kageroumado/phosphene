@@ -205,6 +205,7 @@ struct VideoInspector: View {
     @State private var codec: VideoCodec?
     @State private var fileSize: Int64?
     @State private var confirmingRemoveVariants = false
+    @State private var memberVariantRemoval: AppearancePair.MemberVariantRemoval?
     @State private var sdrTargetID: String?
 
     private var pair: VideoPairSelection? {
@@ -271,9 +272,30 @@ struct VideoInspector: View {
                 }
                 InspectorSection(title: "Optimization") {
                     optimization
+                    memberVariantMenu
                 }
             }
             .inspectorPadding()
+        }
+        .alert("Remove Variants", isPresented: $confirmingRemoveVariants) {
+            Button("Remove", role: .destructive) {
+                if let removal = memberVariantRemoval {
+                    store.removeMemberVariants(removal)
+                    memberVariantRemoval = nil
+                } else {
+                    manager.removeVariants(for: target)
+                }
+            }
+            Button("Cancel", role: .cancel) { memberVariantRemoval = nil }
+        } message: {
+            if let removal = memberVariantRemoval {
+                Text("Removes \(removal.filenames.formatted(.list(type: .and))). The original videos and paired variants are kept.")
+            } else if pair != nil {
+                Text("This will remove the optimized versions of both videos and keep the original pair.")
+            } else {
+                let rates = target.storedTiers.map { String(localized: "\($0.fps) fps") }
+                Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
+            }
         }
         .task(id: FileKey(
             entryID: entry.id, filename: entry.filename, isConverting: isConvertingThis, revision: store.revision,
@@ -378,6 +400,36 @@ struct VideoInspector: View {
     // MARK: Optimization
 
     @ViewBuilder
+    private var memberVariantMenu: some View {
+        if let pair = store.pairAction(for: [entry.id]), let record = pair.saved,
+           pair.members.contains(where: { $0.variants?.contains(where: \.hasGeneratedFilename) == true }) {
+            Menu("Remove Single-Video Variants…") {
+                ForEach([true, false], id: \.self) { light in
+                    if let member = pair.entry(light: light, swapped: record.swapped),
+                       member.variants?.contains(where: \.hasGeneratedFilename) == true {
+                        Button {
+                            do {
+                                memberVariantRemoval = try record.memberVariantRemoval(for: member.id, in: VideoDeploymentService.videosFolderURL)
+                                confirmingRemoveVariants = true
+                            } catch {
+                                store.libraryError = error.localizedDescription
+                            }
+                        } label: {
+                            let title = member.name
+                            Label {
+                                light ? Text("Light — \(title)") : Text("Dark — \(title)")
+                            } icon: {
+                                Image(systemName: light ? "sun.max" : "moon")
+                            }
+                        }
+                    }
+                }
+            }
+            .fixedSize()
+        }
+    }
+
+    @ViewBuilder
     private var optimization: some View {
         if isWorkingOnThis, !manager.isConverting {
             ProgressView(value: manager.optimizationProgress) {
@@ -405,18 +457,10 @@ struct VideoInspector: View {
                 })
             }
             if !storedTiers.isEmpty {
-                Button("Remove Variants") { confirmingRemoveVariants = true }
-                    .alert("Remove Variants", isPresented: $confirmingRemoveVariants) {
-                        Button("Remove", role: .destructive) { manager.removeVariants(for: target) }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        if pair != nil {
-                            Text("This will remove the optimized versions of both videos and keep the original pair.")
-                        } else {
-                            let rates = storedTiers.map { String(localized: "\($0.fps) fps") }
-                            Text("Deletes the \(rates.formatted(.list(type: .and))) copies.")
-                        }
-                    }
+                Button("Remove Variants") {
+                    memberVariantRemoval = nil
+                    confirmingRemoveVariants = true
+                }
             }
         }
     }
